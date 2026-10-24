@@ -22,7 +22,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 RETOUCH_DIR = os.path.expanduser("~/dev/tools/photo-retouch")
-DETECT_DIR = os.path.expanduser("~/Downloads/ユニバ/顔検出テスト_2026-10-24")
+DETECT_DIR = os.path.expanduser("~/Downloads/顔検出テスト_2026-10-24")
 sys.path.insert(0, RETOUCH_DIR)
 sys.path.insert(0, DETECT_DIR)
 
@@ -32,7 +32,7 @@ from PIL import Image, ImageOps
 from retouch import detect_faces, detect_faces_yunet, merge_faces, mosaic_face, YUNET_PATH
 from detect_only import FACE_SCORE
 
-DEFAULT_OUT = os.path.expanduser("~/Downloads/ユニバ/モザイク後")
+DEFAULT_OUT = os.path.expanduser("~/Downloads/モザイク後")
 VIEW_LONG = 2000      # 画面表示用の画像の長辺
 LINGER_SEC = 90       # 書き出し後にサーバーを閉じるまでの秒数
 
