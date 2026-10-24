@@ -1,0 +1,71 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>写真を送る｜顔モザイク</title>
+<link rel="stylesheet" href="/static/app.css">
+<style>
+.drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:180px;border:2px dashed #9FB3CF;
+  border-radius:var(--radius);background:var(--surface);cursor:pointer;text-align:center;padding:16px}
+.drop .big{font-weight:700;font-size:17px;color:var(--pri)}
+.drop .small{font-size:13px;color:var(--sub)}
+.drop input{position:absolute;opacity:0;width:1px;height:1px}
+.prog{margin:16px 0 0}
+.prog .label{font-weight:600}
+.track{height:10px;border-radius:999px;background:var(--surface);overflow:hidden;margin:8px 0 0;border:1px solid var(--line)}
+.fill{height:100%;width:0;background:var(--pri);transition:width .2s}
+@media (prefers-reduced-motion:reduce){.fill{transition:none}}
+</style>
+</head><body>
+<div class="bar"><a class="back" href="/home" aria-label="ホームに戻る">‹ ホーム</a></div>
+<main class="wrap">
+  <ol class="steps"><li class="on">1 写真を選ぶ</li><li>2 残す顔を選ぶ</li><li>3 保存する</li></ol>
+  <h1>写真を1枚選んでください</h1>
+  <p class="lead">選ぶとすぐに送信して、顔を探します（数秒〜十数秒）。</p>
+  <label class="drop" id="drop">
+    <input type="file" id="file" accept="image/*">
+    <span class="big">写真を選ぶ</span>
+    <span class="small">JPEG・HEIC・PNG／1枚30MBまで</span>
+  </label>
+  <div class="prog" id="prog" hidden>
+    <div class="label" id="plabel" aria-live="polite">送信しています…</div>
+    <div class="track" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="ptrack"><div class="fill" id="pfill"></div></div>
+  </div>
+  <p class="err" id="err" hidden></p>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const MAX = 30 * 1024 * 1024;
+const $ = id => document.getElementById(id);
+function fail(msg) {
+  $('err').textContent = msg; $('err').hidden = false; $('prog').hidden = true;
+  $('drop').style.display = ''; $('file').value = '';
+  document.querySelector('.drop .big').textContent = '別の写真を選ぶ';
+}
+function setPct(p) { $('pfill').style.width = p + '%'; $('ptrack').setAttribute('aria-valuenow', String(Math.round(p))); }
+$('file').addEventListener('change', () => {
+  const f = $('file').files[0];
+  if (!f) return;
+  $('err').hidden = true;
+  if (f.size > MAX) { fail('この写真は ' + (f.size / 1048576).toFixed(1) + 'MB あります。30MBまでの写真を選んでください'); return; }
+  $('drop').style.display = 'none'; $('prog').hidden = false; setPct(0);
+  $('plabel').textContent = '送信しています… 0%';
+  const fd = new FormData(); fd.append('file', f, f.name || 'photo.jpg');
+  const x = new XMLHttpRequest();
+  x.open('POST', '/api/photos');
+  x.upload.onprogress = e => {
+    if (!e.lengthComputable) return;
+    const p = e.loaded / e.total * 100; setPct(p);
+    $('plabel').textContent = p >= 100 ? '届きました。顔を探しています…' : '送信しています… ' + Math.floor(p) + '%';
+  };
+  x.upload.onload = () => { setPct(100); $('plabel').textContent = '届きました。顔を探しています…'; };
+  x.onload = () => {
+    if (x.status === 401) { location.href = '/'; return; }
+    let j = null; try { j = JSON.parse(x.responseText); } catch (e) { }
+    if (x.status !== 200 || !j) { fail((j && j.detail) || (x.status === 413 ? '写真は30MBまでです' : '送信に失敗しました。もう一度お試しください')); return; }
+    location.href = '/pick/' + j.id;
+  };
+  x.onerror = () => fail('通信が切れました。電波のよい場所でもう一度選んでください');
+  x.send(fd);
+});
+</script>
+</body></html>

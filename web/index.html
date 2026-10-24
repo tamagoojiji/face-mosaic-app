@@ -1,0 +1,21 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>顔モザイク（試験版）</title>
+<link rel="stylesheet" href="/static/app.css">
+</head><body>
+<main class="wrap">
+  <h1>顔モザイク（試験版）</h1>
+  <p class="lead">写真の中の顔を自動で見つけて、残したい人以外にモザイクをかけます。試験版は合言葉を知っている人だけが使えます。</p>
+  <form method="post" action="/login" class="stack">
+    <div>
+      <label class="field" for="pc">合言葉</label>
+      <input id="pc" name="passcode" type="password" autocomplete="current-password" required>
+      <p class="err" id="e" hidden>合言葉が違います。もう一度入れてください</p>
+    </div>
+    <button class="btn btn-pri" type="submit">アプリを開く</button>
+  </form>
+  <p class="note">一度入ると、この端末では30日間そのまま使えます。送った写真は24時間で自動で消えます。</p>
+</main>
+<script>if(new URLSearchParams(location.search).get('e'))document.getElementById('e').hidden=false</script>
+</body></html>

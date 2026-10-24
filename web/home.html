@@ -1,0 +1,73 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>ホーム｜顔モザイク</title>
+<link rel="stylesheet" href="/static/app.css">
+<style>
+.list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.list li{border-bottom:1px solid var(--line)}
+.item{display:flex;align-items:center;gap:12px;min-height:72px;padding:10px 0;color:var(--fg);text-decoration:none}
+.thumb{width:56px;height:56px;border-radius:8px;object-fit:cover;background:var(--surface);flex:none}
+.thumb.none{display:flex;align-items:center;justify-content:center;color:var(--sub);font-size:12px}
+.meta{flex:1;min-width:0}
+.meta .t{font-weight:600}
+.meta .s{color:var(--sub);font-size:13px}
+.badge{flex:none;font-size:13px;font-weight:700;border-radius:999px;padding:2px 10px}
+.badge.done{background:#E7F1FC;color:#0358B4}
+.badge.pick{background:#FDEEE7;color:var(--warn-tag)}
+.badge.gone{background:var(--surface);color:var(--sub)}
+.chev{flex:none;color:var(--sub);font-size:18px}
+.empty{color:var(--sub);margin:8px 0 0}
+</style>
+</head><body>
+<div class="bar"><span class="brand">顔モザイク</span></div>
+<main class="wrap">
+  <h1>写真の顔にモザイクをかける</h1>
+  <p class="lead">1枚送ると顔を自動で見つけます。残したい人だけタップして、ほかの顔を隠せます。</p>
+  <a class="btn btn-pri" id="send" href="/upload">写真を送る</a>
+  <h2>最近の写真</h2>
+  <p class="note" style="margin:0 0 12px">完成から24時間で、元の写真と完成した写真は自動で消えます。</p>
+  <ul class="list" id="list" hidden></ul>
+  <p class="empty" id="empty" hidden>送った写真はここに並びます。</p>
+  <p class="err" id="err" hidden></p>
+</main>
+<script src="/static/common.js"></script>
+<script>
+(async () => {
+  let jobs;
+  try { jobs = await api('/api/jobs'); } catch (e) {
+    const el = document.getElementById('err'); el.textContent = e.message; el.hidden = false; return;
+  }
+  if (!jobs.length) {
+    document.getElementById('send').textContent = '最初の1枚を送ってみる';
+    document.getElementById('empty').hidden = false; return;
+  }
+  const ul = document.getElementById('list'); ul.hidden = false;
+  for (const j of jobs) {
+    const li = document.createElement('li');
+    const gone = j.status === 'deleted';
+    const done = j.status === 'done' && j.has_out;
+    const a = document.createElement(gone ? 'div' : 'a');
+    a.className = 'item';
+    if (!gone) a.href = done ? '/done/' + j.id : '/pick/' + j.id;
+    const d = new Date(j.created_at * 1000);
+    const when = (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+    let thumb;
+    if (done) { thumb = document.createElement('img'); thumb.src = '/api/jobs/' + j.id + '/result.jpg'; thumb.alt = ''; thumb.loading = 'lazy'; }
+    else { thumb = document.createElement('div'); thumb.classList.add('none'); }
+    thumb.classList.add('thumb');
+    const meta = document.createElement('div'); meta.className = 'meta';
+    const t = document.createElement('div'); t.className = 't'; t.textContent = when;
+    const s = document.createElement('div'); s.className = 's';
+    s.textContent = gone ? '24時間たったので消えました' : done ? 'モザイク ' + j.blur.length + ' 件・' + remainText(j) + 'で削除' : '選択の途中・' + remainText(j) + 'で削除';
+    meta.append(t, s);
+    const b = document.createElement('span');
+    b.className = 'badge ' + (gone ? 'gone' : done ? 'done' : 'pick');
+    b.textContent = gone ? '削除済み' : done ? '完成' : '選択中';
+    a.append(thumb, meta, b);
+    if (!gone) { const c = document.createElement('span'); c.className = 'chev'; c.textContent = '›'; c.setAttribute('aria-hidden', 'true'); a.append(c); }
+    li.append(a); ul.append(li);
+  }
+})();
+</script>
+</body></html>

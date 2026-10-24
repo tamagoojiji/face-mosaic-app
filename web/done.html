@@ -1,0 +1,50 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>できあがり｜顔モザイク</title>
+<link rel="stylesheet" href="/static/app.css">
+<style>
+.pv{display:block;width:100%;max-height:60vh;object-fit:contain;background:var(--surface);border-radius:var(--radius);margin:0 0 8px}
+.summary{font-weight:600;margin:0 0 4px}
+.remain{color:var(--sub);font-size:13px;margin:0 0 16px}
+.remain b{color:var(--fg)}
+.hint{color:var(--sub);font-size:13px;margin:-4px 0 0}
+</style>
+</head><body>
+<div class="bar"><a class="back" href="/home" aria-label="ホームに戻る">‹ ホーム</a></div>
+<main class="wrap" id="main">
+  <ol class="steps"><li class="done">1 写真を選ぶ</li><li class="done">2 残す顔を選ぶ</li><li class="on">3 保存する</li></ol>
+  <h1>できあがりました</h1>
+  <img class="pv" id="pv" alt="モザイクをかけた写真">
+  <p class="summary" id="sum"></p>
+  <p class="remain" id="remain"></p>
+  <div class="stack">
+    <a class="btn btn-pri" id="dl" download>写真を保存する</a>
+    <p class="hint">保存できないときは、上の写真を長押しして「"写真"に保存」を選んでください。</p>
+    <a class="btn btn-sec" href="/upload">もう1枚送る</a>
+    <a class="btn btn-ter" id="again">残す顔を選び直す</a>
+  </div>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const id = jobIdFromPath(), $ = x => document.getElementById(x);
+(async () => {
+  let j;
+  try { j = await api('/api/jobs/' + id); } catch (e) { $('sum').textContent = e.message; return; }
+  if (!j.has_out) {
+    $('pv').remove(); document.querySelector('h1').textContent = j.status === 'deleted' ? 'この写真は消えました' : 'まだ書き出していません';
+    $('sum').textContent = j.status === 'deleted' ? '24時間たったので、元の写真と完成した写真を削除しました。' : '残す顔を選んで「この内容で書き出す」を押してください。';
+    $('dl').remove(); document.querySelector('.hint').remove();
+    if (j.status === 'deleted') $('again').remove(); else $('again').href = '/pick/' + id;
+    return;
+  }
+  const src = '/api/jobs/' + id + '/result.jpg';
+  $('pv').src = src + '?t=' + Math.floor(j.now);
+  $('dl').href = src + '?dl=1';
+  $('again').href = '/pick/' + id;
+  $('sum').textContent = 'モザイク ' + j.blur.length + ' 件・かけない ' + j.keep.length + ' 件（' + (j.style === 'blur' ? 'すりガラス' : 'ブロック粗め') + '）';
+  const b = document.createElement('b'); b.textContent = remainText(j);
+  $('remain').replaceChildren(b, document.createTextNode('で、元の写真とこの写真は自動で消えます。'));
+})();
+</script>
+</body></html>

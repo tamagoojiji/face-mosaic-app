@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+itsdangerous
+python-multipart
+numpy
+Pillow
+pillow-heif
+opencv-python-headless
