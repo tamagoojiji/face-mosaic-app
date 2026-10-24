@@ -18,6 +18,26 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # 動画のキューを1件ずつ処理する（同じイメージ・同じ /data）。重い処理なので nice 10
+  face-mosaic-worker:
+    build: .
+    container_name: face-mosaic-worker
+    restart: unless-stopped
+    command: ["nice", "-n", "10", "python", "-m", "worker.run"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - TZ=Asia/Tokyo
+      - DATA_DIR=/data
+    volumes:
+      - ./data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 # nginx と同じ既存ネットワークに参加し「face-mosaic-app:8000」で到達させる（ホストポートは公開しない）
 networks:
   default:
