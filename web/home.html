@@ -47,9 +47,9 @@
     const li = document.createElement('li');
     const gone = j.status === 'deleted';
     const done = j.status === 'done' && j.has_out;
-    const a = document.createElement(gone ? 'div' : 'a');
+    const a = document.createElement('a');
     a.className = 'item';
-    if (!gone) a.href = done ? '/done/' + j.id : '/pick/' + j.id;
+    a.href = gone ? '/upload' : done ? '/done/' + j.id : '/pick/' + j.id;
     const d = new Date(j.created_at * 1000);
     const when = (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
     let thumb;
@@ -59,13 +59,14 @@
     const meta = document.createElement('div'); meta.className = 'meta';
     const t = document.createElement('div'); t.className = 't'; t.textContent = when;
     const s = document.createElement('div'); s.className = 's';
-    s.textContent = gone ? '24時間たったので消えました' : done ? 'モザイク ' + j.blur.length + ' 件・' + remainText(j) + 'で削除' : '選択の途中・' + remainText(j) + 'で削除';
+    const left = remainText(j).replace('あと', '残り ');
+    s.textContent = gone ? '24時間たったので消えました・写真を送り直す' : done ? 'モザイク ' + j.blur.length + ' 件・' + left : '選択の途中・' + left;
     meta.append(t, s);
     const b = document.createElement('span');
     b.className = 'badge ' + (gone ? 'gone' : done ? 'done' : 'pick');
     b.textContent = gone ? '削除済み' : done ? '完成' : '選択中';
     a.append(thumb, meta, b);
-    if (!gone) { const c = document.createElement('span'); c.className = 'chev'; c.textContent = '›'; c.setAttribute('aria-hidden', 'true'); a.append(c); }
+    const c = document.createElement('span'); c.className = 'chev'; c.textContent = '›'; c.setAttribute('aria-hidden', 'true'); a.append(c);
     li.append(a); ul.append(li);
   }
 })();

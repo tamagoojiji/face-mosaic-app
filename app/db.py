@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   error TEXT,
   expires_at REAL,
   created_at REAL,
-  updated_at REAL
+  updated_at REAL,
+  owner TEXT                       -- 端末ごとの owner_id（Cookie）。旧行は NULL
 );
 """
 
@@ -39,6 +40,10 @@ def init():
     with connect() as con:
         con.execute("PRAGMA journal_mode=WAL")
         con.executescript(SCHEMA)
+        cols = {r["name"] for r in con.execute("PRAGMA table_info(jobs)")}
+        if "owner" not in cols:  # 旧 DB の移行
+            con.execute("ALTER TABLE jobs ADD COLUMN owner TEXT")
+        con.execute("CREATE INDEX IF NOT EXISTS jobs_owner ON jobs(owner, created_at)")
 
 
 def insert_job(job_id, **cols):
@@ -63,10 +68,10 @@ def get_job(job_id):
     return dict(r) if r else None
 
 
-def recent_jobs(limit=30):
+def recent_jobs(owner, limit=30):
     with connect() as con:
-        rows = con.execute("SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?",
-                           (limit,)).fetchall()
+        rows = con.execute("SELECT * FROM jobs WHERE owner=? ORDER BY created_at DESC LIMIT ?",
+                           (owner, limit)).fetchall()
     return [dict(r) for r in rows]
 
 
