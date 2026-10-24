@@ -1,0 +1,813 @@
+"""動画モードの処理（1080p 変換→顔の追跡→顔と服の特徴→場面写真→判定→書き出し）。色補正はしない。
+
+~/dev/tools/photo-retouch/dancer_pick.py と video_retouch.py からコピーしたもの（2026-10-24）。
+判定ルール（decide・pick_shots・classify_tracks_global・build_frame_boxes）と数値は元と同じ。
+変更点:
+- キャッシュの置き場所を var/ ではなくジョブのフォルダにした（引数でパスを受け取る）
+- 選択画面・確認画面の HTML は作らず、画面の元データ（JSON）と画像だけを作る
+- 確認画面の顔の切り抜きは、判定の前に「確認画面に出る可能性のある顔」全部について作っておく
+  （確認画面を待たずに開けるようにするため。切り抜くフレームと範囲は build_review と同じ）
+- 書き出しは video_retouch.py --no-lut --reuse-tracks --overrides と同じ手順を関数で呼ぶ
+- HDR の PQ（sys.exit で止まる）は RuntimeError にする
+"""
+
+import argparse
+import bisect
+import json
+import os
+import shutil
+import statistics
+import subprocess
+import sys
+
+os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
+
+import cv2
+import numpy as np
+from PIL import Image
+
+from . import hdr_sdr
+from .detect import (BODY_ZONE_CONF, MAIN_CONF, MAIN_SUBJECT_FRAC, YUNET_PATH,
+                     _overlap, detect_faces_yunet)
+from .mosaic import mosaic_face
+
+MODELS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "models")
+SFACE_PATH = os.path.join(MODELS, "sface.onnx")
+
+FFMPEG = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
+# Mac はデコードに VideoToolbox を使う。Linux（VPS）には無いので付けない
+HWACCEL = ["-hwaccel", "videotoolbox"] if sys.platform == "darwin" else []
+FFPROBE = shutil.which("ffprobe") or "/opt/homebrew/bin/ffprobe"
+
+# ---- video_retouch.py の値
+DETECT_LONG_SIDE = 1280
+IOU_MATCH = 0.3
+EMA_ALPHA = 0.5
+HOLD_FRAMES = 15
+BITRATE_SCALE = 0.8
+BITRATE_CAP = 80_000_000
+# video_retouch.py の既定（--faces background --face-keep-ratio 0.5 --face-min-frac 0.03 --detect-every 1）
+FACE_KEEP_RATIO = 0.5
+FACE_MIN_FRAC = 0.03
+EXPORT_DETECT_EVERY = 1
+
+# ---- dancer_pick.py の値
+FEAT_W = 0
+SAMPLES = 6
+BLUR_MIN_CONF = 0.40
+PICK_MIN_CONF = 0.5
+PICK_MIN_FRAC = 0.025
+SHOTS = 12
+SHOT_W = 1080
+LINK_GAP = 45
+LINK_DIST = 2.0
+LINK_FACE = 0.30
+LINK_CLOTH = 0.55
+GLOB_FACE = 0.35
+GLOB_CLOTH = 0.60
+GLOB_SUM = 1.15
+KEEP_MIN_FRAC = 0.042
+COSTUME_CLOTH = 0.50
+COSTUME_MIN_FRAC = 0.07
+COSTUME_MIN_SEEN = 4
+REVIEW_MIN_FRAC = 0.0625
+REVIEW_THUMB = 200
+FEAT_VER = f"w{FEAT_W}-s{SAMPLES}-torso0.6"
+
+
+# ---------------------------------------------------------------- ffmpeg 周り（video_retouch.py）
+
+def probe(path):
+    r = subprocess.run([FFPROBE, "-v", "error", "-show_streams", "-show_format",
+                        "-of", "json", path], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(f"ffprobe に失敗: {(r.stderr or r.stdout).strip()[-300:]}")
+    d = json.loads(r.stdout)
+    v = next((s for s in d["streams"] if s.get("codec_type") == "video"), None)
+    if v is None:
+        raise RuntimeError(f"映像ストリームがありません: {path}")
+
+    rot = 0
+    for sd in v.get("side_data_list") or []:
+        if sd.get("rotation") is not None:
+            rot = int(round(float(sd["rotation"])))
+    rot %= 360
+
+    num, _, den = v.get("r_frame_rate", "30/1").partition("/")
+    fps = float(num) / float(den or 1)
+    dur = float(v.get("duration") or d["format"]["duration"])
+    nb = int(v["nb_frames"]) if str(v.get("nb_frames") or "").isdigit() \
+        else int(round(dur * fps))
+    br = int(v["bit_rate"]) if str(v.get("bit_rate") or "").isdigit() \
+        else int(float(d["format"].get("bit_rate") or 0))
+
+    w, h = int(v["width"]), int(v["height"])
+    out_w, out_h = (h, w) if rot in (90, 270) else (w, h)
+    return {"width": w, "height": h, "out_width": out_w, "out_height": out_h,
+            "rotation": rot, "fps": fps, "fps_str": v.get("r_frame_rate", "30/1"),
+            "frames": nb, "duration": dur, "bit_rate": br,
+            "has_audio": any(s.get("codec_type") == "audio" for s in d["streams"])}
+
+
+def transpose_filter(rot):
+    return {90: "transpose=2", 180: "transpose=1,transpose=1", 270: "transpose=1"}.get(rot, "")
+
+
+def join_vf(*parts):
+    return ",".join([p for p in parts if p])
+
+
+def grab_frame(path, t, vf, width, out_png):
+    filt = join_vf(vf, f"scale={width}:-2")
+    cmd = [FFMPEG, "-v", "error", "-noautorotate", "-ss", f"{t:.3f}", "-i", path,
+           "-frames:v", "1", "-vf", filt, "-y", out_png]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0 or not os.path.exists(out_png):
+        raise RuntimeError(f"フレーム抽出に失敗 ({t:.2f}s): "
+                           f"{(r.stderr or r.stdout).strip()[-300:]}")
+
+
+def pick_encoder():
+    r = subprocess.run([FFMPEG, "-v", "error", "-f", "lavfi",
+                        "-i", "color=c=black:s=64x64:r=30:d=0.1",
+                        "-c:v", "hevc_videotoolbox", "-frames:v", "1", "-f", "null", "-"],
+                       capture_output=True, text=True)
+    if r.returncode == 0:
+        return "hevc_videotoolbox"
+    return "libx264"
+
+
+# ---------------------------------------------------------------- 準備（dancer_pick.py）
+
+def prepare(path, work_dir):
+    """戻り値 (info, vf, hdr_info)。HDR の LUT は work_dir に作る。"""
+    info = probe(path)
+    vf = transpose_filter(info["rotation"])
+    try:
+        hdr_vf, hdr_info = hdr_sdr.plan(path, work_dir, None, None, ffprobe=FFPROBE,
+                                        label=os.path.basename(path), quiet=True)
+    except SystemExit as e:
+        raise RuntimeError(f"HDR(PQ) は未対応: {str(e)[:120]}")
+    vf = join_vf(hdr_vf, vf)
+    return info, vf, hdr_info
+
+
+def to_1080(path, vf, out):
+    """最初に1回だけ 1080p・30fps・SDR へ変換する。以降の工程はすべてこのファイルで行う。"""
+    if os.path.exists(out):
+        return out
+    filt = join_vf(vf, "scale=1080:1920:force_original_aspect_ratio=decrease:force_divisible_by=2", "fps=30")
+    cmd = [FFMPEG, "-v", "error", "-y", *HWACCEL, "-noautorotate", "-i", path,
+           "-vf", filt, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "16",
+           "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709",
+           "-colorspace", "bt709", "-c:a", "copy", "-metadata:s:v", "rotate=0", out + ".part.mp4"]
+    subprocess.run(cmd, check=True)
+    os.replace(out + ".part.mp4", out)
+    return out
+
+
+# ---------------------------------------------------------------- 顔の追跡（video_retouch.py）
+
+def track_faces(path, info, vf, args):
+    ow, oh = info["out_width"], info["out_height"]
+    scale = min(1.0, DETECT_LONG_SIDE / float(max(ow, oh)))
+    dw = max(2, int(round(ow * scale / 2)) * 2)
+    dh = max(2, int(round(oh * scale / 2)) * 2)
+
+    cmd = [FFMPEG, "-v", "error", *HWACCEL, "-noautorotate",
+           "-i", path, "-an", "-sn", "-dn",
+           "-vf", join_vf(vf, f"scale={dw}:{dh}")]
+    cmd += ["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+
+    fsize = dw * dh * 3
+    total = info["frames"]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            bufsize=fsize)
+
+    active, tracks = [], []
+    next_id = 0
+    step = max(1, int(args.detect_every))
+    mark = 0
+    i = 0
+    try:
+        while True:
+            buf = proc.stdout.read(fsize)
+            if len(buf) < fsize:
+                break
+            if i % step == 0:
+                frame = np.frombuffer(buf, dtype=np.uint8).reshape(dh, dw, 3)
+                dets, warn = detect_faces_yunet(frame, YUNET_PATH, args.face_score,
+                                                upscale=getattr(args, "detect_upscale", 2))
+                if warn and i == 0:
+                    print(warn, file=sys.stderr)
+                dets.sort(key=lambda f: -float(f.get("conf", 0.0)))
+                used = set()
+                for d in dets:
+                    best, best_iou = None, IOU_MATCH
+                    for t in active:
+                        if t["id"] in used:
+                            continue
+                        iou, _c = _overlap(d, t["last"])
+                        if iou > best_iou:
+                            best, best_iou = t, iou
+                    if best is None:
+                        best = {"id": next_id, "boxes": {}, "confs": [],
+                                "last": {k: float(d[k]) for k in "xywh"},
+                                "last_frame": i, "first_frame": i}
+                        next_id += 1
+                        active.append(best)
+                        tracks.append(best)
+                    else:
+                        lb = best["last"]
+                        best["last"] = {k: EMA_ALPHA * float(d[k]) + (1.0 - EMA_ALPHA) * lb[k]
+                                        for k in "xywh"}
+                    used.add(best["id"])
+                    best["boxes"][i] = dict(best["last"], conf=float(d.get("conf", 0.0)))
+                    best["confs"].append(float(d.get("conf", 0.0)))
+                    best["last_frame"] = i
+                active = [t for t in active if i - t["last_frame"] <= HOLD_FRAMES]
+            i += 1
+            if total and i * 10 // max(total, 1) > mark:
+                mark = i * 10 // max(total, 1)
+                print(f"  追跡 {mark * 10}%  ({i}/{total}f・トラック {len(tracks)})", flush=True)
+    finally:
+        try:
+            proc.stdout.close()
+        except OSError:
+            pass
+        err = proc.stderr.read().decode("utf-8", "replace")
+        proc.stderr.close()
+        rc = proc.wait()
+    if rc not in (0, 255) and not tracks:
+        raise RuntimeError(f"顔追跡のデコードに失敗 (rc={rc}): {err.strip()[-300:]}")
+
+    for t in tracks:
+        hs = [b["h"] for b in t["boxes"].values()]
+        t["med_h"] = statistics.median(hs)
+        t["med_conf"] = statistics.median(t["confs"])
+        t["med_box"] = {k: statistics.median([b[k] for b in t["boxes"].values()])
+                        for k in "xywh"}
+        t["seen"] = len(t["boxes"])
+    return tracks, dw, dh, i
+
+
+def save_tracks(p, tracks, dw, dh, seen_frames, args):
+    data = {
+        "detect_size": [dw, dh], "seen_frames": seen_frames,
+        "face_score": args.face_score, "detect_every": int(args.detect_every),
+        "tracks": [{"id": t["id"], "first_frame": t["first_frame"],
+                    "last_frame": t["last_frame"], "confs": t["confs"],
+                    "boxes": {str(f): b for f, b in t["boxes"].items()}}
+                   for t in tracks],
+    }
+    with open(p, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    return p
+
+
+def load_tracks(p):
+    with open(p, encoding="utf-8") as f:
+        data = json.load(f)
+    tracks = []
+    for t in data["tracks"]:
+        boxes = {int(k): v for k, v in t["boxes"].items()}
+        tr = {"id": t["id"], "boxes": boxes, "confs": t["confs"],
+              "first_frame": t["first_frame"], "last_frame": t["last_frame"],
+              "last": boxes[max(boxes)]}
+        hs = [b["h"] for b in boxes.values()]
+        tr["med_h"] = statistics.median(hs)
+        tr["med_conf"] = statistics.median(t["confs"])
+        tr["med_box"] = {k: statistics.median([b[k] for b in boxes.values()])
+                         for k in "xywh"}
+        tr["seen"] = len(boxes)
+        tracks.append(tr)
+    dw, dh = data["detect_size"]
+    return tracks, dw, dh, data["seen_frames"]
+
+
+def get_tracks(path, info, vf, tracks_path, fast=False):
+    if os.path.exists(tracks_path):
+        return load_tracks(tracks_path)
+    # fast: 1フレームおき・拡大なしで探す（VPS 実測で 1 フレーム 0.31 秒 → 0.12 秒）
+    args = argparse.Namespace(face_score=0.25, detect_every=2 if fast else 1, preview_only=False,
+                              detect_upscale=1 if fast else 2)
+    tracks, dw, dh, seen = track_faces(path, info, vf, args)
+    save_tracks(tracks_path, tracks, dw, dh, seen, args)
+    return tracks, dw, dh, seen
+
+
+def boxes_of(t):
+    return {int(k): v for k, v in t["boxes"].items()}
+
+
+# ---------------------------------------------------------------- 特徴（dancer_pick.py）
+
+def sample_frames(t, n=SAMPLES):
+    bx = boxes_of(t)
+    keys = sorted(bx)
+    if len(keys) <= n:
+        return keys
+    seg = len(keys) / float(n)
+    out = []
+    for i in range(n):
+        part = keys[int(i * seg):int((i + 1) * seg)] or keys[-1:]
+        out.append(max(part, key=lambda f: bx[f].get("conf", 0.0)))
+    return out
+
+
+def torso_hist(img, x, y, w, h):
+    H, W = img.shape[:2]
+    x0, x1 = x + w / 2.0 - 0.6 * w, x + w / 2.0 + 0.6 * w
+    y0, y1 = y + 1.3 * h, y + 2.8 * h
+    cx0, cx1 = int(max(0, x0)), int(min(W, x1))
+    cy0, cy1 = int(max(0, y0)), int(min(H, y1))
+    if cx1 - cx0 < 4 or cy1 - cy0 < 4:
+        return None
+    if (cx1 - cx0) * (cy1 - cy0) < 0.5 * (x1 - x0) * (y1 - y0):
+        return None
+    hsv = cv2.cvtColor(np.ascontiguousarray(img[cy0:cy1, cx0:cx1]), cv2.COLOR_RGB2HSV)
+    hist = cv2.calcHist([hsv], [0, 1, 2], None, [18, 4, 4], [0, 180, 0, 256, 0, 256])
+    hist = hist.flatten()
+    s = hist.sum()
+    return hist / s if s > 0 else None
+
+
+def face_feature(img, x, y, w, h, det, rec):
+    H, W = img.shape[:2]
+    m = 0.4
+    x0, y0 = int(max(0, x - m * w)), int(max(0, y - m * h))
+    x1, y1 = int(min(W, x + (1 + m) * w)), int(min(H, y + (1 + m) * h))
+    if x1 - x0 < 8 or y1 - y0 < 8:
+        return None
+    crop = np.ascontiguousarray(img[y0:y1, x0:x1, ::-1])  # BGR
+    s = max(1.0, 160.0 / (y1 - y0))
+    if s > 1.0:
+        crop = cv2.resize(crop, None, fx=s, fy=s, interpolation=cv2.INTER_CUBIC)
+    ch, cw = crop.shape[:2]
+    det.setInputSize((cw, ch))
+    _, faces = det.detect(crop)
+    if faces is not None and len(faces):
+        f = max(faces, key=lambda r: r[-1])
+        aligned = rec.alignCrop(crop, f)
+    else:
+        fx0, fy0 = int((x - x0) * s), int((y - y0) * s)
+        sq = crop[max(0, fy0):fy0 + int(h * s), max(0, fx0):fx0 + int(w * s)]
+        if sq.size == 0:
+            return None
+        aligned = cv2.resize(sq, (112, 112))
+    feat = rec.feature(aligned).flatten().astype(np.float32)
+    n = np.linalg.norm(feat)
+    return feat / n if n > 0 else None
+
+
+def _save_feats(path, face_m, cloth_m):
+    fi = np.array(sorted(face_m), dtype=np.int64)
+    ci = np.array(sorted(cloth_m), dtype=np.int64)
+    np.savez(path, ver=np.array(FEAT_VER), face_ids=fi,
+             face_vecs=np.stack([face_m[i] for i in fi]) if len(fi) else np.zeros((0, 128)),
+             cloth_ids=ci,
+             cloth_vecs=np.stack([cloth_m[i] for i in ci]) if len(ci) else np.zeros((0, 288)))
+
+
+def load_feats(path):
+    z = np.load(path)
+    face_m = {int(i): v for i, v in zip(z["face_ids"], z["face_vecs"])}
+    cloth_m = {int(i): v for i, v in zip(z["cloth_ids"], z["cloth_vecs"])}
+    return face_m, cloth_m
+
+
+def compute_features(path, info, vf, tracks, dw, cache):
+    """BLUR_MIN_CONF 以上のトラックについて、顔と服の特徴を1パスで計算する。"""
+    if os.path.exists(cache) and "ver" in np.load(cache).files \
+            and str(np.load(cache)["ver"]) == FEAT_VER:
+        return load_feats(cache)
+    if not os.path.exists(SFACE_PATH):
+        raise RuntimeError(f"顔照合モデルがありません: {SFACE_PATH}")
+
+    ow, oh = info["out_width"], info["out_height"]
+    fw = min(FEAT_W, ow) if FEAT_W else ow
+    fh = int(round(oh * fw / float(ow) / 2)) * 2
+    k = fw / float(dw)
+
+    need = {}
+    for t in tracks:
+        if t["med_conf"] < BLUR_MIN_CONF:
+            continue
+        bx = boxes_of(t)
+        for f in sample_frames(t):
+            need.setdefault(f, []).append((t["id"], bx[f]))
+
+    det = cv2.FaceDetectorYN.create(YUNET_PATH, "", (160, 160), score_threshold=0.3)
+    rec = cv2.FaceRecognizerSF.create(SFACE_PATH, "")
+    faces, cloths = {}, {}
+    cmd = [FFMPEG, "-v", "error", *HWACCEL, "-noautorotate",
+           "-i", path, "-an", "-sn", "-dn"]
+    feat_vf = join_vf(vf, f"scale={fw}:{fh}" if fw != ow else "")
+    if feat_vf:
+        cmd += ["-vf", feat_vf]
+    cmd += ["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+    fsize = fw * fh * 3
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=fsize)
+    i, last = 0, max(need) if need else -1
+    try:
+        while i <= last:
+            buf = proc.stdout.read(fsize)
+            if len(buf) < fsize:
+                break
+            if i in need:
+                img = np.frombuffer(buf, dtype=np.uint8).reshape(fh, fw, 3)
+                for tid, b in need[i]:
+                    x, y, w, h = b["x"] * k, b["y"] * k, b["w"] * k, b["h"] * k
+                    fe = face_feature(img, x, y, w, h, det, rec)
+                    if fe is not None:
+                        faces.setdefault(tid, []).append(fe)
+                    th = torso_hist(img, x, y, w, h)
+                    if th is not None:
+                        cloths.setdefault(tid, []).append(th)
+            i += 1
+    finally:
+        proc.stdout.close()
+        proc.kill()
+        proc.wait()
+
+    face_m = {}
+    for tid, fs in faces.items():
+        v = np.mean(fs, axis=0)
+        face_m[tid] = v / (np.linalg.norm(v) or 1.0)
+    cloth_m = {tid: np.mean(hs, axis=0) for tid, hs in cloths.items()}
+    _save_feats(cache, face_m, cloth_m)
+    print(f"  特徴 {len(face_m)} トラック（服 {len(cloth_m)}）", flush=True)
+    return face_m, cloth_m
+
+
+def cloth_sim(a, b):
+    return float(np.minimum(a, b).sum())
+
+
+def _sim(a, b, face_m, cloth_m):
+    fs = float(np.dot(face_m[a], face_m[b])) if a in face_m and b in face_m else -1.0
+    cs = cloth_sim(cloth_m[a], cloth_m[b]) if a in cloth_m and b in cloth_m else 0.0
+    return fs, cs
+
+
+def decide(tracks, picked, face_m, cloth_m, short):
+    """picked から似ている断片を広げて keep を決める。戻り値は (keep_ids, blur_ids)。（dancer_pick.py と同じ）"""
+    by = {t["id"]: t for t in tracks}
+    faces = [t for t in tracks if t["med_conf"] >= BLUR_MIN_CONF]
+    min_h = KEEP_MIN_FRAC * short
+    ends = {}
+    for t in faces:
+        bx = boxes_of(t)
+        ks = sorted(bx)
+        ends[t["id"]] = (ks[0], ks[-1], bx[ks[0]], bx[ks[-1]])
+
+    def ctr(b):
+        return b["x"] + b["w"] / 2.0, b["y"] + b["h"] / 2.0
+
+    order = sorted(faces, key=lambda t: ends[t["id"]][0])
+    first = [ends[t["id"]][0] for t in order]
+    edges = {}
+    for t in faces:
+        _, l, _, lb = ends[t["id"]]
+        lo, hi = bisect.bisect_left(first, l), bisect.bisect_right(first, l + LINK_GAP)
+        for u in order[lo:hi]:
+            if u is t:
+                continue
+            fb = ends[u["id"]][2]
+            (ax, ay), (bx_, by_) = ctr(lb), ctr(fb)
+            if ((ax - bx_) ** 2 + (ay - by_) ** 2) ** 0.5 > LINK_DIST * lb["h"]:
+                continue
+            if not 0.6 <= fb["h"] / max(lb["h"], 1e-6) <= 1.6:
+                continue
+            edges.setdefault(t["id"], []).append(u["id"])
+            edges.setdefault(u["id"], []).append(t["id"])
+
+    def spread(seed):
+        keep, front = set(seed), list(seed)
+        while front:
+            nxt = []
+            for a in front:
+                for b in edges.get(a, []):
+                    if b in keep or by[b]["med_h"] < min_h:
+                        continue
+                    fs, cs = _sim(a, b, face_m, cloth_m)
+                    if fs >= LINK_FACE and cs >= LINK_CLOTH:
+                        keep.add(b)
+                        nxt.append(b)
+            front = nxt
+        return keep
+
+    picked = [p for p in picked if p in by]
+    glob = set()
+    for t in faces:
+        i = t["id"]
+        if t["med_h"] < min_h or i not in face_m or i not in cloth_m:
+            continue
+        for r in picked:
+            fs, cs = _sim(i, r, face_m, cloth_m)
+            if fs >= GLOB_FACE and cs >= GLOB_CLOTH and fs + cs >= GLOB_SUM:
+                glob.add(i)
+                break
+    costume = set()
+    for t in faces:
+        i = t["id"]
+        if t["med_h"] < COSTUME_MIN_FRAC * short or i not in cloth_m or len(t["boxes"]) < COSTUME_MIN_SEEN:
+            continue
+        if any(cloth_sim(cloth_m[i], cloth_m[r]) >= COSTUME_CLOTH for r in picked if r in cloth_m):
+            costume.add(i)
+    keep = spread(spread(picked) | glob) | costume
+    blur = {t["id"] for t in faces} - keep
+    return keep, blur
+
+
+# ---------------------------------------------------------------- 選択画面のデータ（dancer_pick.py）
+
+def pick_shots(tracks, dw, dh, n_frames, shots=SHOTS):
+    short = min(dw, dh)
+    cand = [t for t in tracks if t["med_conf"] >= PICK_MIN_CONF
+            and t["med_h"] >= PICK_MIN_FRAC * short]
+    per = {}
+    for t in cand:
+        for f, b in boxes_of(t).items():
+            if b.get("conf", 0) >= PICK_MIN_CONF:
+                per.setdefault(f, []).append((t["id"], b))
+    out = []
+    for s in range(shots):
+        a, z = int(s * n_frames / shots), int((s + 1) * n_frames / shots)
+        best = max(range(a, z), key=lambda f: sum(b["h"] for _, b in per.get(f, [])), default=None)
+        if best is not None and per.get(best):
+            out.append((best, per[best]))
+    return out
+
+
+def build_shots(path, info, vf, shots, dw, out_dir):
+    """build_page と同じ場面写真と枠のデータ。戻り値は items（画面の元データ）。"""
+    os.makedirs(out_dir, exist_ok=True)
+    k = SHOT_W / float(dw)
+    items = []
+    for j, (f, faces) in enumerate(shots):
+        img = f"shot{j}.jpg"
+        grab_frame(path, f / info["fps"], vf, SHOT_W, os.path.join(out_dir, img))
+        with Image.open(os.path.join(out_dir, img)) as im:
+            sw, sh = im.size
+        groups = []
+        for tid, b in sorted(faces, key=lambda p: -p[1]["w"] * p[1]["h"]):
+            for g in groups:
+                iou, inner = _overlap(b, g["box"])
+                if iou > 0.4 or inner > 0.5:
+                    g["ids"].append(tid)
+                    break
+            else:
+                groups.append({"ids": [tid], "box": b})
+        boxes = []
+        for g in groups:
+            b = g["box"]
+            boxes.append({"ids": g["ids"][:1], "l": b["x"] * k / SHOT_W * 100, "t": b["y"] * k / sh * 100,
+                          "w": b["w"] * k / SHOT_W * 100, "h": b["h"] * k / sh * 100})
+        items.append({"img": j, "sec": round(f / info["fps"], 1), "w": sw, "h": sh, "boxes": boxes})
+    return items
+
+
+def dh_of(info, dw):
+    return int(round(info["out_height"] * dw / float(info["out_width"])))
+
+
+def make_thumbs(path, info, vf, tracks, dw, out_dir):
+    """確認画面に出る可能性のある顔（conf 0.40 以上・高さ短辺 4.2% 以上）の切り抜きを作る。
+
+    切り抜くフレーム（conf 最大）と範囲（顔の2倍・200px）は build_review と同じ。
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    short = min(dw, dh_of(info, dw))
+    rows = [t for t in tracks if t["med_conf"] >= BLUR_MIN_CONF
+            and t["med_h"] >= min(REVIEW_MIN_FRAC, KEEP_MIN_FRAC) * short]
+    need = {}
+    for t in rows:
+        bx = boxes_of(t)
+        f = max(bx, key=lambda k: bx[k].get("conf", 0.0))
+        need.setdefault(f, []).append((t["id"], bx[f]))
+    ow, oh = info["out_width"], info["out_height"]
+    fw = min(SHOT_W, ow)
+    fh = int(round(oh * fw / float(ow) / 2)) * 2
+    k = fw / float(dw)
+    cmd = [FFMPEG, "-v", "error", *HWACCEL, "-noautorotate",
+           "-i", path, "-an", "-sn", "-dn", "-vf", join_vf(vf, f"scale={fw}:{fh}"),
+           "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+    fsize = fw * fh * 3
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=fsize)
+    i, last = 0, max(need) if need else -1
+    try:
+        while i <= last:
+            buf = proc.stdout.read(fsize)
+            if len(buf) < fsize:
+                break
+            if i in need:
+                im = Image.frombuffer("RGB", (fw, fh), buf, "raw", "RGB", 0, 1)
+                for tid, b in need[i]:
+                    cx, cy = (b["x"] + b["w"] / 2.0) * k, (b["y"] + b["h"] / 2.0) * k
+                    half = max(12.0, max(b["w"], b["h"]) * k)
+                    im.crop((int(cx - half), int(cy - half), int(cx + half), int(cy + half))) \
+                      .resize((REVIEW_THUMB, REVIEW_THUMB), Image.LANCZOS) \
+                      .save(os.path.join(out_dir, f"t{tid}.jpg"), quality=85)
+            i += 1
+    finally:
+        proc.stdout.close()
+        proc.kill()
+        proc.wait()
+    return len(rows)
+
+
+def review_lists(info, tracks, keep, dw):
+    """build_review と同じ「モザイクをかける予定」「かけない予定」の一覧。"""
+    short = min(dw, dh_of(info, dw))
+    cand = [t for t in tracks if t["id"] not in keep and t["med_conf"] >= BLUR_MIN_CONF
+            and t["med_h"] >= REVIEW_MIN_FRAC * short and len(t["boxes"]) >= 2]
+    kept = [t for t in tracks if t["id"] in keep and t["med_h"] >= KEEP_MIN_FRAC * short]
+    fps = info["fps"]
+
+    def item(t):
+        return {"id": t["id"], "sec": round(t["first_frame"] / fps, 1)}
+    return {"blur": [item(t) for t in sorted(cand, key=lambda t: t["first_frame"])],
+            "keep": [item(t) for t in sorted(kept, key=lambda t: t["first_frame"])]}
+
+
+# ---------------------------------------------------------------- 書き出し（video_retouch.py）
+
+def classify_tracks_global(tracks, short, mode, keep_ratio, min_frac):
+    if mode == "all":
+        for t in tracks:
+            t["action"] = "blur"
+            t["votes"] = [0, 0]
+        return False
+    if not tracks:
+        return False
+    big = MAIN_SUBJECT_FRAC * short
+    cands = [t for t in tracks if t["med_conf"] >= MAIN_CONF]
+    max_h = max((t["med_h"] for t in cands), default=0.0)
+    for t in tracks:
+        t["votes"] = [0, 0]
+    if max_h < big:
+        for t in tracks:
+            t["action"] = "blur" if (t["med_h"] < big or t["med_conf"] >= MAIN_CONF) else "drop"
+        return True
+    main = max(cands, key=lambda t: t["med_h"])
+    mb = main["med_box"]
+    zx0, zx1 = mb["x"] - 0.75 * mb["w"], mb["x"] + 1.75 * mb["w"]
+    zy0, zy1 = mb["y"] + 0.5 * mb["h"], mb["y"] + 3.0 * mb["h"]
+    for t in tracks:
+        if t["med_conf"] < MAIN_CONF:
+            t["action"] = "drop"
+            continue
+        if t is not main and t["med_conf"] < BODY_ZONE_CONF:
+            b = t["med_box"]
+            cx, cy = b["x"] + b["w"] / 2.0, b["y"] + b["h"] / 2.0
+            if zx0 <= cx <= zx1 and zy0 <= cy <= zy1:
+                t["action"] = "skip"
+                t["reason"] = "main_body_zone"
+                continue
+        small = t["med_h"] < keep_ratio * max_h or t["med_h"] < min_frac * short
+        t["action"] = "blur" if small else "keep"
+    main["action"] = main.get("action", "keep")
+    return False
+
+
+def apply_overrides(tracks, ov):
+    byid = {t["id"]: t for t in tracks}
+    forced = {"keep": [], "blur": [], "missing": []}
+    for act in ("keep", "blur"):
+        for tid in ov.get(act) or []:
+            t = byid.get(int(tid))
+            if t is None:
+                forced["missing"].append(int(tid))
+                continue
+            t["action"] = act
+            t["reason"] = "override"
+            forced[act].append(int(tid))
+    return forced
+
+
+def build_frame_boxes(tracks, n_frames, inv_scale, detect_every):
+    keep_at = {}
+    for t in tracks:
+        if t.get("action") == "keep":
+            for f, b in t["boxes"].items():
+                keep_at.setdefault(int(f), []).append(b)
+
+    def on_keep(f, b):
+        cx, cy = b["x"] + b["w"] / 2.0, b["y"] + b["h"] / 2.0
+        return any(k["x"] <= cx <= k["x"] + k["w"] and k["y"] <= cy <= k["y"] + k["h"]
+                   for k in keep_at.get(f, ()))
+
+    per_frame = {}
+    for t in tracks:
+        if t.get("action") != "blur":
+            continue
+        keys = sorted(t["boxes"])
+        filled = {}
+        for j, f in enumerate(keys):
+            filled[f] = t["boxes"][f]
+            if j + 1 < len(keys):
+                g = keys[j + 1]
+                gap = g - f
+                if 1 < gap <= HOLD_FRAMES + detect_every:
+                    b0, b1 = t["boxes"][f], t["boxes"][g]
+                    for k in range(1, gap):
+                        w = k / float(gap)
+                        filled[f + k] = {c: b0[c] + (b1[c] - b0[c]) * w for c in "xywh"}
+        last = keys[-1]
+        for k in range(1, HOLD_FRAMES + 1):
+            if last + k < n_frames:
+                filled[last + k] = t["boxes"][last]
+        for f, b in filled.items():
+            if f not in t["boxes"] and on_keep(f, b):
+                continue
+            box = {"x": int(round(b["x"] * inv_scale)), "y": int(round(b["y"] * inv_scale)),
+                   "w": max(2, int(round(b["w"] * inv_scale))),
+                   "h": max(2, int(round(b["h"] * inv_scale)))}
+            per_frame.setdefault(f, []).append(box)
+    return per_frame
+
+
+def render(path, info, vf, per_frame, out_path, encoder, style):
+    """video_retouch.render の LUT なし・プレビューなし版。"""
+    w, h = info["out_width"], info["out_height"]
+    fsize = w * h * 3
+    bitrate = min(int(info["bit_rate"] * BITRATE_SCALE) or BITRATE_CAP, BITRATE_CAP)
+
+    dec_cmd = [FFMPEG, "-v", "error", *HWACCEL, "-noautorotate",
+               "-i", path, "-an", "-sn", "-dn"]
+    if vf:
+        dec_cmd += ["-vf", vf]
+    dec_cmd += ["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+
+    enc_cmd = [FFMPEG, "-v", "error", "-y",
+               "-f", "rawvideo", "-pix_fmt", "rgb24", "-video_size", f"{w}x{h}",
+               "-framerate", info["fps_str"], "-i", "-"]
+    if info["has_audio"]:
+        enc_cmd += ["-i", path, "-map", "0:v:0", "-map", "1:a:0", "-c:a", "copy"]
+    else:
+        enc_cmd += ["-map", "0:v:0"]
+    enc_cmd += ["-c:v", encoder]
+    if encoder == "libx264":
+        enc_cmd += ["-crf", "20", "-preset", "veryfast"]
+    else:
+        enc_cmd += ["-b:v", str(bitrate)]
+    enc_cmd += ["-tag:v", "avc1" if encoder == "libx264" else "hvc1", "-pix_fmt", "yuv420p",
+                "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
+                "-f", "mp4", out_path]
+
+    dec = subprocess.Popen(dec_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=fsize)
+    enc = subprocess.Popen(enc_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=fsize)
+
+    total = info["frames"]
+    mark, i, blurred = 0, 0, 0
+    try:
+        while True:
+            buf = dec.stdout.read(fsize)
+            if len(buf) < fsize:
+                break
+            boxes = per_frame.get(i)
+            if boxes:
+                arr = np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 3).copy()
+                for box in boxes:
+                    mosaic_face(arr, box, 0, style)
+                enc.stdin.write(arr.tobytes())
+                blurred += 1
+            else:
+                enc.stdin.write(buf)
+            i += 1
+            if total and i * 10 // max(total, 1) > mark:
+                mark = i * 10 // max(total, 1)
+                print(f"  書き出し {mark * 10}%  ({i}/{total}f)", flush=True)
+    except BrokenPipeError:
+        pass
+    finally:
+        for p in (dec.stdout, enc.stdin):
+            try:
+                p.close()
+            except OSError:
+                pass
+        dec_err = dec.stderr.read().decode("utf-8", "replace")
+        enc_err = enc.stderr.read().decode("utf-8", "replace")
+        dec.stderr.close()
+        enc.stderr.close()
+        dec.wait()
+        rc = enc.wait()
+    if rc != 0 or not os.path.exists(out_path):
+        raise RuntimeError(f"書き出しに失敗 (enc rc={rc}): "
+                           f"{(enc_err or dec_err).strip()[-400:]}")
+    return {"frames_written": i, "frames_blurred": blurred, "encoder": encoder}
+
+
+def export(path, work_dir, tracks_path, keep, blur, style, out_path):
+    """video_retouch.py <1080版> --no-lut --reuse-tracks --overrides と同じ書き出し。"""
+    info, vf, _ = prepare(path, work_dir)
+    tracks, dw, dh, seen = load_tracks(tracks_path)
+    classify_tracks_global(tracks, min(dw, dh), "background", FACE_KEEP_RATIO, FACE_MIN_FRAC)
+    apply_overrides(tracks, {"keep": sorted(keep), "blur": sorted(blur)})
+    inv = info["out_width"] / float(dw)
+    per_frame = build_frame_boxes(tracks, seen, inv, EXPORT_DETECT_EVERY)
+    tmp = out_path + ".part"
+    r = render(path, info, vf, per_frame, tmp, pick_encoder(), "blur" if style == "blur" else "pixel")
+    os.replace(tmp, out_path)
+    return r
