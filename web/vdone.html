@@ -1,0 +1,88 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>できあがり｜顔モザイク</title>
+<link rel="stylesheet" href="/static/app.css">
+<style>
+h1{margin-top:16px}
+.pv{display:block;width:100%;max-height:56vh;background:#0E1A30;border-radius:var(--radius);margin:0 0 8px}
+.summary{font-weight:600;margin:0 0 4px}
+.remain{color:var(--sub);font-size:13px;margin:0 0 16px}
+.remain b{color:var(--fg)}
+.hint{color:var(--sub);font-size:13px;margin:-4px 0 0}
+.stack{padding-bottom:calc(16px + env(safe-area-inset-bottom))}
+[hidden]{display:none !important}
+</style>
+</head><body>
+<div class="bar"><a class="back" href="/home" aria-label="ホームに戻る">‹ ホーム</a></div>
+<main class="wrap">
+  <ol class="steps"><li class="done">1 送る</li><li class="done">2 選ぶ</li><li class="done">3 確認</li><li class="on">4 保存</li></ol>
+  <h1 id="h">できあがりました</h1>
+  <video class="pv" id="pv" controls playsinline preload="metadata" aria-label="モザイクをかけた動画"></video>
+  <p class="summary" id="sum"></p>
+  <p class="remain" id="remain"></p>
+  <div class="stack">
+    <button type="button" class="btn btn-pri" id="save">動画に保存する</button>
+    <p class="hint" id="saveHint" role="status" hidden>この端末では共有シートが使えません。「ファイルに保存する」から保存してください</p>
+    <a class="btn btn-sec" id="dl" download>ファイルに保存する（ダウンロード）</a>
+    <a class="btn btn-sec" href="/upload?type=video">もう1本送る</a>
+    <a class="btn btn-ter" id="again">モザイクを選び直す</a>
+  </div>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const id = jobIdFromPath(), $ = x => document.getElementById(x);
+(async () => {
+  let j;
+  try { j = await api('/api/jobs/' + id); } catch (e) { $('sum').textContent = e.message; return; }
+  if (['queued', 'preparing', 'queued_export', 'exporting', 'failed'].includes(j.status)) { location.replace('/status/' + id); return; }
+  if (!j.has_out) {
+    $('pv').remove(); $('save').remove(); $('saveHint').remove(); $('dl').remove();
+    if (j.status === 'deleted') {
+      $('h').textContent = 'この動画は消えました';
+      $('sum').textContent = '24時間たったので、元の動画と完成した動画を削除しました。'; $('again').remove();
+    } else {
+      $('h').textContent = 'まだ書き出していません';
+      $('sum').textContent = 'モザイクを確認して「この内容で書き出す」を押してください。';
+      $('again').href = (j.status === 'awaiting_pick' ? '/pick/' : '/review/') + id; $('again').textContent = '確認の画面に戻る';
+    }
+    return;
+  }
+  const src = '/api/jobs/' + id + '/result.mp4';
+  $('pv').src = src + '?t=' + Math.floor(j.now);
+  $('dl').href = src + '?dl=1';
+  $('again').href = '/review/' + id;
+  $('sum').textContent = 'モザイクの種類：' + (j.style === 'blur' ? 'すりガラス' : 'ブロック粗め');
+  const b = document.createElement('b'); b.textContent = remainText(j);
+  $('remain').replaceChildren(b, document.createTextNode('で、元の動画とこの動画は自動で消えます。'));
+  setupSave(src, j);
+})();
+
+// 写真アプリへ: 共有シート（Web Share API・ファイル付き）→ iPhone は「ビデオを保存」
+function setupSave(src, j) {
+  const btn = $('save'), hint = $('saveHint'), label = btn.textContent;
+  const d = new Date(j.now * 1000), p = n => String(n).padStart(2, '0');
+  const name = 'mosaic_' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes()) + '.mp4';
+  let filePromise = null;
+  // 押してから share までに時間が空くと iOS がユーザー操作と見なさないため、先に読み込んでおく
+  const loadFile = () => filePromise || (filePromise = fetch(src, { credentials: 'same-origin' })
+    .then(r => { if (!r.ok) throw new Error('fetch ' + r.status); return r.blob(); })
+    .then(b => new File([b], name, { type: 'video/mp4' }))
+    .catch(e => { filePromise = null; throw e; }));
+  loadFile().catch(() => { });
+  btn.addEventListener('click', async () => {
+    hint.hidden = true;
+    btn.disabled = true; btn.textContent = '共有シートを開いています…';
+    try {
+      const file = await loadFile();
+      if (!(navigator.canShare && navigator.canShare({ files: [file] }))) throw new Error('share unsupported');
+      await navigator.share({ files: [file] });
+    } catch (e) {
+      if (!(e && e.name === 'AbortError')) hint.hidden = false;
+    } finally {
+      btn.disabled = false; btn.textContent = label;
+    }
+  });
+}
+</script>
+</body></html>

@@ -1,0 +1,179 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>残す顔を選ぶ｜顔モザイク</title>
+<link rel="stylesheet" href="/static/app.css">
+<style>
+body{overflow-x:hidden}
+#hd{padding:0 16px}
+#hd h1{font-size:18px;margin:12px 0 4px}
+#hd .lead{font-size:13px;margin:0 0 8px}
+.warnbox{background:#FDEEE7;color:var(--warn-tag);font-weight:600;font-size:14px;border-radius:10px;padding:8px 12px;margin:0 0 8px}
+#sc{display:flex;gap:12px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;
+  padding:4px 16px 8px;scroll-padding:0 16px;overscroll-behavior-x:contain}
+.card{flex:none;margin:0;scroll-snap-align:start}
+.ph{position:relative;background:#0E1A30;border-radius:10px;overflow:hidden}
+.ph img{display:block;width:100%;height:auto;user-select:none;-webkit-user-drag:none;-webkit-touch-callout:none}
+.card figcaption{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;color:var(--sub);min-height:44px}
+.zbtn{min-height:44px;padding:0 12px;font:inherit;font-size:14px;font-weight:600;border-radius:10px;border:1.5px solid var(--line);background:#fff;color:var(--pri);cursor:pointer}
+.b{position:absolute;padding:0;margin:0;background:transparent;border:2px solid #fff;border-radius:6px;cursor:pointer;box-shadow:0 0 0 1px rgba(0,0,0,.6)}
+.b::before{content:"";position:absolute;left:50%;top:50%;width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}
+.b .ck{display:none;position:absolute;right:-1px;top:-1px;min-width:18px;height:18px;background:var(--keep);color:#fff;font:700 12px/18px -apple-system,"Hiragino Sans",sans-serif;text-align:center;border-radius:0 4px 0 4px;pointer-events:none}
+.b.on{border:3px solid var(--keep);background:rgba(21,128,61,.22)}
+.b.on .ck{display:block}
+#ft{position:fixed;left:0;right:0;bottom:0;z-index:10;border-top:1px solid var(--line);background:#fff;
+  padding:8px 16px calc(8px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:6px}
+#cnt{font-size:15px;font-weight:700;line-height:22px}
+#ferr{margin:0}
+#msg{padding:24px 16px}
+#vw{position:fixed;inset:0;z-index:20;background:#000;display:flex;flex-direction:column}
+#vw[hidden]{display:none}
+#vwbar{display:flex;gap:8px;align-items:center;padding:8px 12px calc(8px);padding-top:calc(8px + env(safe-area-inset-top));background:#111;color:#fff}
+#vwbar span{flex:1;font-size:14px;min-width:0}
+#vwbar button{min-width:44px;min-height:44px;padding:0 12px;font:inherit;font-size:18px;border-radius:10px;background:#2a2a2e;color:#fff;border:1px solid #444;cursor:pointer}
+#vwbar button.close{font-size:15px;font-weight:700;background:var(--pri);border-color:var(--pri)}
+#vwsc{flex:1;overflow:auto;touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch}
+#vwin{position:relative;margin:0 auto}
+#vwin img{display:block;width:100%}
+[hidden]{display:none !important}
+</style>
+</head><body>
+<div class="bar"><a class="back" href="/home" aria-label="ホームに戻る">‹ ホーム</a></div>
+<div id="hd">
+  <ol class="steps"><li class="done">1 送る</li><li class="on">2 選ぶ</li><li>3 確認</li><li>4 保存</li></ol>
+  <h1>ダンサーの顔やモザイクが不要な場所をタップしてください</h1>
+  <p class="lead">観客の顔はタップしなくても全部モザイクになります。選んだ枠は緑になります。左右にスクロールすると別の場面が出ます。</p>
+  <p class="warnbox" id="warn" role="status" hidden></p>
+</div>
+<div id="sc" aria-label="場面の写真"></div>
+<div id="ft">
+  <span id="cnt" aria-live="polite">選んだ 0 件</span>
+  <p class="err" id="ferr" hidden></p>
+  <button class="btn btn-pri" id="go" type="button">決定して確認へ進む</button>
+</div>
+<div id="msg" hidden></div>
+<div id="vw" role="dialog" aria-modal="true" aria-label="拡大表示" hidden>
+  <div id="vwbar"><span id="vwt">拡大表示</span>
+    <button id="zo" type="button" aria-label="縮小">－</button><button id="zi" type="button" aria-label="拡大">＋</button>
+    <button class="close" id="vwc" type="button">戻る</button></div>
+  <div id="vwsc"><div id="vwin"></div></div>
+</div>
+<script src="/static/common.js"></script>
+<script>
+const id = jobIdFromPath(), $ = x => document.getElementById(x);
+const sel = new Set(), sc = $('sc'), ft = $('ft');
+let SHOTS = [];
+
+function gone(text, href, label) {
+  ['hd', 'sc', 'ft'].forEach(x => $(x).style.display = 'none');
+  const m = $('msg'); m.hidden = false;
+  const p = document.createElement('p'); p.textContent = text;
+  const a = document.createElement('a'); a.className = 'btn btn-pri'; a.href = href || '/upload?type=video'; a.textContent = label || '動画を送り直す';
+  m.replaceChildren(p, a);
+}
+function count() { $('cnt').textContent = '選んだ ' + sel.size + ' 件'; $('go').textContent = sel.size ? '決定して確認へ進む' : '選ばずに確認へ進む'; }
+function paintAll() {
+  document.querySelectorAll('.b').forEach(e => {
+    const on = sel.has(+e.dataset.id);
+    e.classList.toggle('on', on);
+    e.setAttribute('aria-pressed', String(on));
+  });
+  count();
+}
+function addBoxes(parent, s) {
+  s.boxes.forEach(b => {
+    const e = document.createElement('button'); e.type = 'button'; e.className = 'b'; e.dataset.id = b.ids[0];
+    Object.assign(e.style, { left: b.l + '%', top: b.t + '%', width: b.w + '%', height: b.h + '%' });
+    e.setAttribute('aria-label', s.sec + '秒の顔 ' + b.ids[0] + '（選ぶとモザイクをかけない）');
+    const ck = document.createElement('span'); ck.className = 'ck'; ck.textContent = '✓'; ck.setAttribute('aria-hidden', 'true'); e.append(ck);
+    e.onclick = ev => { ev.stopPropagation(); const k = b.ids[0]; sel.has(k) ? sel.delete(k) : sel.add(k); paintAll(); };
+    parent.appendChild(e);
+  });
+}
+function fit() {
+  const fh = ft.offsetHeight;
+  document.body.style.paddingBottom = fh + 'px';
+  const top = sc.getBoundingClientRect().top + scrollY;
+  const availH = Math.max(240, innerHeight - top - fh - 8 - 44 - 12);
+  const availW = document.documentElement.clientWidth - 32;
+  document.querySelectorAll('.card').forEach(c => {
+    const r = (+c.dataset.w) / (+c.dataset.h);
+    c.style.width = Math.floor(Math.min(availW * (SHOTS.length > 1 ? 0.86 : 1), availH * r)) + 'px';
+  });
+}
+// ---- 拡大表示（ボタン・ピンチ）
+let zoom = 1, base = 0, cur = null;
+const vw = $('vw'), vin = $('vwin'), vsc = $('vwsc');
+function setZoom(z, cx, cy) {
+  const old = zoom; zoom = Math.min(6, Math.max(1, z));
+  const r = vsc.getBoundingClientRect(); cx = cx ?? r.width / 2; cy = cy ?? r.height / 2;
+  const px = (vsc.scrollLeft + cx) / old, py = (vsc.scrollTop + cy) / old;
+  vin.style.width = (base * zoom) + 'px'; vsc.scrollLeft = px * zoom - cx; vsc.scrollTop = py * zoom - cy;
+  $('vwt').textContent = Math.round(zoom * 100) + '%・枠をタップで選択';
+}
+function openViewer(s) {
+  cur = s; vin.replaceChildren();
+  const im = document.createElement('img'); im.src = '/api/jobs/' + id + '/shots/' + s.img + '.jpg'; im.alt = s.sec + '秒の場面（拡大）';
+  vin.appendChild(im); addBoxes(vin, s); paintAll();
+  vw.hidden = false; document.body.style.overflow = 'hidden';
+  const r = vsc.getBoundingClientRect(); base = Math.min(r.width, r.height * s.w / s.h); zoom = 1; setZoom(2);
+  $('vwc').focus();
+}
+function closeViewer() { vw.hidden = true; document.body.style.overflow = ''; vin.replaceChildren(); }
+$('zi').onclick = () => setZoom(zoom * 1.5);
+$('zo').onclick = () => setZoom(zoom / 1.5);
+$('vwc').onclick = closeViewer;
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !vw.hidden) closeViewer(); });
+vsc.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); const r = vsc.getBoundingClientRect(); setZoom(zoom * Math.exp(-e.deltaY / 200), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+const pts = new Map(); let pd = 0, pz = 1;
+vsc.addEventListener('pointerdown', e => { pts.set(e.pointerId, e); if (pts.size === 2) { const [a, b] = [...pts.values()]; pd = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); pz = zoom; } });
+vsc.addEventListener('pointermove', e => {
+  if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, e);
+  if (pts.size === 2 && pd) { const [a, b] = [...pts.values()]; const r = vsc.getBoundingClientRect(); setZoom(pz * Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pd, (a.clientX + b.clientX) / 2 - r.left, (a.clientY + b.clientY) / 2 - r.top); }
+});
+['pointerup', 'pointercancel'].forEach(t => vsc.addEventListener(t, e => { pts.delete(e.pointerId); if (pts.size < 2) pd = 0; }));
+document.addEventListener('gesturestart', e => e.preventDefault());
+new ResizeObserver(fit).observe(ft);
+window.addEventListener('resize', fit);
+
+(async () => {
+  let j;
+  try { j = await api('/api/jobs/' + id); } catch (e) { gone(e.message); return; }
+  if (j.status === 'deleted') { gone('時間がたったので、この動画は削除しました。'); return; }
+  if (j.status === 'done') { location.replace('/done/' + id); return; }
+  if (!['awaiting_pick', 'awaiting_review'].includes(j.status)) { location.replace('/status/' + id); return; }
+  if (j.idle_warn) { $('warn').textContent = idleWarnText(j); $('warn').hidden = false; }
+  (j.picks || []).forEach(k => sel.add(k));
+  SHOTS = j.shots || [];
+  if (!SHOTS.length) {
+    $('sc').style.display = 'none';
+    const p = document.createElement('p'); p.className = 'lead'; p.style.padding = '0 16px';
+    p.textContent = '選べる大きさの顔が見つかりませんでした。このまま確認へ進んでください。'; $('hd').append(p);
+  }
+  SHOTS.forEach((s, i) => {
+    const f = document.createElement('figure'); f.className = 'card'; f.dataset.w = s.w; f.dataset.h = s.h;
+    const p = document.createElement('div'); p.className = 'ph';
+    const im = document.createElement('img'); im.src = '/api/jobs/' + id + '/shots/' + s.img + '.jpg'; im.alt = s.sec + '秒の場面';
+    im.width = s.w; im.height = s.h; if (i > 1) im.loading = 'lazy';
+    p.appendChild(im); addBoxes(p, s);
+    p.addEventListener('click', ev => { if (!ev.target.closest('.b')) openViewer(s); });
+    const c = document.createElement('figcaption');
+    const t = document.createElement('span'); t.textContent = s.sec + '秒・' + (i + 1) + '/' + SHOTS.length;
+    const z = document.createElement('button'); z.type = 'button'; z.className = 'zbtn'; z.textContent = '拡大する'; z.onclick = () => openViewer(s);
+    c.append(t, z); f.append(p, c); sc.append(f);
+  });
+  paintAll(); fit();
+})();
+
+$('go').onclick = async () => {
+  const go = $('go'); go.disabled = true; go.textContent = '確認画面を準備しています…'; $('ferr').hidden = true;
+  try {
+    await api('/api/jobs/' + id + '/picks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ picks: [...sel] }) });
+    location.href = '/review/' + id;
+  } catch (e) {
+    $('ferr').textContent = e.message; $('ferr').hidden = false;
+    go.disabled = false; count();
+  }
+};
+</script>
+</body></html>

@@ -1,45 +1,83 @@
 <!doctype html><html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
-<title>写真を送る｜顔モザイク</title>
+<title>送る｜顔モザイク</title>
 <link rel="stylesheet" href="/static/app.css">
 <style>
-.drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:180px;border:2px dashed #9FB3CF;
+.tabs{display:grid;grid-template-columns:1fr 1fr;margin:16px 0 0;border:1.5px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.tabs a{display:flex;align-items:center;justify-content:center;min-height:48px;font-weight:700;text-decoration:none;color:var(--sub);background:#fff}
+.tabs a[aria-current=page]{background:var(--pri);color:#fff}
+.drop{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:180px;border:2px dashed #9FB3CF;
   border-radius:var(--radius);background:var(--surface);cursor:pointer;text-align:center;padding:16px}
 .drop .big{font-weight:700;font-size:17px;color:var(--pri)}
 .drop .small{font-size:13px;color:var(--sub)}
 .drop input{position:absolute;opacity:0;width:1px;height:1px}
 .prog{margin:16px 0 0}
 .prog .label{font-weight:600}
+.prog .sub{color:var(--sub);font-size:13px;margin:4px 0 0}
 .track{height:10px;border-radius:999px;background:var(--surface);overflow:hidden;margin:8px 0 0;border:1px solid var(--line)}
 .fill{height:100%;width:0;background:var(--pri);transition:width .2s}
+.resume{margin:12px 0 0}
+.info{margin:12px 0 0;padding:12px;border-radius:var(--radius);background:var(--surface);font-size:13px;color:var(--fg)}
+[hidden]{display:none !important}
 @media (prefers-reduced-motion:reduce){.fill{transition:none}}
 </style>
 </head><body>
 <div class="bar"><a class="back" href="/home" aria-label="ホームに戻る">‹ ホーム</a></div>
 <main class="wrap">
-  <ol class="steps"><li class="on">1 写真を選ぶ</li><li>2 残す顔を選ぶ</li><li>3 保存する</li></ol>
-  <h1>写真を1枚選んでください</h1>
-  <p class="lead">選ぶとすぐに送信して、顔を探します（数秒〜十数秒）。</p>
-  <label class="drop" id="drop">
-    <input type="file" id="file" accept="image/*">
-    <span class="big">写真を選ぶ</span>
-    <span class="small">JPEG・HEIC・PNG／1枚30MBまで</span>
-  </label>
-  <div class="prog" id="prog" hidden>
-    <div class="label" id="plabel" aria-live="polite">送信しています…</div>
-    <div class="track" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="ptrack"><div class="fill" id="pfill"></div></div>
-  </div>
-  <p class="err" id="err" hidden></p>
+  <nav class="tabs" aria-label="送るものを選ぶ">
+    <a href="/upload?type=video" id="tabv">動画を送る</a>
+    <a href="/upload?type=photo" id="tabp">写真を送る</a>
+  </nav>
+
+  <section id="video" hidden>
+    <ol class="steps"><li class="on">1 送る</li><li>2 選ぶ</li><li>3 確認</li><li>4 保存</li></ol>
+    <h1>動画を1本選んでください</h1>
+    <p class="lead" id="vlead">選ぶとすぐに送信します。届いたら顔を探して、残したい人を選べるようにします。</p>
+    <label class="drop" id="vdrop">
+      <input type="file" id="vfile" accept="video/*">
+      <span class="big" id="vbig">動画を選ぶ</span>
+      <span class="small" id="vlimit">1本1GBまで</span>
+    </label>
+    <p class="info" id="vpending" hidden></p>
+    <div class="prog" id="vprog" hidden>
+      <div class="label" id="vlabel" aria-live="polite">送信しています…</div>
+      <div class="track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-labelledby="vlabel" id="vtrack"><div class="fill" id="vfill"></div></div>
+      <p class="sub" id="vsub"></p>
+    </div>
+    <p class="err" id="verr" role="alert" hidden></p>
+    <button type="button" class="btn btn-pri resume" id="vresume" hidden>途中から再開</button>
+  </section>
+
+  <section id="photo" hidden>
+    <ol class="steps"><li class="on">1 写真を選ぶ</li><li>2 残す顔を選ぶ</li><li>3 保存する</li></ol>
+    <h1>写真を1枚選んでください</h1>
+    <p class="lead">選ぶとすぐに送信して、顔を探します（数秒〜十数秒）。</p>
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept="image/*">
+      <span class="big">写真を選ぶ</span>
+      <span class="small">JPEG・HEIC・PNG／1枚30MBまで</span>
+    </label>
+    <div class="prog" id="prog" hidden>
+      <div class="label" id="plabel" aria-live="polite">送信しています…</div>
+      <div class="track" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="ptrack"><div class="fill" id="pfill"></div></div>
+    </div>
+    <p class="err" id="err" hidden></p>
+  </section>
 </main>
 <script src="/static/common.js"></script>
 <script>
-const MAX = 30 * 1024 * 1024;
 const $ = id => document.getElementById(id);
+const TYPE = new URLSearchParams(location.search).get('type') === 'photo' ? 'photo' : 'video';
+$(TYPE).hidden = false;
+$(TYPE === 'video' ? 'tabv' : 'tabp').setAttribute('aria-current', 'page');
+
+// ------------------------------------------------------------ 写真（従来どおり）
+const MAX = 30 * 1024 * 1024;
 function fail(msg) {
   $('err').textContent = msg; $('err').hidden = false; $('prog').hidden = true;
   $('drop').style.display = ''; $('file').value = '';
-  document.querySelector('.drop .big').textContent = '別の写真を選ぶ';
+  document.querySelector('#drop .big').textContent = '別の写真を選ぶ';
 }
 function setPct(p) { $('pfill').style.width = p + '%'; $('ptrack').setAttribute('aria-valuenow', String(Math.round(p))); }
 $('file').addEventListener('change', () => {
@@ -67,5 +105,139 @@ $('file').addEventListener('change', () => {
   x.onerror = () => fail('通信が切れました。電波のよい場所でもう一度選んでください');
   x.send(fd);
 });
+
+// ------------------------------------------------------------ 動画（8MB ごとに分割・途中から再開）
+let CFG = null, cur = null;  // cur = {file, key, up}
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { } },
+  del(k) { try { localStorage.removeItem(k); } catch (e) { } },
+  keys() { try { return Object.keys(localStorage).filter(k => k.startsWith('fm_up_')); } catch (e) { return []; } },
+};
+const limitText = s => s % 60 === 0 ? (s / 60) + '分' : mmss(s);
+function vfail(msg, canResume) {
+  $('verr').textContent = msg; $('verr').hidden = false;
+  $('vresume').hidden = !canResume;
+  if (!canResume) { $('vprog').hidden = true; $('vdrop').hidden = false; $('vfile').value = ''; $('vbig').textContent = '別の動画を選ぶ'; }
+}
+function vpct(p, label, sub) {
+  $('vfill').style.width = p + '%'; $('vtrack').setAttribute('aria-valuenow', String(Math.round(p)));
+  if (label) $('vlabel').textContent = label;
+  if (sub !== undefined) $('vsub').textContent = sub;
+}
+function mb(n) { return n >= 1073741824 ? (n / 1073741824).toFixed(2) + 'GB' : Math.round(n / 1048576) + 'MB'; }
+function readDuration(file) {
+  return new Promise(res => {
+    const v = document.createElement('video'), url = URL.createObjectURL(file);
+    let done = false;
+    const end = d => { if (done) return; done = true; URL.revokeObjectURL(url); res(d); };
+    v.preload = 'metadata'; v.muted = true;
+    v.onloadedmetadata = () => end(isFinite(v.duration) ? v.duration : 0);
+    v.onerror = () => end(0);
+    setTimeout(() => end(0), 15000);
+    v.src = url;
+  });
+}
+function putPart(id, n, blob, onprog) {
+  return new Promise((res, rej) => {
+    const x = new XMLHttpRequest();
+    x.open('PUT', '/api/uploads/' + id + '/parts/' + n);
+    x.setRequestHeader('Content-Type', 'application/octet-stream');
+    x.timeout = 120000;
+    x.upload.onprogress = e => { if (e.lengthComputable) onprog(e.loaded); };
+    x.onload = () => {
+      if (x.status === 401) { location.href = '/'; return; }
+      if (x.status === 200) { res(); return; }
+      let j = null; try { j = JSON.parse(x.responseText); } catch (e) { }
+      const err = new Error((j && j.detail) || '送信に失敗しました'); err.status = x.status; rej(err);
+    };
+    x.onerror = x.ontimeout = () => { const e = new Error('通信が切れました'); e.status = 0; rej(e); };
+    x.send(blob);
+  });
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function sendParts() {
+  const { file, up, key } = cur;
+  $('verr').hidden = true; $('vresume').hidden = true; $('vprog').hidden = false; $('vdrop').hidden = true; $('vpending').hidden = true;
+  const got = new Set(up.received);
+  let doneBytes = 0;
+  for (const n of got) doneBytes += Math.min(up.part_size, up.bytes - n * up.part_size);
+  const show = extra => {
+    const p = Math.min(100, (doneBytes + extra) / up.bytes * 100);
+    vpct(p, '送信しています… ' + Math.floor(p) + '%', mb(doneBytes + extra) + ' / ' + mb(up.bytes) + '（途中で切れても続きから送れます）');
+  };
+  show(0);
+  for (let n = 0; n < up.parts; n++) {
+    if (got.has(n)) continue;
+    const blob = file.slice(n * up.part_size, Math.min(up.bytes, (n + 1) * up.part_size));
+    let ok = false;
+    for (let t = 0; t < 4 && !ok; t++) {
+      try { await putPart(up.id, n, blob, show); ok = true; }
+      catch (e) {
+        if (e.status === 409 || e.status === 410 || e.status === 404) { store.del(key); vfail(e.message, false); return; }
+        if (t < 3) { $('vsub').textContent = '通信が不安定です。もう一度送っています…'; await sleep(2000 * (t + 1)); }
+      }
+    }
+    if (!ok) { vfail('通信が切れました。電波のよい場所で「途中から再開」を押してください', true); return; }
+    got.add(n); doneBytes += blob.size; show(0);
+  }
+  vpct(100, '届きました。受け取りを確認しています…', '');
+  try {
+    const j = await api('/api/uploads/' + up.id + '/complete', { method: 'POST' });
+    store.del(key);
+    location.href = '/status/' + j.id;
+  } catch (e) {
+    try {  // 欠けた部分があれば続きから
+      const u = await api('/api/uploads/' + up.id);
+      if (u.status === 'uploading' && u.received.length < u.parts) { cur.up = u; vfail(e.message, true); return; }
+    } catch (e2) { }
+    store.del(key); vfail(e.message, false);
+  }
+}
+$('vresume').addEventListener('click', async () => {
+  if (!cur) return;
+  try { cur.up = await api('/api/uploads/' + cur.up.id); } catch (e) { vfail(e.message, true); return; }
+  sendParts();
+});
+$('vfile').addEventListener('change', async () => {
+  const f = $('vfile').files[0];
+  if (!f) return;
+  $('verr').hidden = true; $('vresume').hidden = true;
+  if (!CFG) { try { CFG = await api('/api/config'); } catch (e) { vfail(e.message, false); return; } }
+  if (f.size > CFG.max_video_bytes) { vfail('この動画は ' + mb(f.size) + ' です。試験版は1GBまでです', false); return; }
+  $('vbig').textContent = '長さを確認しています…';
+  const dur = await readDuration(f);
+  if (dur > CFG.max_video_sec + 0.5) {
+    const m = Math.floor(dur / 60), s = Math.floor(dur % 60);
+    vfail('この動画は ' + m + ' 分 ' + s + ' 秒です。試験版は' + limitText(CFG.max_video_sec) + 'までです', false); return;
+  }
+  const key = 'fm_up_' + [f.name, f.size, f.lastModified].join('_');
+  let up = null;
+  const saved = store.get(key);
+  if (saved) { try { const u = await api('/api/uploads/' + saved); if (u.status === 'uploading') up = u; } catch (e) { } }
+  if (!up) {
+    try {
+      up = await api('/api/uploads', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bytes: f.size, duration: dur }) });
+    } catch (e) { vfail(e.message, false); return; }
+    store.set(key, up.id);
+  }
+  cur = { file: f, key, up };
+  $('vlead').textContent = (dur ? mmss(dur) + '・' : '') + mb(f.size) + ' の動画を送ります。';
+  sendParts();
+});
+if (TYPE === 'video') {
+  (async () => {
+    try { CFG = await api('/api/config'); $('vlimit').textContent = limitText(CFG.max_video_sec) + 'まで・1本1GBまで'; } catch (e) { }
+    for (const k of store.keys()) {  // 途中で止まった送信があれば案内する
+      try {
+        const u = await api('/api/uploads/' + store.get(k));
+        if (u.status !== 'uploading') { store.del(k); continue; }
+        $('vpending').textContent = '途中まで送った動画があります（' + Math.floor(u.received.length / u.parts * 100) + '%）。同じ動画をもう一度選ぶと、続きから送ります。';
+        $('vpending').hidden = false;
+      } catch (e) { store.del(k); }
+    }
+  })();
+}
 </script>
 </body></html>

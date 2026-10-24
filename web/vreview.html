@@ -1,0 +1,154 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>モザイクの確認｜顔モザイク</title>
+<link rel="stylesheet" href="/static/app.css">
+<style>
+h1{margin-top:16px}
+.lead{margin:0 0 12px}
+.warnbox{background:#FDEEE7;color:var(--warn-tag);font-weight:600;font-size:14px;border-radius:10px;padding:8px 12px;margin:0 0 12px}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 16px;border:0;padding:0;min-width:0}
+.seg legend{font-size:13px;font-weight:700;color:var(--sub);padding:0;margin:0 0 6px}
+.seg label{position:relative;display:flex;flex-direction:column;justify-content:center;min-height:64px;padding:6px 10px 6px 36px;
+  border:1.5px solid var(--line);border-radius:10px;cursor:pointer;line-height:1.35}
+.seg label .m{font-weight:700;font-size:15px}
+.seg label .d{font-size:12px;color:var(--sub)}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label::before{content:"";box-sizing:border-box;position:absolute;left:10px;top:50%;width:16px;height:16px;margin-top:-8px;border-radius:50%;border:2px solid #8E9AB0;background:#fff}
+.seg label:has(input:checked){border-color:var(--pri);background:#EEF5FD}
+.seg label:has(input:checked)::before{border:5px solid var(--pri)}
+.tabs{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line);margin:0 0 8px}
+.tabs button{min-height:52px;font:inherit;font-size:14px;font-weight:700;background:none;border:0;border-bottom:3px solid transparent;color:var(--sub);cursor:pointer;padding:4px 6px;line-height:1.3}
+.tabs button[aria-selected=true]{color:var(--fg);border-color:var(--pri)}
+.tabs button .n{display:block;font-size:13px}
+.tabs #tb[aria-selected=true] .n{color:var(--warn-tag)}
+.tabs #tk[aria-selected=true] .n{color:var(--keep)}
+.help{font-size:13px;color:var(--sub);margin:0 0 8px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.t{position:relative;display:block;padding:0;border:3px solid var(--warn);border-radius:10px;background:#fff;overflow:hidden;color:var(--fg);cursor:pointer;font:inherit;text-align:left}
+.t img{display:block;width:100%;height:auto;aspect-ratio:1/1;object-fit:cover;background:var(--surface)}
+.t .cap{display:flex;justify-content:space-between;gap:4px;padding:2px 6px;font-size:12px;line-height:20px}
+.t .cap b{color:var(--warn-tag)}
+.t.k{border-color:var(--keep)}
+.t.k .cap b{color:var(--keep)}
+.empty{color:var(--sub);font-size:14px;padding:8px 0}
+.repick{margin:16px 0 0}
+#toast{position:fixed;left:16px;right:16px;z-index:11;text-align:center;background:#14284A;color:#fff;font-size:14px;border-radius:10px;padding:10px 12px;
+  opacity:0;transition:opacity .2s;pointer-events:none}
+#toast.show{opacity:1}
+#ft{position:fixed;left:0;right:0;bottom:0;z-index:10;border-top:1px solid var(--line);background:#fff;
+  padding:8px 16px calc(8px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:6px}
+#cnt{font-size:15px;font-weight:700;line-height:22px}
+#cnt .m{color:var(--warn-tag)}
+#cnt .k{color:var(--keep)}
+#ferr{margin:0}
+[hidden]{display:none !important}
+@media (prefers-reduced-motion:reduce){#toast{transition:none}}
+</style>
+</head><body>
+<div class="bar"><a class="back" href="/home" aria-label="ホームに戻る">‹ ホーム</a></div>
+<main class="wrap" id="main">
+  <ol class="steps"><li class="done">1 送る</li><li class="done">2 選ぶ</li><li class="on">3 確認</li><li>4 保存</li></ol>
+  <h1>モザイクの確認</h1>
+  <p class="lead">顔をタップすると、もう一方の列に移ります。</p>
+  <p class="warnbox" id="warn" role="status" hidden></p>
+  <fieldset class="seg">
+    <legend>モザイクの種類（標準はブロック粗め）</legend>
+    <label><input type="radio" name="st" value="pixel" checked><span class="m">ブロック粗め</span><span class="d">マス目で強く隠す</span></label>
+    <label><input type="radio" name="st" value="blur"><span class="m">すりガラス</span><span class="d">ぼかして隠す。約2.5分長くかかります</span></label>
+  </fieldset>
+  <div class="tabs" role="tablist" aria-label="モザイクの予定">
+    <button type="button" role="tab" id="tb" aria-controls="pb" aria-selected="true">モザイクをかける予定<span class="n" id="nb">0件</span></button>
+    <button type="button" role="tab" id="tk" aria-controls="pk" aria-selected="false" tabindex="-1">かけない予定<span class="n" id="nk">0件</span></button>
+  </div>
+  <section role="tabpanel" id="pb" aria-labelledby="tb">
+    <p class="help">モザイクが不要なもの（ダンサー・キャラクター・風船・手や靴など）をタップしてください。</p>
+    <div class="grid" id="gb"></div>
+  </section>
+  <section role="tabpanel" id="pk" aria-labelledby="tk" hidden>
+    <p class="help">モザイクが必要なもの（観客の顔）が混じっていたらタップしてください。</p>
+    <div class="grid" id="gk"></div>
+  </section>
+  <a class="btn btn-ter repick" id="repick" hidden>場面の写真から選び直す</a>
+</main>
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="ft">
+  <span id="cnt"><span class="m" id="cm">モザイク 0 件</span>・<span class="k" id="ck">かけない 0 件</span></span>
+  <p class="err" id="ferr" hidden></p>
+  <button class="btn btn-pri" id="go" type="button">この内容で書き出す</button>
+</div>
+<script src="/static/common.js"></script>
+<script>
+const id = jobIdFromPath(), $ = x => document.getElementById(x);
+let ITEMS = [], KEEP = new Set(), tab = 'b', toastT = 0;
+
+function render() {
+  const b = ITEMS.filter(it => !KEEP.has(it.id)), k = ITEMS.filter(it => KEEP.has(it.id));
+  $('nb').textContent = b.length + '件'; $('nk').textContent = k.length + '件';
+  $('cm').textContent = 'モザイク ' + b.length + ' 件'; $('ck').textContent = 'かけない ' + k.length + ' 件';
+  fill($('gb'), b, false); fill($('gk'), k, true);
+}
+function fill(el, items, kept) {
+  if (!items.length) {
+    const p = document.createElement('p'); p.className = 'empty'; p.textContent = 'ありません'; el.replaceChildren(p); return;
+  }
+  el.replaceChildren(...items.map(it => {
+    const t = document.createElement('button'); t.type = 'button'; t.className = 't' + (kept ? ' k' : '');
+    t.setAttribute('aria-label', it.sec + '秒の顔・' + (kept ? 'モザイクなし。タップでモザイクをかける' : 'モザイクあり。タップでモザイクを外す'));
+    const im = document.createElement('img'); im.src = '/api/jobs/' + id + '/thumbs/' + it.id + '.jpg'; im.alt = ''; im.loading = 'lazy'; im.width = 200; im.height = 200;
+    const cap = document.createElement('span'); cap.className = 'cap';
+    const lb = document.createElement('b'); lb.textContent = kept ? 'なし' : 'モザイク';
+    const s = document.createElement('span'); s.textContent = it.sec + '秒';
+    cap.append(lb, s); t.append(im, cap);
+    t.onclick = () => {
+      kept ? KEEP.delete(it.id) : KEEP.add(it.id);
+      render(); toast(kept ? '「モザイクをかける予定」に移しました' : '「かけない予定」に移しました');
+    };
+    return t;
+  }));
+}
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.style.bottom = ($('ft').offsetHeight + 12) + 'px'; t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1600);
+}
+function setTab(x) {
+  tab = x;
+  $('tb').setAttribute('aria-selected', String(x === 'b')); $('tk').setAttribute('aria-selected', String(x === 'k'));
+  $('tb').tabIndex = x === 'b' ? 0 : -1; $('tk').tabIndex = x === 'k' ? 0 : -1;
+  $('pb').hidden = x !== 'b'; $('pk').hidden = x !== 'k';
+}
+$('tb').onclick = () => setTab('b');
+$('tk').onclick = () => setTab('k');
+document.querySelector('.tabs').addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { const n = tab === 'b' ? 'k' : 'b'; setTab(n); $('t' + n).focus(); }
+});
+function fit() { document.body.style.paddingBottom = ($('ft').offsetHeight + 16) + 'px'; }
+new ResizeObserver(fit).observe($('ft'));
+
+(async () => {
+  let j;
+  try { j = await api('/api/jobs/' + id); } catch (e) { $('ferr').textContent = e.message; $('ferr').hidden = false; $('go').disabled = true; return; }
+  if (j.status === 'awaiting_pick') { location.replace('/pick/' + id); return; }
+  if (!['awaiting_review', 'done'].includes(j.status) || !j.review) { location.replace('/status/' + id); return; }
+  if (j.idle_warn) { $('warn').textContent = idleWarnText(j); $('warn').hidden = false; }
+  if (j.status === 'awaiting_review') { $('repick').href = '/pick/' + id; $('repick').hidden = false; }
+  ITEMS = [...j.review.blur, ...j.review.keep];
+  KEEP = new Set(ITEMS.filter(it => j.keep.includes(it.id)).map(it => it.id));
+  document.querySelector('input[name=st][value=' + (j.style === 'blur' ? 'blur' : 'pixel') + ']').checked = true;
+  render(); fit();
+})();
+
+$('go').onclick = async () => {
+  const go = $('go'); go.disabled = true; go.textContent = '書き出しを受け付けています…'; $('ferr').hidden = true;
+  const body = { keep: ITEMS.filter(it => KEEP.has(it.id)).map(it => it.id), blur: ITEMS.filter(it => !KEEP.has(it.id)).map(it => it.id),
+    style: document.querySelector('input[name=st]:checked').value };
+  try {
+    await api('/api/jobs/' + id + '/review', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    location.href = '/status/' + id;
+  } catch (e) {
+    $('ferr').textContent = e.message; $('ferr').hidden = false;
+    go.disabled = false; go.textContent = 'この内容で書き出す';
+  }
+};
+</script>
+</body></html>

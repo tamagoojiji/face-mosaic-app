@@ -1,0 +1,83 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>処理中｜顔モザイク</title>
+<link rel="stylesheet" href="/static/app.css">
+<style>
+.eta{display:flex;gap:12px;margin:0 0 16px}
+.eta div{flex:1;background:var(--surface);border-radius:var(--radius);padding:12px}
+.eta .k{font-size:13px;color:var(--sub)}
+.eta .v{font-size:20px;font-weight:700}
+.tl{list-style:none;margin:0 0 16px;padding:0}
+.tl li{position:relative;display:flex;align-items:center;gap:12px;min-height:44px;padding:4px 0;color:var(--sub)}
+.tl li::before{content:"";flex:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--line);background:#fff;box-sizing:border-box}
+.tl li.done{color:var(--fg)}
+.tl li.done::before{border-color:var(--pri);background:var(--pri)}
+.tl li.done::after{content:"✓";position:absolute;left:6px;color:#fff;font-size:13px;font-weight:700}
+.tl li.on{color:var(--fg);font-weight:700}
+.tl li.on::before{border:6px solid var(--pri)}
+.calm{background:#EEF5FD;border-radius:var(--radius);padding:12px;margin:0 0 16px}
+[hidden]{display:none !important}
+</style>
+</head><body>
+<div class="bar"><a class="back" href="/home" aria-label="ホームに戻る">‹ ホーム</a></div>
+<main class="wrap">
+  <ol class="steps" id="steps"><li class="done">1 送る</li><li class="on">2 選ぶ</li><li>3 確認</li><li>4 保存</li></ol>
+  <h1 id="h">状態を確認しています…</h1>
+  <p class="lead" id="lead"></p>
+  <div class="eta" id="eta" hidden>
+    <div><div class="k">あなたの前に</div><div class="v" id="ahead">0 件</div></div>
+    <div><div class="k">完了の目安</div><div class="v" id="left">—</div></div>
+  </div>
+  <ol class="tl" id="tl" aria-label="処理の進み具合"></ol>
+  <p class="calm" id="calm" hidden>閉じても大丈夫です。この画面はホームの一覧から戻れます。</p>
+  <p class="err" id="err" role="alert" hidden></p>
+  <div class="stack" id="acts" hidden>
+    <a class="btn btn-pri" href="/upload?type=video">もう一度送る</a>
+    <a class="btn btn-ter" href="/home">ホームに戻る</a>
+  </div>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const id = jobIdFromPath(), $ = x => document.getElementById(x);
+const PREP = [['waiting', '解析の順番を待つ'], ['convert', '1080p・通常の色に変換'], ['track', '顔を追いかける'],
+  ['feature', '顔と服の特徴を調べる'], ['shots', '場面の写真を用意する']];
+const EXP = [['waiting_export', '書き出しの順番を待つ'], ['export', 'モザイクをかけて書き出す']];
+function timeline(list, stage) {
+  const idx = list.findIndex(s => s[0] === stage);
+  $('tl').replaceChildren(...list.map((s, i) => {
+    const li = document.createElement('li'); li.textContent = s[1];
+    if (idx >= 0 && i < idx) li.className = 'done';
+    if (i === idx) { li.className = 'on'; li.setAttribute('aria-current', 'step'); }
+    return li;
+  }));
+}
+function stop(title, msg, isErr) {
+  $('h').textContent = title; $('lead').textContent = ''; $('eta').hidden = true; $('tl').replaceChildren(); $('calm').hidden = true;
+  $('err').textContent = msg; $('err').hidden = false; if (!isErr) $('err').className = 'lead';
+  $('acts').hidden = false;
+}
+async function tick() {
+  let j;
+  try { j = await api('/api/jobs/' + id); } catch (e) { stop('見つかりません', e.message, true); return; }
+  const go = { awaiting_pick: '/pick/', awaiting_review: '/review/', done: '/done/' }[j.status];
+  if (go) { location.replace(go + id); return; }
+  if (j.status === 'failed') { stop('処理できませんでした', j.error || '処理できませんでした。もう一度送ってください', true); return; }
+  if (j.status === 'deleted') { stop('この動画は削除しました', '時間がたったので、元の動画と解析結果を削除しました。', false); return; }
+  if (j.status === 'uploading') { location.replace('/upload?type=video'); return; }
+  const exporting = j.status === 'queued_export' || j.status === 'exporting';
+  if (exporting) [...$('steps').children].forEach((li, i) => { li.className = i < 3 ? 'done' : 'on'; });
+  const waiting = j.stage === 'waiting' || j.stage === 'waiting_export';
+  $('h').textContent = waiting ? '順番を待っています' : exporting ? '書き出しています' : '解析しています';
+  $('lead').textContent = exporting ? 'モザイクをかけた動画を作っています。できたら自動で完成画面に移ります。'
+    : '観客の顔を探しています。終わると自動で、残す顔を選ぶ画面に移ります。';
+  $('eta').hidden = false;
+  $('ahead').textContent = j.ahead + ' 件';
+  $('left').textContent = 'あと約' + Math.max(1, Math.round(j.eta_sec / 60)) + '分';
+  timeline(exporting ? EXP : PREP, j.stage);
+  $('calm').hidden = false;
+  setTimeout(tick, 5000);
+}
+tick();
+</script>
+</body></html>

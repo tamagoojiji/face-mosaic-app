@@ -15,6 +15,9 @@
 .badge{flex:none;font-size:13px;font-weight:700;border-radius:999px;padding:2px 10px}
 .badge.done{background:#E7F1FC;color:#0358B4}
 .badge.pick{background:#FDEEE7;color:var(--warn-tag)}
+.badge.busy{background:#EEF2F8;color:var(--fg)}
+.sends{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.meta .s.warn{color:var(--warn-tag);font-weight:600}
 .badge.gone{background:var(--surface);color:var(--sub)}
 .chev{flex:none;color:var(--sub);font-size:18px}
 .empty{color:var(--sub);margin:8px 0 0}
@@ -22,13 +25,16 @@
 </head><body>
 <div class="bar"><span class="brand">顔モザイク</span></div>
 <main class="wrap">
-  <h1>写真の顔にモザイクをかける</h1>
-  <p class="lead">1枚送ると顔を自動で見つけます。残したい人だけタップして、ほかの顔を隠せます。</p>
-  <a class="btn btn-pri" id="send" href="/upload">写真を送る</a>
-  <h2>最近の写真</h2>
-  <p class="note" style="margin:0 0 12px">完成から24時間で、元の写真と完成した写真は自動で消えます。</p>
+  <h1>動画と写真の顔にモザイクをかける</h1>
+  <p class="lead">送ると顔を自動で見つけます。残したい人だけタップして、ほかの顔を隠せます。</p>
+  <div class="sends">
+    <a class="btn btn-pri" id="sendv" href="/upload?type=video">動画を送る</a>
+    <a class="btn btn-pri" id="send" href="/upload?type=photo">写真を送る</a>
+  </div>
+  <h2>最近の動画と写真</h2>
+  <p class="note" style="margin:0 0 12px">完成から24時間で、元の動画・写真と完成したものは自動で消えます。</p>
   <ul class="list" id="list" hidden></ul>
-  <p class="empty" id="empty" hidden>送った写真はここに並びます。</p>
+  <p class="empty" id="empty" hidden>送った動画と写真はここに並びます。</p>
   <p class="err" id="err" hidden></p>
 </main>
 <script src="/static/common.js"></script>
@@ -39,17 +45,17 @@
     const el = document.getElementById('err'); el.textContent = e.message; el.hidden = false; return;
   }
   if (!jobs.length) {
-    document.getElementById('send').textContent = '最初の1枚を送ってみる';
     document.getElementById('empty').hidden = false; return;
   }
   const ul = document.getElementById('list'); ul.hidden = false;
   for (const j of jobs) {
+    if (j.kind === 'video') { ul.append(videoItem(j)); continue; }
     const li = document.createElement('li');
     const gone = j.status === 'deleted';
     const done = j.status === 'done' && j.has_out;
     const a = document.createElement('a');
     a.className = 'item';
-    a.href = gone ? '/upload' : done ? '/done/' + j.id : '/pick/' + j.id;
+    a.href = gone ? '/upload?type=photo' : done ? '/done/' + j.id : '/pick/' + j.id;
     const d = new Date(j.created_at * 1000);
     const when = (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
     let thumb;
@@ -70,5 +76,35 @@
     li.append(a); ul.append(li);
   }
 })();
+
+function videoItem(j) {
+  const li = document.createElement('li');
+  const a = document.createElement('a'); a.className = 'item'; a.href = videoHref(j);
+  const d = new Date(j.created_at * 1000);
+  const when = (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+  let thumb;
+  if (j.has_thumb) { thumb = document.createElement('img'); thumb.src = '/api/jobs/' + j.id + '/shots/0.jpg'; thumb.alt = ''; thumb.loading = 'lazy'; }
+  else { thumb = document.createElement('div'); thumb.classList.add('none'); thumb.textContent = '動画'; }
+  thumb.classList.add('thumb');
+  const meta = document.createElement('div'); meta.className = 'meta';
+  const t = document.createElement('div'); t.className = 't'; t.textContent = when + (j.duration_sec ? '・' + mmss(j.duration_sec) : '');
+  const s = document.createElement('div'); s.className = 's';
+  const st = j.status, left = j.expires_at ? remainText(j).replace('あと', '残り ') : '';
+  if (st === 'done') s.textContent = '動画・' + left;
+  else if (st === 'deleted') s.textContent = '削除しました・動画を送り直す';
+  else if (st === 'failed') s.textContent = j.error || '処理できませんでした';
+  else if (st === 'awaiting_pick' || st === 'awaiting_review') {
+    if (j.idle_warn) { s.classList.add('warn'); s.textContent = remainText(j) + 'で削除されます'; }
+    else s.textContent = (st === 'awaiting_pick' ? '残す顔を選んでください' : 'モザイクを確認してください') + '・' + left;
+  } else if (st === 'uploading') s.textContent = '同じ動画を選ぶと続きから送れます';
+  else s.textContent = j.ahead ? 'あなたの前に ' + j.ahead + ' 件' : '目安 あと約' + Math.max(1, Math.round((j.eta_sec || 0) / 60)) + '分';
+  meta.append(t, s);
+  const b = document.createElement('span');
+  b.className = 'badge ' + (st === 'done' ? 'done' : st === 'deleted' || st === 'failed' ? 'gone' : st.startsWith('awaiting') ? 'pick' : 'busy');
+  b.textContent = (VIDEO_STATUS[st] || VIDEO_STATUS.failed)[0];
+  const c = document.createElement('span'); c.className = 'chev'; c.textContent = '›'; c.setAttribute('aria-hidden', 'true');
+  a.append(thumb, meta, b, c); li.append(a);
+  return li;
+}
 </script>
 </body></html>

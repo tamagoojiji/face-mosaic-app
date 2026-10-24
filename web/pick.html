@@ -74,7 +74,7 @@ function gone(text) {
   ['hd', 'sc', 'ft'].forEach(x => $(x).style.display = 'none');
   const m = $('msg'); m.hidden = false;
   const p = document.createElement('p'); p.textContent = text;
-  const a = document.createElement('a'); a.className = 'btn btn-pri'; a.href = '/upload'; a.textContent = '写真を送り直す';
+  const a = document.createElement('a'); a.className = 'btn btn-pri'; a.href = '/upload?type=photo'; a.textContent = '写真を送り直す';
   m.replaceChildren(p, a);
 }
 function paint(d) {
