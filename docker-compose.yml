@@ -1,0 +1,25 @@
+services:
+  face-mosaic-app:
+    build: .
+    container_name: face-mosaic-app
+    restart: unless-stopped
+    env_file:
+      # 設定ファイルが無くても起動する（その間は合言葉で入れない）
+      - path: .env
+        required: false
+    environment:
+      - TZ=Asia/Tokyo
+      - DATA_DIR=/data
+    volumes:
+      - ./data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# nginx と同じ既存ネットワークに参加し「face-mosaic-app:8000」で到達させる（ホストポートは公開しない）
+networks:
+  default:
+    external: true
+    name: docker_default
