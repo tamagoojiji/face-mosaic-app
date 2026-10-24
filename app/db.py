@@ -70,7 +70,7 @@ def get_job(job_id):
 
 def recent_jobs(owner, limit=30):
     with connect() as con:
-        rows = con.execute("SELECT * FROM jobs WHERE owner=? ORDER BY created_at DESC LIMIT ?",
+        rows = con.execute("SELECT * FROM jobs WHERE owner IS NULL OR owner=? ORDER BY created_at DESC LIMIT ?",
                            (owner, limit)).fetchall()
     return [dict(r) for r in rows]
 

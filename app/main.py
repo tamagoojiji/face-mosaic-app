@@ -176,7 +176,7 @@ def _load(request, job_id):
         raise HTTPException(404, "見つかりません")
     j = db.get_job(job_id)
     owner = getattr(request.state, "owner", None)
-    if not j or not owner or j["owner"] != owner:  # 他の端末の写真は存在しない扱い
+    if not j or (j["owner"] is not None and j["owner"] != owner):  # 他の端末の写真は存在しない扱い（owner 列追加前の旧行は期限まで従来どおり）
         raise HTTPException(404, "見つかりません")
     return j
 
