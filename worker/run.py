@@ -8,7 +8,6 @@ queued_export → exporting（書き出し）→ done
 import json
 import logging
 import os
-import shutil
 import time
 import traceback
 
@@ -37,11 +36,33 @@ def _rm(p):
         pass
 
 
-def fail(job_id, msg, exc):
-    log.error("job %s 失敗: %s\n%s", job_id, exc, traceback.format_exc())
-    d = job_dir(job_id)
-    shutil.rmtree(d, ignore_errors=True)
-    db.update_job(job_id, status="failed", error=msg, src_path=None, out_path=None, expires_at=None)
+def fail_prepare(job_id, msg, exc):
+    """解析の失敗。続きに使えるものは無いので、元動画と途中のファイルは消す（フォルダと行は期限まで残す）。"""
+    log.error("job %s 解析に失敗: %s\n%s", job_id, exc, traceback.format_exc())
+    p = paths(job_id)
+    for k in ("src", "v1080", "feats", "tracks"):
+        _rm(p[k])
+    _rm(p["v1080"] + ".part.mp4")
+    db.update_job(job_id, status="failed", error=msg, src_path=None, out_path=None,
+                  expires_at=time.time() + config.RETENTION_HOURS * 3600)
+
+
+def fail_export(job_id, exc):
+    """書き出しの失敗。フォルダは消さない（1080p 版・追跡結果・切り抜きは選び直しに使う）。
+
+    前の完成動画があれば done に戻して理由を error に残す（前の動画はそのまま保存できる）。
+    初回で完成動画が無ければ failed。どちらも期限が来たら retention が消す。
+    """
+    log.error("job %s 書き出しに失敗: %s\n%s", job_id, exc, traceback.format_exc())
+    p = paths(job_id)
+    _rm(os.path.join(p["dir"], "out.tmp.mp4"))
+    if os.path.exists(p["out"]):
+        db.update_job(job_id, status="done", out_path=p["out"], error="処理中にエラーが起きました",
+                      expires_at=os.path.getmtime(p["out"]) + config.RETENTION_HOURS * 3600)
+    else:
+        db.update_job(job_id, status="failed", out_path=None,
+                      error="書き出しに失敗しました。お手数ですが、もう一度送ってください",
+                      expires_at=time.time() + config.RETENTION_HOURS * 3600)
 
 
 def do_prepare(j):
@@ -110,12 +131,12 @@ def main():
                 msg = "動画を読み込めませんでした。iPhone のカメラで撮った動画を送ってください"
                 if "HDR(PQ)" in str(e):
                     msg = "この動画の HDR 形式（HDR10・Dolby Vision の一部）にはまだ対応していません。カメラの設定で HDR ビデオをオフにして撮った動画を送ってください"
-                fail(j["id"], msg, e)
+                fail_prepare(j["id"], msg, e)
         else:
             try:
                 do_export(j)
             except Exception as e:
-                fail(j["id"], "書き出しに失敗しました。お手数ですが、もう一度送ってください", e)
+                fail_export(j["id"], e)
 
 
 if __name__ == "__main__":

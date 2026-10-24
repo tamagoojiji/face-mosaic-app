@@ -807,7 +807,12 @@ def export(path, work_dir, tracks_path, keep, blur, style, out_path):
     apply_overrides(tracks, {"keep": sorted(keep), "blur": sorted(blur)})
     inv = info["out_width"] / float(dw)
     per_frame = build_frame_boxes(tracks, seen, inv, EXPORT_DETECT_EVERY)
-    tmp = out_path + ".part"
-    r = render(path, info, vf, per_frame, tmp, pick_encoder(), "blur" if style == "blur" else "pixel")
-    os.replace(tmp, out_path)
+    # 一時ファイルへ書き、成功したときだけ置き換える（選び直しの失敗で前の完成動画を壊さない）
+    tmp = os.path.join(os.path.dirname(out_path), "out.tmp.mp4")
+    try:
+        r = render(path, info, vf, per_frame, tmp, pick_encoder(), "blur" if style == "blur" else "pixel")
+        os.replace(tmp, out_path)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
     return r

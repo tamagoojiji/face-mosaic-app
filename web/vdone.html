@@ -27,6 +27,7 @@ h1{margin-top:16px}
     <a class="btn btn-sec" id="dl" download>ファイルに保存する（ダウンロード）</a>
     <a class="btn btn-sec" href="/upload?type=video">もう1本送る</a>
     <a class="btn btn-ter" id="again">モザイクを選び直す</a>
+    <p class="err" id="exErr" role="alert" hidden></p>
   </div>
 </main>
 <script src="/static/common.js"></script>
@@ -52,6 +53,10 @@ const id = jobIdFromPath(), $ = x => document.getElementById(x);
   $('pv').src = src + '?t=' + Math.floor(j.now);
   $('dl').href = src + '?dl=1';
   $('again').href = '/review/' + id;
+  if (j.error) {  // 選び直しの書き出しに失敗した（前の動画は残っている）
+    $('exErr').textContent = '書き出しに失敗しました（' + j.error + '）。前の動画はそのまま保存できます';
+    $('exErr').hidden = false;
+  }
   $('sum').textContent = 'モザイクの種類：' + (j.style === 'blur' ? 'すりガラス' : 'ブロック粗め');
   const b = document.createElement('b'); b.textContent = remainText(j);
   $('remain').replaceChildren(b, document.createTextNode('で、元の動画とこの動画は自動で消えます。'));
