@@ -91,12 +91,12 @@ def page(name):
     return FileResponse(os.path.join(WEB, name), headers={"Cache-Control": "no-store"})
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health():
     return PlainTextResponse("ok")
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def entrance(request: Request):
     if authed(request):
         return RedirectResponse("/home", status_code=302)
