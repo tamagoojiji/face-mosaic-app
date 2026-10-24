@@ -1,0 +1,13 @@
+data/
+*.jpg
+*.jpeg
+*.JPG
+*.png
+*.heic
+*.HEIC
+*.mp4
+.env
+__pycache__/
+*.pyc
+.venv/
+prototype/*.log
