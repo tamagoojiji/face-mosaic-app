@@ -9,6 +9,7 @@
 .remain{color:var(--sub);font-size:13px;margin:0 0 16px}
 .remain b{color:var(--fg)}
 .hint{color:var(--sub);font-size:13px;margin:-4px 0 0}
+.hint[hidden]{display:none}
 </style>
 </head><body>
 <div class="bar"><a class="back" href="/home" aria-label="ホームに戻る">‹ ホーム</a></div>
@@ -19,8 +20,9 @@
   <p class="summary" id="sum"></p>
   <p class="remain" id="remain"></p>
   <div class="stack">
-    <a class="btn btn-pri" id="dl" download>写真を保存する</a>
-    <p class="hint">保存できないときは、上の写真を長押しして「"写真"に保存」を選んでください。</p>
+    <button type="button" class="btn btn-pri" id="save">写真に保存する</button>
+    <p class="hint" id="saveHint" role="status" hidden>画像を長押しして「"写真"に保存」を選んでください</p>
+    <a class="btn btn-sec" id="dl" download>ファイルに保存する（ダウンロード）</a>
     <a class="btn btn-sec" href="/upload">もう1枚送る</a>
     <a class="btn btn-ter" id="again">残す顔を選び直す</a>
   </div>
@@ -34,17 +36,45 @@ const id = jobIdFromPath(), $ = x => document.getElementById(x);
   if (!j.has_out) {
     $('pv').remove(); document.querySelector('h1').textContent = j.status === 'deleted' ? 'この写真は消えました' : 'まだ書き出していません';
     $('sum').textContent = j.status === 'deleted' ? '24時間たったので、元の写真と完成した写真を削除しました。' : '残す顔を選んで「この内容で書き出す」を押してください。';
-    $('dl').remove(); document.querySelector('.hint').remove();
+    $('save').remove(); $('saveHint').remove(); $('dl').remove();
     if (j.status === 'deleted') $('again').remove(); else $('again').href = '/pick/' + id;
     return;
   }
   const src = '/api/jobs/' + id + '/result.jpg';
   $('pv').src = src + '?t=' + Math.floor(j.now);
   $('dl').href = src + '?dl=1';
+  setupSave(src, j);
   $('again').href = '/pick/' + id;
   $('sum').textContent = 'モザイク ' + j.blur.length + ' 件・かけない ' + j.keep.length + ' 件（' + (j.style === 'blur' ? 'すりガラス' : 'ブロック粗め') + '）';
   const b = document.createElement('b'); b.textContent = remainText(j);
   $('remain').replaceChildren(b, document.createTextNode('で、元の写真とこの写真は自動で消えます。'));
 })();
+
+// 写真アプリへ: 共有シート（Web Share API・ファイル付き）→「画像を保存」
+function setupSave(src, j) {
+  const btn = $('save'), hint = $('saveHint'), label = btn.textContent;
+  const d = new Date(j.now * 1000), p = n => String(n).padStart(2, '0');
+  const name = 'mosaic_' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes()) + '.jpg';
+  let filePromise = null;
+  // 押してから share までに時間が空くと iOS がユーザー操作と見なさないため、先に読み込んでおく
+  const loadFile = () => filePromise || (filePromise = fetch(src, { credentials: 'same-origin' })
+    .then(r => { if (!r.ok) throw new Error('fetch ' + r.status); return r.blob(); })
+    .then(b => new File([b], name, { type: 'image/jpeg' }))
+    .catch(e => { filePromise = null; throw e; }));
+  loadFile().catch(() => { });
+  btn.addEventListener('click', async () => {
+    hint.hidden = true;
+    btn.disabled = true; btn.textContent = '共有シートを開いています…';
+    try {
+      const file = await loadFile();
+      if (!(navigator.canShare && navigator.canShare({ files: [file] }))) throw new Error('share unsupported');
+      await navigator.share({ files: [file] });
+    } catch (e) {
+      if (!(e && e.name === 'AbortError')) hint.hidden = false;
+    } finally {
+      btn.disabled = false; btn.textContent = label;
+    }
+  });
+}
 </script>
 </body></html>
