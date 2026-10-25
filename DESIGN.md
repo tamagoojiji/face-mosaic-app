@@ -220,16 +220,20 @@ audit_log    id, actor_id, action, target, detail, created_at                   
 ### 環境変数（VPS上の設定ファイル）
 | キー | 説明 | 取得元 |
 |---|---|---|
-| APP_BASE_URL | 公開URL | ドメイン確定後 |
+| APP_BASE_URL | 公開URL（LINE 通知のリンク・ログインのコールバックに使う） | ドメイン確定後 |
 | SESSION_SECRET | セッション署名 | 生成（openssl rand -hex 32） |
+| AUTH_MODE | `passcode`（合言葉＋端末 Cookie・既定）／`line`（LINE ログイン。LINE_LOGIN_* が空なら起動時に警告して passcode で動く） | — |
+| APP_PASSCODE | 合言葉（passcode モードのみ） | 運営が決める |
+| LINE_MOCK | `1` で開発用のモックログイン画面（userId 手入力）。**本番の設定ファイルには書かない** | — |
 | ADMIN_LINE_USER_IDS | 運営のLINE userId | 初回ログイン後に管理画面で確認 |
 | LINE_LOGIN_CHANNEL_ID / LINE_LOGIN_CHANNEL_SECRET | LINEログイン | LINE Developers > 新規チャネル（LINEログイン） |
-| LINE_MSG_CHANNEL_ACCESS_TOKEN / LINE_MSG_CHANNEL_SECRET | 通知・あいさつ | LINE Developers > Messaging APIチャネル |
+| LINE_MSG_CHANNEL_ACCESS_TOKEN / LINE_MSG_CHANNEL_SECRET | 通知・あいさつ（空なら送らずに notify(skip) をログに出す） | LINE Developers > Messaging APIチャネル |
 | STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET | 決済 | Stripe ダッシュボード |
 | STRIPE_PRICE_IMAGE / VIDEO_A / VIDEO_B | 価格ID | Stripe 商品作成後 |
-| DISCORD_WEBHOOK_ALERTS / REPORTS / USAGE | 通知3チャンネル | Discord「たまご管理」サーバー（`/discord-channel-create`） |
+| DISCORD_WEBHOOK_ALERTS / REPORTS / USAGE | 通知3チャンネル（空なら送らずに discord(skip) をログに出す） | Discord「たまご管理」サーバー（`/discord-channel-create`） |
 | DATA_DIR | 動画・DBの置き場（既定 /data） | — |
-| SOURCE_RETENTION_HOURS | 元動画・解析データの削除までの時間（既定 24） | — |
+| SOURCE_RETENTION_HOURS | 元動画・元画像・解析データの削除までの時間（既定 24。旧名 RETENTION_HOURS も読む） | — |
+| MAX_VIDEO_SEC | 1本の長さの上限の上限（秒・既定 180）。実際の上限はプランの「1本の長さ」との小さい方 | — |
 | OUTPUT_RETENTION_DAYS | 完成品の保存日数（既定 30） | — |
 | STRIPE_PRICE_VIDEO_B_HQ | 高画質プラン（2,480円）の価格ID | Stripe 商品作成後 |
 
@@ -267,6 +271,7 @@ Claude Codeが事前に完了させること:
 ## 7. フェーズ定義
 
 **進め方の変更（2026-10-24）**: まず**いまのVPS**に試験版を建てて本人のスマホで試し、動いてから VPS 6 へ移す。ドメイン `mosaic.tamago-ai-world.com` は先にいまのVPSへ向け、移行時にAレコードだけ付け替える。試験版の順番は ①写真モード（合言葉で入る簡易認証・LINEなし） ②動画モード（画面の自動更新で状態確認・LINE通知なし） ③LINEログイン・通知・プラン・Stripe ④VPS 6 へ移行して実測。下表の Phase 1〜3 はこの順に読み替える（Phase 1＝写真モードを含む基盤、Phase 2＝動画の流れ、Phase 3＝LINE・決済）。
+試験版の合言葉利用者（`AUTH_MODE=passcode`）は動画B相当（plan=video_b）として扱う（試験中だけ・2026-10-25）。LINE ログインの新規は無料から。
 | Phase | 内容 | ローカル完了条件 | VPS完了条件 |
 |---|---|---|---|
 | 0 | セットアップ | — | ユーザー作業完了・`ssh mosaic-vps` 到達・`https://<ドメイン>/health` が 200 |
