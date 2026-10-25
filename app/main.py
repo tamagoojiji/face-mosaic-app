@@ -284,7 +284,13 @@ async def line_callback(request: Request, code: str = "", state: str = "", error
     try:
         sub, name = await asyncio.to_thread(_line_exchange, code, st["n"], _redirect_uri(request))
     except Exception as e:
-        log.warning("LINE ログイン失敗: %s", type(e).__name__)
+        detail = ""
+        if isinstance(e, urllib.error.HTTPError):  # LINE の応答本文（error/error_description のみ・秘密値は含まない）
+            try:
+                detail = " " + e.read().decode()[:300]
+            except Exception:
+                pass
+        log.warning("LINE ログイン失敗: %s%s", type(e).__name__, detail)
         return RedirectResponse("/?e=line", status_code=303)
     res = _login_line_user(request, sub, name)
     res.delete_cookie(STATE_COOKIE, path="/auth/line")
