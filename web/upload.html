@@ -46,6 +46,7 @@
       <p class="sub" id="vsub"></p>
     </div>
     <p class="err" id="verr" role="alert" hidden></p>
+    <a class="btn btn-sec resume" id="vplan" href="/plans" hidden>プランを比較する</a>
     <button type="button" class="btn btn-pri resume" id="vresume" hidden>途中から再開</button>
   </section>
 
@@ -63,6 +64,7 @@
       <div class="track" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="ptrack"><div class="fill" id="pfill"></div></div>
     </div>
     <p class="err" id="err" hidden></p>
+    <a class="btn btn-sec resume" id="pplan" href="/plans" hidden>プランを比較する</a>
   </section>
 </main>
 <script src="/static/common.js"></script>
@@ -74,9 +76,9 @@ $(TYPE === 'video' ? 'tabv' : 'tabp').setAttribute('aria-current', 'page');
 
 // ------------------------------------------------------------ 写真（従来どおり）
 const MAX = 30 * 1024 * 1024;
-function fail(msg) {
-  $('err').textContent = msg; $('err').hidden = false; $('prog').hidden = true;
-  $('drop').style.display = ''; $('file').value = '';
+function fail(msg, quota) {
+  $('err').textContent = msg; $('err').hidden = false; $('prog').hidden = true; $('pplan').hidden = !quota;
+  $('drop').style.display = quota ? 'none' : ''; $('file').value = '';
   document.querySelector('#drop .big').textContent = '別の写真を選ぶ';
 }
 function setPct(p) { $('pfill').style.width = p + '%'; $('ptrack').setAttribute('aria-valuenow', String(Math.round(p))); }
@@ -99,7 +101,7 @@ $('file').addEventListener('change', () => {
   x.onload = () => {
     if (x.status === 401) { location.href = '/'; return; }
     let j = null; try { j = JSON.parse(x.responseText); } catch (e) { }
-    if (x.status !== 200 || !j) { fail((j && j.detail) || (x.status === 413 ? '写真は30MBまでです' : '送信に失敗しました。もう一度お試しください')); return; }
+    if (x.status !== 200 || !j) { fail((j && j.detail) || (x.status === 413 ? '写真は30MBまでです' : '送信に失敗しました。もう一度お試しください'), x.status === 402); return; }
     location.href = '/pick/' + j.id;
   };
   x.onerror = () => fail('通信が切れました。電波のよい場所でもう一度選んでください');
@@ -115,9 +117,9 @@ const store = {
   keys() { try { return Object.keys(localStorage).filter(k => k.startsWith('fm_up_')); } catch (e) { return []; } },
 };
 const limitText = s => s % 60 === 0 ? (s / 60) + '分' : mmss(s);
-function vfail(msg, canResume) {
+function vfail(msg, canResume, quota) {
   $('verr').textContent = msg; $('verr').hidden = false;
-  $('vresume').hidden = !canResume;
+  $('vresume').hidden = !canResume; $('vplan').hidden = !quota;
   if (!canResume) { $('vprog').hidden = true; $('vdrop').hidden = false; $('vfile').value = ''; $('vbig').textContent = '別の動画を選ぶ'; }
 }
 function vpct(p, label, sub) {
@@ -174,7 +176,7 @@ async function sendParts() {
     for (let t = 0; t < 4 && !ok; t++) {
       try { await putPart(up.id, n, blob, show); ok = true; }
       catch (e) {
-        if (e.status === 409 || e.status === 410 || e.status === 404) { store.del(key); vfail(e.message, false); return; }
+        if (e.status === 409 || e.status === 410 || e.status === 404 || e.status === 402) { store.del(key); vfail(e.message, false, e.status === 402); return; }
         if (t < 3) { $('vsub').textContent = '通信が不安定です。もう一度送っています…'; await sleep(2000 * (t + 1)); }
       }
     }
@@ -191,7 +193,7 @@ async function sendParts() {
       const u = await api('/api/uploads/' + up.id);
       if (u.status === 'uploading' && u.received.length < u.parts) { cur.up = u; vfail(e.message, true); return; }
     } catch (e2) { }
-    store.del(key); vfail(e.message, false);
+    store.del(key); vfail(e.message, false, e.status === 402);
   }
 }
 $('vresume').addEventListener('click', async () => {
@@ -202,14 +204,15 @@ $('vresume').addEventListener('click', async () => {
 $('vfile').addEventListener('change', async () => {
   const f = $('vfile').files[0];
   if (!f) return;
-  $('verr').hidden = true; $('vresume').hidden = true;
+  $('verr').hidden = true; $('vresume').hidden = true; $('vplan').hidden = true;
   if (!CFG) { try { CFG = await api('/api/config'); } catch (e) { vfail(e.message, false); return; } }
+  if (CFG.video_block) { vfail(CFG.video_block, false, true); return; }
   if (f.size > CFG.max_video_bytes) { vfail('この動画は ' + mb(f.size) + ' です。試験版は1GBまでです', false); return; }
   $('vbig').textContent = '長さを確認しています…';
   const dur = await readDuration(f);
   if (dur > CFG.max_video_sec + 0.5) {
     const m = Math.floor(dur / 60), s = Math.floor(dur % 60);
-    vfail('この動画は ' + m + ' 分 ' + s + ' 秒です。試験版は' + limitText(CFG.max_video_sec) + 'までです', false); return;
+    vfail('この動画は ' + m + ' 分 ' + s + ' 秒です。' + CFG.plan_label + 'プランは1本' + limitText(CFG.max_video_sec) + 'までです', false, true); return;
   }
   const key = 'fm_up_' + [f.name, f.size, f.lastModified].join('_');
   let up = null;
@@ -219,16 +222,23 @@ $('vfile').addEventListener('change', async () => {
     try {
       up = await api('/api/uploads', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bytes: f.size, duration: dur }) });
-    } catch (e) { vfail(e.message, false); return; }
+    } catch (e) { vfail(e.message, false, e.status === 402); return; }
     store.set(key, up.id);
   }
   cur = { file: f, key, up };
   $('vlead').textContent = (dur ? mmss(dur) + '・' : '') + mb(f.size) + ' の動画を送ります。';
   sendParts();
 });
+if (TYPE === 'photo') {  // 今月の写真を使いきっていたら、選ぶ前に理由と次の一歩を出す
+  api('/api/config').then(c => { if (c.image_block) fail(c.image_block, true); }).catch(() => { });
+}
 if (TYPE === 'video') {
   (async () => {
-    try { CFG = await api('/api/config'); $('vlimit').textContent = limitText(CFG.max_video_sec) + 'まで・1本1GBまで'; } catch (e) { }
+    try {
+      CFG = await api('/api/config');
+      if (CFG.video_block) { vfail(CFG.video_block, false, true); $('vdrop').hidden = true; return; }
+      $('vlimit').textContent = limitText(CFG.max_video_sec) + 'まで・1本1GBまで';
+    } catch (e) { }
     for (const k of store.keys()) {  // 途中で止まった送信があれば案内する
       try {
         const u = await api('/api/uploads/' + store.get(k));

@@ -35,7 +35,7 @@ const id = jobIdFromPath(), $ = x => document.getElementById(x);
   try { j = await api('/api/jobs/' + id); } catch (e) { $('sum').textContent = e.message; return; }
   if (!j.has_out) {
     $('pv').remove(); document.querySelector('h1').textContent = j.status === 'deleted' ? 'この写真は消えました' : 'まだ書き出していません';
-    $('sum').textContent = j.status === 'deleted' ? '24時間たったので、元の写真と完成した写真を削除しました。' : '残す顔を選んで「この内容で書き出す」を押してください。';
+    $('sum').textContent = j.status === 'deleted' ? '保存期間が過ぎたので、完成した写真を削除しました。' : '残す顔を選んで「この内容で書き出す」を押してください。';
     $('save').remove(); $('saveHint').remove(); $('dl').remove();
     if (j.status === 'deleted') $('again').remove(); else $('again').href = '/pick/' + id;
     return;
@@ -44,11 +44,19 @@ const id = jobIdFromPath(), $ = x => document.getElementById(x);
   $('pv').src = src + '?t=' + Math.floor(j.now);
   $('dl').href = src + '?dl=1';
   setupSave(src, j);
-  $('again').href = '/pick/' + id;
+  if (j.can_repick) $('again').href = '/pick/' + id; else $('again').remove();
   $('sum').textContent = 'モザイク ' + j.blur.length + ' 件・かけない ' + j.keep.length + ' 件（' + (j.style === 'blur' ? 'すりガラス' : 'ブロック粗め') + '）';
-  const b = document.createElement('b'); b.textContent = remainText(j);
-  $('remain').replaceChildren(b, document.createTextNode('で、元の写真とこの写真は自動で消えます。'));
+  remainLines(j, '元の写真', 'この写真');
 })();
+
+// 2段の期限: 選び直し（元データがある間）・保存（完成品）
+function remainLines(j, src, out) {
+  const line = (b, rest) => { const d = document.createElement('div'), e = document.createElement('b'); e.textContent = b; d.append(e, document.createTextNode(rest)); return d; };
+  const rows = [];
+  if (j.can_repick) rows.push(line(repickText(j), '（' + src + 'を消すまで）'));
+  rows.push(line(keepText(j), '（' + out + 'を消すまで）'));
+  $('remain').replaceChildren(...rows);
+}
 
 // 写真アプリへ: 共有シート（Web Share API・ファイル付き）→「画像を保存」
 function setupSave(src, j) {

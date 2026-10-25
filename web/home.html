@@ -21,9 +21,21 @@
 .badge.gone{background:var(--surface);color:var(--sub)}
 .chev{flex:none;color:var(--sub);font-size:18px}
 .empty{color:var(--sub);margin:8px 0 0}
+.meta .s span{display:block}
+.quota{margin:24px 0 0;border:1.5px solid var(--line);border-radius:var(--radius);padding:12px 16px}
+.quota .qh{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.quota .qh b{font-size:15px}
+.quota .qh .pl{font-size:13px;color:var(--sub)}
+.quota .camp{display:inline-block;font-size:12px;font-weight:700;color:#0358B4;background:#E7F1FC;border-radius:999px;padding:0 8px}
+.qgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:8px 0 4px}
+.qgrid .k{font-size:13px;color:var(--sub)}
+.qgrid .v{font-size:20px;font-weight:700;line-height:1.3}
+.qgrid .s{font-size:12px;color:var(--sub)}
+.quota .qlink{display:inline-flex;align-items:center;min-height:44px;font-weight:600}
+[hidden]{display:none !important}
 </style>
 </head><body>
-<div class="bar"><span class="brand">顔モザイク</span></div>
+<div class="bar"><span class="brand">顔モザイク</span><a class="end" href="/settings">設定</a></div>
 <main class="wrap">
   <h1>動画と写真の顔にモザイクをかける</h1>
   <p class="lead">送ると顔を自動で見つけます。残したい人だけタップして、ほかの顔を隠せます。</p>
@@ -31,14 +43,45 @@
     <a class="btn btn-pri" id="sendv" href="/upload?type=video">動画を送る</a>
     <a class="btn btn-pri" id="send" href="/upload?type=photo">写真を送る</a>
   </div>
+  <section class="quota" aria-labelledby="qh" id="quota" hidden>
+    <div class="qh"><b id="qh">今月の残り</b><span class="pl" id="qpl"></span></div>
+    <div class="qgrid">
+      <div><div class="k">動画</div><div class="v" id="qv">—</div><div class="s" id="qvs"></div></div>
+      <div><div class="k">写真</div><div class="v" id="qi">—</div><div class="s" id="qis"></div></div>
+    </div>
+    <a class="qlink" href="/plans">プランを比較する</a>
+  </section>
   <h2>最近の動画と写真</h2>
-  <p class="note" style="margin:0 0 12px">完成から24時間で、元の動画・写真と完成したものは自動で消えます。</p>
+  <p class="note" style="margin:0 0 12px" id="keepnote">元の動画・写真は完成から24時間、完成したものは30日で自動で消えます。</p>
   <ul class="list" id="list" hidden></ul>
   <p class="empty" id="empty" hidden>送った動画と写真はここに並びます。</p>
   <p class="err" id="err" hidden></p>
 </main>
 <script src="/static/common.js"></script>
 <script>
+// 今月の残り（分・枚）
+api('/api/me').then(m => {
+  const r = m.remaining, $ = id => document.getElementById(id);
+  $('qpl').textContent = m.plan_label + 'プラン';
+  if (m.campaign) { const c = document.createElement('span'); c.className = 'camp'; c.textContent = 'リリース記念で増量中'; $('qpl').append(' ', c); }
+  if (!m.video_allowed) { $('qv').textContent = 'なし'; $('qvs').textContent = 'プランを変えると送れます'; }
+  else if (r.video_count !== null) { $('qv').textContent = 'あと' + r.video_count + '本'; $('qvs').textContent = '1本' + limitLen(m.video_len) + 'まで'; }
+  else { $('qv').textContent = 'あと' + mmss(r.video_sec); $('qvs').textContent = '1本' + limitLen(m.video_len) + 'まで'; }
+  $('qi').textContent = r.images === null ? '無制限' : 'あと' + r.images + '枚';
+  $('qis').textContent = m.limits.images === null ? '' : '月' + m.limits.images + '枚まで';
+  $('keepnote').textContent = '元の動画・写真は完成から' + m.source_hours + '時間、完成したものは' + m.output_days + '日で自動で消えます。';
+  $('quota').hidden = false;
+}).catch(() => { });
+
+// 完成後の2段の期限（選び直し・保存）
+function keepLines(el, j, head) {
+  const lines = [];
+  if (head) lines.push(head);
+  if (j.can_repick) lines.push(repickText(j));
+  lines.push(keepText(j));
+  el.replaceChildren(...lines.map(t => { const sp = document.createElement('span'); sp.textContent = t; return sp; }));
+}
+
 (async () => {
   let jobs;
   try { jobs = await api('/api/jobs'); } catch (e) {
@@ -65,8 +108,8 @@
     const meta = document.createElement('div'); meta.className = 'meta';
     const t = document.createElement('div'); t.className = 't'; t.textContent = when;
     const s = document.createElement('div'); s.className = 's';
-    const left = remainText(j).replace('あと', '残り ');
-    s.textContent = gone ? '24時間たったので消えました・写真を送り直す' : done ? 'モザイク ' + j.blur.length + ' 件・' + left : '選択の途中・' + left;
+    if (done) keepLines(s, j, 'モザイク ' + j.blur.length + ' 件');
+    else s.textContent = gone ? '保存期間が過ぎたので消えました・写真を送り直す' : '選択の途中・' + remainText(j).replace('あと', '残り ');
     meta.append(t, s);
     const b = document.createElement('span');
     b.className = 'badge ' + (gone ? 'gone' : done ? 'done' : 'pick');
@@ -90,7 +133,7 @@ function videoItem(j) {
   const t = document.createElement('div'); t.className = 't'; t.textContent = when + (j.duration_sec ? '・' + mmss(j.duration_sec) : '');
   const s = document.createElement('div'); s.className = 's';
   const st = j.status, left = j.expires_at ? remainText(j).replace('あと', '残り ') : '';
-  if (st === 'done') s.textContent = '動画・' + left;
+  if (st === 'done') keepLines(s, j, j.has_out ? 'できました' : '');
   else if (st === 'deleted') s.textContent = '削除しました・動画を送り直す';
   else if (st === 'failed') s.textContent = j.error || '処理できませんでした';
   else if (st === 'awaiting_pick' || st === 'awaiting_review') {

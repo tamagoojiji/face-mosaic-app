@@ -1,0 +1,88 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>設定｜顔モザイク</title>
+<link rel="stylesheet" href="/static/app.css">
+<style>
+.sec{border-bottom:1px solid var(--line);padding:16px 0}
+.sec h2{margin:0 0 8px;font-size:15px;color:var(--sub)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px}
+.row .v{font-weight:600}
+.at{position:relative}
+.at span{position:absolute;left:16px;top:0;line-height:56px;font-size:17px;color:var(--sub)}
+.at input{padding-left:36px}
+.save{margin:12px 0 0}
+.sw{position:relative;display:flex;align-items:center;gap:12px;min-height:56px;cursor:pointer;font-weight:600}
+.sw input{position:absolute;opacity:0;width:1px;height:1px}
+.sw .track{position:relative;flex:none;width:52px;height:32px;border-radius:999px;background:#8E9AB0;transition:background .15s}
+.sw .track::after{content:"";position:absolute;left:3px;top:3px;width:26px;height:26px;border-radius:50%;background:#fff;transition:left .15s}
+.sw input:checked + .track{background:var(--pri)}
+.sw input:checked + .track::after{left:23px}
+.sw input:focus-visible + .track{outline:3px solid rgba(4,108,220,.45);outline-offset:2px}
+.sw .lb{flex:1}
+.sw .st{font-size:13px;color:var(--sub);font-weight:600}
+.leave{display:inline-flex;align-items:center;min-height:44px;margin:24px 0 32px;color:var(--sub);font-size:14px}
+[hidden]{display:none !important}
+@media (prefers-reduced-motion:reduce){.sw .track,.sw .track::after{transition:none}}
+</style>
+</head><body>
+<div class="bar"><a class="back" href="/home" aria-label="ホームに戻る">‹ ホーム</a></div>
+<main class="wrap">
+  <h1>設定</h1>
+  <section class="sec">
+    <h2>アカウント</h2>
+    <div class="row"><span>表示名</span><span class="v" id="name">—</span></div>
+    <div class="row"><span>プラン</span><span class="v" id="plan">—</span></div>
+    <a class="btn btn-sec" href="/plans" style="margin-top:8px">プランを比較する</a>
+  </section>
+  <section class="sec">
+    <h2><label for="ig">Instagram のユーザー名（任意）</label></h2>
+    <form id="igf" novalidate>
+      <div class="at"><span aria-hidden="true">@</span><input id="ig" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="31" placeholder="未登録"></div>
+      <button class="btn btn-sec save" type="submit" id="igs">ユーザー名を保存する</button>
+      <p class="ok" id="igok" role="status" hidden></p>
+      <p class="err" id="igerr" role="alert" hidden></p>
+    </form>
+  </section>
+  <section class="sec">
+    <h2>LINE 通知</h2>
+    <label class="sw"><span class="lb">できあがりなどを LINE で知らせる</span><span class="st" id="nst"></span><input type="checkbox" id="nt"><span class="track" aria-hidden="true"></span></label>
+    <p class="note" id="nnote">お知らせはホームの一覧にも出ます。</p>
+    <p class="err" id="nerr" role="alert" hidden></p>
+  </section>
+  <section class="sec">
+    <h2>お支払い</h2>
+    <button class="btn btn-sec" type="button" disabled>支払いを管理する（準備中）</button>
+    <p class="note">カードの変更や解約は、お支払いの受付が始まったらここからできます。</p>
+  </section>
+  <a class="leave" href="/withdraw" id="leave">退会する</a>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+function show(m) {
+  $('name').textContent = m.display_name || 'ゲスト';
+  $('plan').textContent = m.plan_label;
+  $('ig').value = m.instagram_username || '';
+  $('nt').checked = m.notify; $('nst').textContent = m.notify ? 'オン' : 'オフ';
+  if (m.auth_mode !== 'line') $('nnote').textContent = '合言葉で使っている間は LINE 通知は届きません。お知らせはホームの一覧に出ます。';
+}
+api('/api/me').then(show).catch(e => { $('igerr').textContent = e.message; $('igerr').hidden = false; });
+$('igf').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  $('igok').hidden = $('igerr').hidden = true; $('igs').disabled = true;
+  try {
+    const m = await api('/api/me/instagram', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: $('ig').value }) });
+    show(m); $('igok').textContent = m.instagram_username ? '保存しました' : '登録を消しました'; $('igok').hidden = false;
+  } catch (e) { $('igerr').textContent = e.message; $('igerr').hidden = false; }
+  $('igs').disabled = false;
+});
+$('nt').addEventListener('change', async () => {
+  $('nerr').hidden = true;
+  try {
+    const m = await api('/api/me/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on: $('nt').checked }) });
+    show(m);
+  } catch (e) { $('nt').checked = !$('nt').checked; $('nerr').textContent = e.message; $('nerr').hidden = false; }
+});
+</script>
+</body></html>

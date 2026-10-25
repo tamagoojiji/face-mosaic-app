@@ -1,0 +1,81 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>プランを比較する｜顔モザイク</title>
+<link rel="stylesheet" href="/static/app.css">
+<style>
+.now{background:var(--surface);border-radius:var(--radius);padding:12px 16px;margin:0 0 8px}
+.now .k{font-size:13px;color:var(--sub)}
+.now .v{font-weight:700;font-size:17px}
+.now .s{font-size:13px;color:var(--fg);margin:4px 0 0}
+.plans{list-style:none;margin:16px 0 0;padding:0;display:flex;flex-direction:column;gap:12px}
+.plan{border:1.5px solid var(--line);border-radius:var(--radius);padding:12px 16px 16px}
+.plan.cur{border-color:var(--pri)}
+.plan .head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 0 8px}
+.plan .name{font-weight:700;font-size:17px}
+.plan .price{font-weight:700;font-size:17px;white-space:nowrap}
+.plan .tag{display:inline-block;font-size:12px;font-weight:700;color:#0358B4;background:#E7F1FC;border-radius:999px;padding:0 8px;margin-left:6px;vertical-align:2px}
+.plan dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0 0 12px;font-size:14px}
+.plan dt{color:var(--sub)}
+.plan dd{margin:0;font-weight:600;text-align:right}
+.plan .pnote{font-size:13px;color:var(--sub);margin:-4px 0 12px}
+[hidden]{display:none !important}
+</style>
+</head><body>
+<div class="bar"><a class="back" href="/home" aria-label="ホームに戻る">‹ ホーム</a></div>
+<main class="wrap">
+  <h1>プランを比較する</h1>
+  <div class="now">
+    <div class="k">いまのプラン</div>
+    <div class="v" id="cur">—</div>
+    <p class="s" id="curs"></p>
+  </div>
+  <p class="note" id="free">無料プラン: 写真は月5枚・動画は使えません。</p>
+  <ul class="plans" id="list"></ul>
+  <p class="note">お支払い（月額）の受付は準備中です。始まったら、この画面から申し込めます。</p>
+  <p class="err" id="err" role="alert" hidden></p>
+  <div style="height:24px"></div>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const len = s => s % 60 === 0 ? (s / 60) + '分' : mmss(s);
+(async () => {
+  let d;
+  try { d = await api('/api/plans'); } catch (e) { $('err').textContent = e.message; $('err').hidden = false; return; }
+  const me = d.me;
+  $('cur').textContent = me.plan_label + (me.campaign ? '（リリース記念で増量中）' : '');
+  $('curs').textContent = quotaLine(me);
+  if (me.campaign) $('free').textContent = '無料プラン: リリース記念の期間は 写真が月' + me.limits.images + '枚・1分までの動画が月' + me.limits.video_count_month + '本 使えます（ふだんは写真5枚・動画なし）。';
+  for (const p of d.plans) {
+    const li = document.createElement('li'); li.className = 'plan' + (p.key === me.plan ? ' cur' : '');
+    const head = document.createElement('div'); head.className = 'head';
+    const nm = document.createElement('div'); nm.className = 'name'; nm.textContent = p.label;
+    if (p.key === me.plan) { const t = document.createElement('span'); t.className = 'tag'; t.textContent = 'いまのプラン'; nm.append(t); }
+    const pr = document.createElement('div'); pr.className = 'price';
+    pr.textContent = '月' + p.price.toLocaleString('ja-JP') + '円';
+    head.append(nm, pr);
+    const dl = document.createElement('dl');
+    const row = (k, v) => { const dt = document.createElement('dt'); dt.textContent = k; const dd = document.createElement('dd'); dd.textContent = v; dl.append(dt, dd); };
+    row('動画（1か月）', p.video_sec_month ? len(p.video_sec_month) + 'まで' : 'なし');
+    row('1本の長さ', p.video_len ? len(p.video_len) + 'まで' : '—');
+    row('写真（1か月）', p.images === null ? '無制限' : p.images + '枚まで');
+    row('書き出しの画質', p.quality);
+    li.append(head, dl);
+    if (p.note) { const n = document.createElement('p'); n.className = 'pnote'; n.textContent = '※ ' + p.note; li.append(n); }
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-sec'; b.disabled = true;
+    b.textContent = p.key === me.plan ? 'いまのプランです' : 'このプランにする（準備中）';
+    li.append(b);
+    $('list').append(li);
+  }
+})();
+function quotaLine(me) {
+  const r = me.remaining, parts = [];
+  if (!me.video_allowed) parts.push('動画なし');
+  else if (r.video_count !== null) parts.push('動画 あと' + r.video_count + '本');
+  else if (r.video_sec !== null) parts.push('動画 あと' + mmss(r.video_sec));
+  parts.push(r.images === null ? '写真 無制限' : '写真 あと' + r.images + '枚');
+  return '今月の残り: ' + parts.join('・');
+}
+</script>
+</body></html>

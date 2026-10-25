@@ -14,6 +14,7 @@ a{color:var(--pri)}
 .wrap{max-width:560px;margin:0 auto;padding:0 16px}
 .bar{display:flex;align-items:center;gap:8px;min-height:52px;border-bottom:1px solid var(--line);padding:0 16px}
 .bar .brand{font-weight:700;font-size:16px;color:var(--fg);text-decoration:none}
+.bar .end{margin-left:auto;display:inline-flex;align-items:center;min-height:44px;padding:0 4px;font-weight:600;text-decoration:none;color:var(--pri)}
 .bar .back{display:inline-flex;align-items:center;min-height:44px;min-width:44px;font-weight:600;text-decoration:none;color:var(--pri)}
 h1{font-size:22px;line-height:1.4;margin:24px 0 8px}
 h2{font-size:17px;line-height:1.4;margin:32px 0 8px}
@@ -26,6 +27,8 @@ h2{font-size:17px;line-height:1.4;margin:32px 0 8px}
 .btn-pri:disabled{background:#8AA9CF;cursor:default}
 .btn-sec{background:#fff;color:var(--pri);border:1.5px solid var(--pri)}
 .btn-ter{background:transparent;color:var(--pri);min-height:44px;font-size:15px}
+.btn-danger{background:#fff;color:var(--warn-tag);border:1.5px solid var(--warn-tag)}
+.btn-danger:disabled,.btn-sec:disabled{color:#8E9AB0;border-color:var(--line);cursor:default}
 .stack{display:flex;flex-direction:column;gap:12px}
 .err{color:var(--warn-tag);font-weight:600;margin:8px 0 0}
 .ok{color:var(--keep);font-weight:600;margin:8px 0 0}

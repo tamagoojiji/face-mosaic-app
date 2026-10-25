@@ -41,7 +41,7 @@ const id = jobIdFromPath(), $ = x => document.getElementById(x);
     $('pv').remove(); $('save').remove(); $('saveHint').remove(); $('dl').remove();
     if (j.status === 'deleted') {
       $('h').textContent = 'この動画は消えました';
-      $('sum').textContent = '24時間たったので、元の動画と完成した動画を削除しました。'; $('again').remove();
+      $('sum').textContent = '保存期間が過ぎたので、完成した動画を削除しました。'; $('again').remove();
     } else {
       $('h').textContent = 'まだ書き出していません';
       $('sum').textContent = 'モザイクを確認して「この内容で書き出す」を押してください。';
@@ -52,16 +52,24 @@ const id = jobIdFromPath(), $ = x => document.getElementById(x);
   const src = '/api/jobs/' + id + '/result.mp4';
   $('pv').src = src + '?t=' + Math.floor(j.now);
   $('dl').href = src + '?dl=1';
-  $('again').href = '/review/' + id;
+  if (j.can_repick) $('again').href = '/review/' + id; else $('again').remove();
   if (j.error) {  // 選び直しの書き出しに失敗した（前の動画は残っている）
     $('exErr').textContent = '書き出しに失敗しました（' + j.error + '）。前の動画はそのまま保存できます';
     $('exErr').hidden = false;
   }
   $('sum').textContent = 'モザイクの種類：' + (j.style === 'blur' ? 'すりガラス' : 'ブロック粗め');
-  const b = document.createElement('b'); b.textContent = remainText(j);
-  $('remain').replaceChildren(b, document.createTextNode('で、元の動画とこの動画は自動で消えます。'));
+  remainLines(j, '元の動画', 'この動画');
   setupSave(src, j);
 })();
+
+// 2段の期限: 選び直し（元データがある間）・保存（完成品）
+function remainLines(j, src, out) {
+  const line = (b, rest) => { const d = document.createElement('div'), e = document.createElement('b'); e.textContent = b; d.append(e, document.createTextNode(rest)); return d; };
+  const rows = [];
+  if (j.can_repick) rows.push(line(repickText(j), '（' + src + 'を消すまで）'));
+  rows.push(line(keepText(j), '（' + out + 'を消すまで）'));
+  $('remain').replaceChildren(...rows);
+}
 
 // 写真アプリへ: 共有シート（Web Share API・ファイル付き）→ iPhone は「ビデオを保存」
 function setupSave(src, j) {

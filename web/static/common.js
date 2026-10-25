@@ -4,7 +4,10 @@ async function api(path, opts) {
   if (r.status === 401) { location.href = '/'; throw new Error('401'); }
   let j = null;
   try { j = await r.json(); } catch (e) { }
-  if (!r.ok) throw new Error((j && j.detail) || '通信に失敗しました。電波のよい場所でもう一度お試しください');
+  if (!r.ok) {
+    const err = new Error((j && j.detail) || '通信に失敗しました。電波のよい場所でもう一度お試しください');
+    err.status = r.status; throw err;  // 402 = 今月の上限・プランの範囲外
+  }
   return j;
 }
 // expires_at と now（サーバー時刻）から「あと n 時間 m 分」
@@ -25,9 +28,20 @@ function videoHref(j) {
   const s = VIDEO_STATUS[j.status] || VIDEO_STATUS.failed;
   return s[1].endsWith('/') ? s[1] + j.id : s[1];
 }
+// 上限の長さ: 60 → 1分、90 → 1分30秒
+function limitLen(sec) { return sec % 60 === 0 ? (sec / 60) + '分' : mmss(sec); }
 function mmss(sec) {
   sec = Math.round(sec || 0);
   return sec >= 60 ? Math.floor(sec / 60) + '分' + (sec % 60) + '秒' : sec + '秒';
 }
 // 選択・確認の放置: 1時間たったら「あと2時間で削除」
 function idleWarnText(j) { return 'このまま選ばないと、' + remainText(j) + 'で動画を削除します。'; }
+// 完成後の2段の期限: 「選び直しは あと n 時間」（元データがある間）・「保存は あと n 日」（完成品）
+function repickText(j) {
+  const s = Math.max(0, j.src_expires_at - j.now), h = Math.floor(s / 3600);
+  return '選び直しは あと' + (h >= 1 ? h + '時間' : Math.max(1, Math.floor(s / 60)) + '分');
+}
+function keepText(j) {
+  const s = Math.max(0, j.out_expires_at - j.now), d = Math.floor(s / 86400), h = Math.floor(s / 3600);
+  return '保存は あと' + (d >= 1 ? d + '日' : h >= 1 ? h + '時間' : Math.max(1, Math.floor(s / 60)) + '分');
+}

@@ -1,0 +1,42 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>利用規約への同意｜顔モザイク</title>
+<link rel="stylesheet" href="/static/app.css">
+<style>
+.terms{background:var(--surface);border-radius:var(--radius);padding:12px 16px;margin:0 0 16px}
+.terms ul{margin:0;padding-left:1.2em}
+.terms li{margin:4px 0}
+.check{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 12px;border:1.5px solid var(--line);border-radius:var(--radius);font-weight:600;cursor:pointer;margin:0 0 16px}
+.check input{width:24px;height:24px;flex:none;accent-color:var(--pri)}
+.check:has(input:checked){border-color:var(--pri);background:#EEF5FD}
+</style>
+</head><body>
+<main class="wrap">
+  <ol class="steps"><li class="done">1 Instagram</li><li class="on">2 同意</li><li>3 はじめる</li></ol>
+  <h1>利用規約とプライバシーポリシー</h1>
+  <p class="lead">使いはじめる前に、次の約束を確認してください。</p>
+  <div class="terms">
+    <ul>
+      <li>送った動画・写真には観客の顔が映っています。モザイク処理のためだけに預かり、ほかの目的には使いません</li>
+      <li>元の動画・写真と解析したデータは<span id="sh">24</span>時間で消します。完成したものは<span id="od">30</span>日で消します</li>
+      <li>顔の検出はこのサーバーの中だけで行い、外部の AI サービスには送りません</li>
+    </ul>
+    <p class="note">規約の全文は、正式公開までにこの画面から読めるようにします（いまは要点だけです）。</p>
+  </div>
+  <label class="check"><input type="checkbox" id="ok">利用規約とプライバシーポリシーに同意します</label>
+  <button class="btn btn-pri" id="go" disabled>同意してはじめる</button>
+  <p class="err" id="err" role="alert" hidden></p>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+api('/api/me').then(m => { $('sh').textContent = m.source_hours; $('od').textContent = m.output_days; }).catch(() => { });
+$('ok').addEventListener('change', () => { $('go').disabled = !$('ok').checked; });
+$('go').addEventListener('click', async () => {
+  $('go').disabled = true;
+  try { await api('/api/me/agree', { method: 'POST' }); location.href = '/home'; }
+  catch (e) { $('err').textContent = e.message; $('err').hidden = false; $('go').disabled = false; }
+});
+</script>
+</body></html>

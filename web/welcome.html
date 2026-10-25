@@ -1,0 +1,44 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Instagram のユーザー名｜顔モザイク</title>
+<link rel="stylesheet" href="/static/app.css">
+<style>
+.at{position:relative}
+.at span{position:absolute;left:16px;top:0;line-height:56px;font-size:17px;color:var(--sub)}
+.at input{padding-left:36px}
+</style>
+</head><body>
+<main class="wrap">
+  <ol class="steps"><li class="on">1 Instagram</li><li>2 同意</li><li>3 はじめる</li></ol>
+  <h1>Instagram のユーザー名を教えてください</h1>
+  <p class="lead">入れなくても使えます。あとから「設定」で入れたり変えたりできます。</p>
+  <form id="f" class="stack" novalidate>
+    <div>
+      <label class="field" for="ig">ユーザー名（任意）</label>
+      <div class="at"><span aria-hidden="true">@</span><input id="ig" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="31" placeholder="tamago_example"></div>
+      <p class="err" id="err" role="alert" hidden></p>
+    </div>
+    <button class="btn btn-pri" type="submit" id="go">登録して次へ</button>
+    <button class="btn btn-ter" type="button" id="skip">あとで入れる</button>
+  </form>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+async function send(body) {
+  $('err').hidden = true; $('go').disabled = $('skip').disabled = true;
+  try {
+    await api('/api/me/instagram', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    location.href = '/agree';
+  } catch (e) { $('err').textContent = e.message; $('err').hidden = false; $('go').disabled = $('skip').disabled = false; }
+}
+$('f').addEventListener('submit', ev => {
+  ev.preventDefault();
+  const v = $('ig').value.trim();
+  if (!v) { $('err').textContent = 'ユーザー名を入れるか、「あとで入れる」を押してください'; $('err').hidden = false; return; }
+  send({ username: v });
+});
+$('skip').addEventListener('click', () => send({ skip: true }));
+</script>
+</body></html>

@@ -1,0 +1,57 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>退会する｜顔モザイク</title>
+<link rel="stylesheet" href="/static/app.css">
+<style>
+fieldset{border:0;margin:0 0 16px;padding:0;min-width:0}
+legend{font-weight:700;margin:0 0 8px;padding:0}
+.opt{display:flex;align-items:center;gap:12px;min-height:52px;padding:6px 12px;border:1.5px solid var(--line);border-radius:10px;margin:0 0 8px;cursor:pointer}
+.opt input{width:22px;height:22px;flex:none;accent-color:var(--pri)}
+.opt:has(input:checked){border-color:var(--pri);background:#EEF5FD;font-weight:600}
+textarea{width:100%;min-height:96px;border:1.5px solid var(--line);border-radius:var(--radius);padding:12px 16px;font:inherit;color:var(--fg);resize:vertical}
+.keep{background:var(--surface);border-radius:var(--radius);padding:12px 16px;margin:16px 0}
+.acts{padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+[hidden]{display:none !important}
+</style>
+</head><body>
+<div class="bar"><a class="back" href="/settings" aria-label="設定に戻る">‹ 設定</a></div>
+<main class="wrap">
+  <h1>退会する</h1>
+  <form id="f" novalidate>
+    <fieldset>
+      <legend>退会の理由を1つ選んでください（必須）</legend>
+      <label class="opt"><input type="radio" name="r" value="unused">使わなくなった</label>
+      <label class="opt"><input type="radio" name="r" value="price">料金</label>
+      <label class="opt"><input type="radio" name="r" value="quality">画質</label>
+      <label class="opt"><input type="radio" name="r" value="slow">処理が遅い</label>
+      <label class="opt"><input type="radio" name="r" value="other_service">他のサービスにした</label>
+      <label class="opt"><input type="radio" name="r" value="other">その他</label>
+    </fieldset>
+    <label class="field" for="note">ほかに伝えたいこと（任意）</label>
+    <textarea id="note" maxlength="500"></textarea>
+    <p class="keep">有料プランは期間の終わりまで使えます。退会するとデータはすぐ消えます。</p>
+    <div class="stack acts">
+      <button class="btn btn-danger" type="submit" id="go" disabled>退会する</button>
+      <p class="note" id="hint">理由を選ぶと押せるようになります。</p>
+      <p class="err" id="err" role="alert" hidden></p>
+      <a class="btn btn-ter" href="/settings">やめて設定に戻る</a>
+    </div>
+  </form>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+$('f').addEventListener('change', () => { const on = !!document.querySelector('input[name=r]:checked'); $('go').disabled = !on; $('hint').hidden = on; });
+$('f').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const r = document.querySelector('input[name=r]:checked');
+  if (!r) return;
+  $('go').disabled = true; $('go').textContent = '退会しています…'; $('err').hidden = true;
+  try {
+    await api('/api/me/withdraw', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: r.value, note: $('note').value }) });
+    location.replace('/withdrawn');
+  } catch (e) { $('err').textContent = e.message; $('err').hidden = false; $('go').disabled = false; $('go').textContent = '退会する'; }
+});
+</script>
+</body></html>

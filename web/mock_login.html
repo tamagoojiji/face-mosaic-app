@@ -1,0 +1,24 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>開発用ログイン｜顔モザイク</title>
+<link rel="stylesheet" href="/static/app.css">
+</head><body>
+<main class="wrap">
+  <h1>開発用ログイン（LINE のかわり）</h1>
+  <p class="lead">LINE_MOCK=1 のときだけ出る画面です。LINE から返ってくる userId と表示名を手で入れます。</p>
+  <form method="post" action="/auth/line/mock" class="stack">
+    <div>
+      <label class="field" for="uid">userId</label>
+      <input id="uid" name="user_id" type="text" autocomplete="off" required placeholder="U0123456789abcdef">
+      <p class="err" id="e" hidden>userId は半角の英数字・ハイフン・アンダーバーで入れてください</p>
+    </div>
+    <div>
+      <label class="field" for="nm">表示名</label>
+      <input id="nm" name="name" type="text" autocomplete="off" placeholder="テスト利用者">
+    </div>
+    <button class="btn btn-pri" type="submit">この userId でログインする</button>
+  </form>
+</main>
+<script>if(new URLSearchParams(location.search).get('e'))document.getElementById('e').hidden=false</script>
+</body></html>

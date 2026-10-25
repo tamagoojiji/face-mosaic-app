@@ -1,0 +1,22 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>顔モザイク</title>
+<link rel="stylesheet" href="/static/app.css">
+</head><body>
+<main class="wrap">
+  <h1>らくちんモザイク処理。ワンタップで解決</h1>
+  <p class="lead">動画や写真の観客の顔に、自動でモザイクをかけます。残したい人をタップ。あとは自動。</p>
+  <a class="btn btn-pri" href="/auth/line/start">LINEでログインする</a>
+  <p class="err" id="e" role="alert" hidden></p>
+  <p class="note">ログインには LINE のアカウントを使います。送った動画・写真は24時間、完成したものは30日で自動で消えます。</p>
+</main>
+<script>
+const e = new URLSearchParams(location.search).get('e'), el = document.getElementById('e');
+if (e) {
+  el.textContent = e === 'stopped' ? 'このアカウントはいま使えません。運営にお問い合わせください'
+    : 'LINE でのログインができませんでした。もう一度「LINEでログインする」を押してください';
+  el.hidden = false;
+}
+</script>
+</body></html>
