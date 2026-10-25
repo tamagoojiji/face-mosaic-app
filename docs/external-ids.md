@@ -24,3 +24,8 @@
 | カスタマーポータル（既定設定） | `bpc_1UOY5bCK9wiENSxseyvgtp1V` | キャンセル許可=ON。プラン切替=OFF（未設定・要対応） |
 
 本番モードには何も作っていない。本番移行時は同じ構成を本番側で作り直し、ID を差し替える。
+
+## Messaging API チャネル（2026-10-25 本人が LINE Official Account Manager で作成）
+- Channel ID: 2012194665
+- ベーシックID: @606cuvoe
+- Webhook URL 登録済み・「Webhookの利用」はオフ（受け口は未実装）

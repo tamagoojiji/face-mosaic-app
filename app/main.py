@@ -909,8 +909,9 @@ def video_result(request: Request, job_id: str, dl: int = 0):
 # ---------------------------------------------------------------- 利用者（設定・プラン・退会）
 
 IG_RE = re.compile(r"^[A-Za-z0-9._]{1,30}$")
-WITHDRAW_REASONS = {"unused": "使わなくなった", "price": "料金", "quality": "画質", "slow": "処理が遅い",
-                    "other_service": "他のサービスにした", "other": "その他"}
+WITHDRAW_REASONS = {"unused": "使う場面がなくなりました", "price": "料金が使い方に合いませんでした",
+                    "quality": "仕上がりの画質に満足できませんでした", "slow": "処理に時間がかかりすぎました",
+                    "other_service": "ほかのサービスを使うことにしました", "other": "その他"}
 
 
 def _me(u):
