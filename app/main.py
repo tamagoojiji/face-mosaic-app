@@ -1,4 +1,4 @@
-"""顔モザイク Web版 試験版（写真1枚モード・動画モード・合言葉認証）。"""
+"""顔モザイク Web版 試験版（写真1枚モード・動画モード・合言葉／LINE ログイン・プランと上限）。"""
 
 import asyncio
 import hmac
@@ -8,9 +8,12 @@ import os
 import re
 import secrets
 import shutil
+import sqlite3
 import statistics
 import threading
 import time
+import urllib.parse
+import urllib.request
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -23,6 +26,7 @@ from worker.engine import video as vengine
 from worker.run import paths as vpaths
 
 from . import config, db
+from .services import billing, discord, monitor, quota, retention
 
 log = logging.getLogger("uvicorn.error")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -35,31 +39,30 @@ def job_dir(job_id):
     return os.path.join(config.DATA_DIR, "jobs", job_id)
 
 
-def cleanup_expired():
-    n = 0
-    for j in db.expired_jobs(time.time()):
-        shutil.rmtree(job_dir(j["id"]), ignore_errors=True)
-        db.drop_parts(j["id"])
-        db.update_job(j["id"], status="deleted", src_path=None, out_path=None)
-        n += 1
-    if n:
-        log.info("retention: %d 件を削除", n)
+PERIODIC = (retention.cleanup_expired, retention.notify_idle, monitor.check_worker, monitor.check_disk,
+            monitor.daily_summary)
 
 
 async def retention_loop():
     while True:
-        try:
-            await asyncio.to_thread(cleanup_expired)
-        except Exception as e:  # 定期処理は止めない
-            log.warning("retention 失敗: %s", e)
+        for fn in PERIODIC:
+            try:
+                await asyncio.to_thread(fn)
+            except Exception as e:  # 定期処理は止めない
+                log.warning("定期処理 %s 失敗: %s", fn.__name__, e)
         await asyncio.sleep(600)
 
 
 @asynccontextmanager
 async def lifespan(_app):
     db.init()
-    if not config.APP_PASSCODE or not config.SESSION_SECRET:
-        log.warning("APP_PASSCODE または SESSION_SECRET が未設定のため、合言葉で入れません")
+    if config.AUTH_MODE_REQUESTED == "line" and config.AUTH_MODE != "line":
+        log.warning("AUTH_MODE=line ですが LINE_LOGIN_CHANNEL_ID / LINE_LOGIN_CHANNEL_SECRET が未設定のため、合言葉（passcode）で動きます")
+    log.info("認証モード: %s%s", config.AUTH_MODE, "（LINE_MOCK）" if config.AUTH_MODE == "line" and config.LINE_MOCK else "")
+    if not config.SESSION_SECRET:
+        log.warning("SESSION_SECRET が未設定のため、ログインできません")
+    elif config.AUTH_MODE == "passcode" and not config.APP_PASSCODE:
+        log.warning("APP_PASSCODE が未設定のため、合言葉で入れません")
     task = asyncio.create_task(retention_loop())
     yield
     task.cancel()
@@ -75,15 +78,46 @@ def _serializer():
     return URLSafeTimedSerializer(config.SESSION_SECRET, salt="fm-session")
 
 
-def authed(request: Request) -> bool:
+def _session(request):
     token = request.cookies.get(config.COOKIE_NAME)
     if not token or not config.SESSION_SECRET:
-        return False
+        return None
     try:
-        _serializer().loads(token, max_age=config.SESSION_DAYS * 86400)
-        return True
+        return _serializer().loads(token, max_age=config.SESSION_DAYS * 86400)
     except BadSignature:
-        return False
+        return None
+
+
+def _device_user(owner):
+    """passcode モード: 端末 Cookie ごとに1人（ゲスト・試験中は動画B相当）。"""
+    u = db.user_by("device_id", owner)
+    if u:
+        return u
+    try:
+        u = db.create_user(device_id=owner, display_name="ゲスト", plan=db.PASSCODE_PLAN)
+    except sqlite3.IntegrityError:
+        return db.user_by("device_id", owner)
+    discord.usage(f"新規登録（合言葉）: {discord.who(u)}")
+    return u
+
+
+def current_user(request: Request):
+    if hasattr(request.state, "user"):
+        return request.state.user
+    u, s = None, _session(request)
+    if isinstance(s, dict):
+        if config.AUTH_MODE == "line" and s.get("uid"):
+            u = db.get_user(s["uid"])
+        elif config.AUTH_MODE == "passcode" and "t" in s and getattr(request.state, "owner", None):
+            u = _device_user(request.state.owner)
+    if u and u["status"] != "active":
+        u = None
+    request.state.user = u
+    return u
+
+
+def authed(request: Request) -> bool:
+    return current_user(request) is not None
 
 
 def _owner_serializer():
@@ -113,8 +147,16 @@ async def owner_cookie(request: Request, call_next):
 
 
 def require_api(request: Request):
-    if not authed(request):
-        raise HTTPException(401, "合言葉を入れ直してください")
+    u = current_user(request)
+    if not u:
+        raise HTTPException(401, "ログインし直してください" if config.AUTH_MODE == "line" else "合言葉を入れ直してください")
+    return u
+
+
+def _set_session(request, res, payload):
+    res.set_cookie(config.COOKIE_NAME, _serializer().dumps(payload),
+                   max_age=config.SESSION_DAYS * 86400, httponly=True, samesite="lax",
+                   secure=request.url.scheme == "https", path="/")
 
 
 def page(name):
@@ -126,31 +168,188 @@ def health():
     return PlainTextResponse("ok")
 
 
+@app.exception_handler(Exception)
+async def on_error(request: Request, exc: Exception):
+    discord.alert(f"アプリのエラー {request.method} {request.url.path}: {type(exc).__name__}: {str(exc)[:300]}")
+    return JSONResponse({"detail": "サーバーでエラーが起きました。時間をおいてもう一度お試しください"}, status_code=500)
+
+
 @app.api_route("/", methods=["GET", "HEAD"])
 def entrance(request: Request):
     if authed(request):
         return RedirectResponse("/home", status_code=302)
-    return page("index.html")
+    return page("login.html" if config.AUTH_MODE == "line" else "index.html")
 
 
 @app.post("/login")
 async def login(request: Request, passcode: str = Form("")):
+    if config.AUTH_MODE != "passcode":
+        raise HTTPException(404, "見つかりません")
     ok = bool(config.APP_PASSCODE and config.SESSION_SECRET) and hmac.compare_digest(
         passcode.strip().encode(), config.APP_PASSCODE.encode())
     if not ok:
         await asyncio.sleep(1.0)  # 総当たりを遅くする
         return RedirectResponse("/?e=1", status_code=303)
     res = RedirectResponse("/home", status_code=303)
-    res.set_cookie(config.COOKIE_NAME, _serializer().dumps({"t": int(time.time())}),
-                   max_age=config.SESSION_DAYS * 86400, httponly=True, samesite="lax",
-                   secure=request.url.scheme == "https", path="/")
+    _set_session(request, res, {"t": int(time.time())})
     return res
 
 
-def _guarded(request, name):
-    if not authed(request):
+# ---------------------------------------------------------------- LINE ログイン（Web・OpenID Connect）
+
+LINE_AUTH_URL = "https://access.line.me/oauth2/v2.1/authorize"
+LINE_TOKEN_URL = "https://api.line.me/oauth2/v2.1/token"
+LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify"
+STATE_COOKIE = "fm_line_state"
+LINE_UID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def _state_serializer():
+    return URLSafeTimedSerializer(config.SESSION_SECRET, salt="fm-line-state")
+
+
+def _redirect_uri(request):
+    return (config.APP_BASE_URL or str(request.base_url).rstrip("/")) + "/auth/line/callback"
+
+
+def _require_line(mock=None):
+    if config.AUTH_MODE != "line" or (mock is not None and config.LINE_MOCK != mock):
+        raise HTTPException(404, "見つかりません")
+
+
+def _form_post(url, fields):
+    req = urllib.request.Request(url, data=urllib.parse.urlencode(fields).encode(), method="POST",
+                                 headers={"Content-Type": "application/x-www-form-urlencoded"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return json.load(r)
+
+
+def _line_exchange(code, nonce, redirect_uri):
+    """認可コード → ID トークン → 検証。返すのは userId と表示名だけ（アクセストークンは保存しない）。"""
+    tok = _form_post(LINE_TOKEN_URL, {"grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri,
+                                      "client_id": config.LINE_LOGIN_CHANNEL_ID,
+                                      "client_secret": config.LINE_LOGIN_CHANNEL_SECRET})
+    v = _form_post(LINE_VERIFY_URL, {"id_token": tok["id_token"], "client_id": config.LINE_LOGIN_CHANNEL_ID,
+                                     "nonce": nonce})
+    return v["sub"], v.get("name") or "LINEユーザー"
+
+
+def _login_line_user(request, line_user_id, name):
+    u = db.user_by("line_user_id", line_user_id)
+    if not u:
+        try:
+            u = db.create_user(line_user_id=line_user_id, display_name=name)
+            discord.usage(f"新規登録: {discord.who(u)}")
+        except sqlite3.IntegrityError:
+            u = db.user_by("line_user_id", line_user_id)
+    elif u["status"] == "withdrawn":  # 退会後の再登録: 初回と同じ流れからやり直す
+        db.update_user(u["id"], status="active", display_name=name, plan="free", notify=1, ig_asked_at=None,
+                       agreed_at=None)
+        u = db.get_user(u["id"])
+        discord.usage(f"新規登録（退会後の再登録）: {discord.who(u)}")
+    elif u["status"] != "active":
+        return RedirectResponse("/?e=stopped", status_code=303)
+    elif name and name != u["display_name"]:
+        db.update_user(u["id"], display_name=name)
+    res = RedirectResponse("/home", status_code=303)
+    _set_session(request, res, {"uid": u["id"]})
+    log.info("login line user=%s", u["id"])
+    return res
+
+
+@app.get("/auth/line/start")
+def line_start(request: Request):
+    _require_line()
+    if config.LINE_MOCK:
+        return RedirectResponse("/auth/line/mock", status_code=302)
+    state, nonce = secrets.token_urlsafe(16), secrets.token_urlsafe(16)
+    q = urllib.parse.urlencode({"response_type": "code", "client_id": config.LINE_LOGIN_CHANNEL_ID,
+                                "redirect_uri": _redirect_uri(request), "state": state,
+                                "scope": "profile openid", "nonce": nonce})
+    res = RedirectResponse(LINE_AUTH_URL + "?" + q, status_code=302)
+    res.set_cookie(STATE_COOKIE, _state_serializer().dumps({"s": state, "n": nonce}), max_age=600, httponly=True,
+                   samesite="lax", secure=request.url.scheme == "https", path="/auth/line")
+    return res
+
+
+@app.get("/auth/line/callback")
+async def line_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+    _require_line(mock=False)
+    try:
+        st = _state_serializer().loads(request.cookies.get(STATE_COOKIE, ""), max_age=600)
+    except BadSignature:
+        st = None
+    if error or not code or not st or not hmac.compare_digest(str(st.get("s", "")), state):
+        return RedirectResponse("/?e=line", status_code=303)
+    try:
+        sub, name = await asyncio.to_thread(_line_exchange, code, st["n"], _redirect_uri(request))
+    except Exception as e:
+        log.warning("LINE ログイン失敗: %s", type(e).__name__)
+        return RedirectResponse("/?e=line", status_code=303)
+    res = _login_line_user(request, sub, name)
+    res.delete_cookie(STATE_COOKIE, path="/auth/line")
+    return res
+
+
+@app.get("/auth/line/mock")
+def line_mock_page(request: Request):
+    _require_line(mock=True)
+    return page("mock_login.html")
+
+
+@app.post("/auth/line/mock")
+def line_mock_login(request: Request, user_id: str = Form(""), name: str = Form("")):
+    _require_line(mock=True)
+    user_id = user_id.strip()
+    if not LINE_UID_RE.match(user_id):
+        return RedirectResponse("/auth/line/mock?e=1", status_code=303)
+    return _login_line_user(request, user_id, name.strip()[:40] or "テスト利用者")
+
+
+def _guarded(request, name, onboarding=True):
+    u = current_user(request)
+    if not u:
         return RedirectResponse("/", status_code=302)
+    if config.AUTH_MODE == "line" and onboarding:  # 初回: Instagram 名（任意）→ 同意 → ホーム
+        if not u["ig_asked_at"]:
+            return RedirectResponse("/welcome", status_code=302)
+        if not u["agreed_at"]:
+            return RedirectResponse("/agree", status_code=302)
     return page(name)
+
+
+@app.get("/welcome")
+def welcome_page(request: Request):
+    if config.AUTH_MODE != "line":
+        return RedirectResponse("/settings", status_code=302)
+    return _guarded(request, "welcome.html", onboarding=False)
+
+
+@app.get("/agree")
+def agree_page(request: Request):
+    if config.AUTH_MODE != "line":
+        return RedirectResponse("/home", status_code=302)
+    return _guarded(request, "agree.html", onboarding=False)
+
+
+@app.get("/plans")
+def plans_page(request: Request):
+    return _guarded(request, "plans.html")
+
+
+@app.get("/settings")
+def settings_page(request: Request):
+    return _guarded(request, "settings.html")
+
+
+@app.get("/withdraw")
+def withdraw_page(request: Request):
+    return _guarded(request, "withdraw.html")
+
+
+@app.get("/withdrawn")
+def withdrawn_page():
+    return page("withdrawn.html")
 
 
 @app.get("/home")
@@ -196,8 +395,13 @@ def _load(request, job_id):
     if not JOB_ID_RE.match(job_id):
         raise HTTPException(404, "見つかりません")
     j = db.get_job(job_id)
-    owner = getattr(request.state, "owner", None)
-    if not j or (j["owner"] is not None and j["owner"] != owner):  # 他の端末の写真は存在しない扱い（owner 列追加前の旧行は期限まで従来どおり）
+    u = current_user(request)
+    if not j or not u:
+        raise HTTPException(404, "見つかりません")
+    if j["user_id"] is None:  # 持ち主が記録される前の旧行は passcode モードだけ期限まで従来どおり
+        if config.AUTH_MODE != "passcode":
+            raise HTTPException(404, "見つかりません")
+    elif j["user_id"] != u["id"]:  # 他の人のものは存在しない扱い
         raise HTTPException(404, "見つかりません")
     return j
 
@@ -210,15 +414,34 @@ def _faces(job_id):
         return json.load(f)
 
 
+def _eff_status(j, now):
+    """期限を過ぎたものは、削除処理（10分おき）を待たずに削除済みとして扱う。"""
+    st = j["status"]
+    if st == "done":
+        return "deleted" if j["out_expires_at"] is not None and j["out_expires_at"] <= now else st
+    if st not in ("deleted", "queued_export", "exporting") and j["expires_at"] is not None and j["expires_at"] <= now:
+        return "deleted"
+    return st
+
+
+def _keep_fields(j, st, now, source_exists):
+    """完成後の2段の期限: 選び直し（元データがある間）と保存（完成品）。"""
+    can = st == "done" and j["src_expires_at"] is not None and j["src_expires_at"] > now and source_exists
+    return {"can_repick": can, "src_expires_at": j["src_expires_at"] if can else None,
+            "out_expires_at": j["out_expires_at"] if st == "done" else None}
+
+
 def _public(j, with_faces=False):
     if j["kind"] == "video":
         return _public_video(j, detail=with_faces)
-    expired = j["status"] != "deleted" and j["expires_at"] is not None and j["expires_at"] <= time.time()
-    d = {"id": j["id"], "status": "deleted" if expired else j["status"], "width": j["width"], "height": j["height"],
+    now = time.time()
+    st = _eff_status(j, now)
+    d = {"id": j["id"], "status": st, "width": j["width"], "height": j["height"],
          "style": j["mosaic_style"] or "pixel", "keep": json.loads(j["keep"] or "[]"),
          "blur": json.loads(j["blur"] or "[]"), "error": j["error"],
-         "expires_at": j["expires_at"], "created_at": j["created_at"], "now": time.time(),
-         "has_out": not expired and bool(j["out_path"] and os.path.exists(j["out_path"]))}
+         "expires_at": j["expires_at"], "created_at": j["created_at"], "now": now,
+         "has_out": st == "done" and bool(j["out_path"] and os.path.exists(j["out_path"]))}
+    d.update(_keep_fields(j, st, now, bool(j["src_path"] and os.path.exists(j["src_path"]))))
     if with_faces:
         d["faces"] = _faces(j["id"])
         d["min_conf"] = photo.MIN_CONF
@@ -230,8 +453,8 @@ NO_STORE = {"Cache-Control": "no-store"}
 
 @app.get("/api/jobs")
 def list_jobs(request: Request):
-    require_api(request)
-    return JSONResponse([_public(j) for j in db.recent_jobs(request.state.owner)],
+    u = require_api(request)
+    return JSONResponse([_public(j) for j in db.recent_jobs(u["id"], include_legacy=config.AUTH_MODE == "passcode")],
                         headers=NO_STORE)
 
 
@@ -243,9 +466,10 @@ def get_job(request: Request, job_id: str):
 
 @app.post("/api/photos")
 def upload_photo(request: Request, file: UploadFile = File(...)):
-    require_api(request)
-    if not request.state.owner:
-        raise HTTPException(401, "合言葉を入れ直してください")
+    u = require_api(request)
+    msg = quota.check_image(u)
+    if msg:
+        raise HTTPException(402, msg)
     job_id = secrets.token_urlsafe(9)
     d = job_dir(job_id)
     os.makedirs(d, exist_ok=True)
@@ -277,10 +501,10 @@ def upload_photo(request: Request, file: UploadFile = File(...)):
         json.dump(r["faces"], f)
     if r["warn"]:
         log.warning("detect: %s", r["warn"])
-    db.insert_job(job_id, kind="image", status="awaiting_pick", src_path=src, bytes=size,
-                  owner=request.state.owner,
+    db.insert_job(job_id, kind="image", status="awaiting_pick", src_path=src, bytes=size, user_id=u["id"],
                   width=r["width"], height=r["height"], mosaic_style="pixel",
-                  expires_at=time.time() + config.RETENTION_HOURS * 3600)
+                  expires_at=time.time() + config.SOURCE_RETENTION_HOURS * 3600)
+    quota.count_image(u["id"])
     log.info("photo %s %dx%d 候補 %d 件 %.2fs", job_id, r["width"], r["height"],
              len(r["faces"]), r["sec"])
     return JSONResponse(_public(db.get_job(job_id), with_faces=True), headers=NO_STORE)
@@ -302,7 +526,7 @@ async def export_job(request: Request, job_id: str):
     j = _load(request, job_id)
     if j["kind"] != "image":
         raise HTTPException(404, "見つかりません")
-    if j["status"] not in ("awaiting_pick", "done") or not j["src_path"] \
+    if _eff_status(j, time.time()) not in ("awaiting_pick", "done") or not j["src_path"] \
             or not os.path.exists(j["src_path"]):
         raise HTTPException(410, "元の写真が削除されています。もう一度送ってください")
     try:
@@ -325,10 +549,12 @@ async def export_job(request: Request, job_id: str):
         log.warning("export 失敗 %s: %s", job_id, e)
         db.update_job(job_id, status="awaiting_pick", error="書き出しに失敗しました")
         raise HTTPException(500, "書き出しに失敗しました。もう一度お試しください")
+    now = time.time()
     db.update_job(job_id, status="done", out_path=out, mosaic_style=style,
                   keep=json.dumps(r["keep"]), blur=json.dumps(r["blur"]),
-                  t_export_sec=r["sec"], error=None,
-                  expires_at=time.time() + config.RETENTION_HOURS * 3600)
+                  t_export_sec=r["sec"], error=None, expires_at=None,
+                  src_expires_at=j["src_expires_at"] or now + config.SOURCE_RETENTION_HOURS * 3600,
+                  out_expires_at=now + config.OUTPUT_RETENTION_DAYS * 86400)
     log.info("export %s %s モザイク %d・かけない %d %.2fs", job_id, style, len(r["blur"]),
              len(r["keep"]), r["sec"])
     return JSONResponse(_public(db.get_job(job_id)), headers=NO_STORE)
@@ -338,8 +564,7 @@ async def export_job(request: Request, job_id: str):
 def result_image(request: Request, job_id: str, dl: int = 0):
     require_api(request)
     j = _load(request, job_id)
-    if not j["out_path"] or not os.path.exists(j["out_path"]) \
-            or (j["expires_at"] or 0) <= time.time():
+    if not j["out_path"] or not os.path.exists(j["out_path"]) or _eff_status(j, time.time()) == "deleted":
         raise HTTPException(410, "削除済みです")
     name = time.strftime("mosaic_%Y%m%d_%H%M.jpg", time.localtime(j["updated_at"]))
     headers = dict(NO_STORE)
@@ -405,9 +630,7 @@ def _read_json(path, default=None):
 
 def _public_video(j, detail=False):
     now = time.time()
-    st = j["status"]
-    if st != "deleted" and j["expires_at"] is not None and j["expires_at"] <= now:
-        st = "deleted"
+    st = _eff_status(j, now)
     p = vpaths(j["id"])
     d = {"id": j["id"], "kind": "video", "status": st, "duration_sec": j["duration_sec"],
          "width": j["width"], "height": j["height"], "style": j["mosaic_style"] or "pixel",
@@ -417,6 +640,7 @@ def _public_video(j, detail=False):
          "has_thumb": st != "deleted" and os.path.exists(os.path.join(p["shots"], "shot0.jpg")),
          "idle_warn": st in ("awaiting_pick", "awaiting_review") and j["expires_at"] is not None
          and j["expires_at"] - now <= (config.IDLE_DELETE_HOURS - config.IDLE_WARN_HOURS) * 3600}
+    d.update(_keep_fields(j, st, now, os.path.exists(p["v1080"])))
     if st in VIDEO_BUSY:
         rates = _rates()
         ahead = db.queue_before(j) if st in db.QUEUED else []
@@ -439,7 +663,7 @@ def _video(request, job_id, statuses=None):
     j = _load(request, job_id)
     if j["kind"] != "video":
         raise HTTPException(404, "見つかりません")
-    if j["status"] != "deleted" and j["expires_at"] is not None and j["expires_at"] <= time.time():
+    if j["status"] != "deleted" and _eff_status(j, time.time()) == "deleted":
         raise HTTPException(410, "時間がたったので動画を削除しました。もう一度送ってください")
     if statuses and j["status"] not in statuses:
         raise HTTPException(409, "この動画はいまこの操作ができません。画面を読み込み直してください")
@@ -456,18 +680,14 @@ async def _json_body(request):
         raise HTTPException(400, "送信内容が正しくありません")
 
 
-def _mmss(sec):
-    sec = int(round(sec))
-    if sec < 60:
-        return f"{sec}秒"
-    return f"{sec // 60}分{sec % 60}秒" if sec % 60 else f"{sec // 60}分"
-
-
 @app.get("/api/config")
 def api_config(request: Request):
-    require_api(request)
-    return JSONResponse({"max_video_sec": config.MAX_VIDEO_SEC, "max_video_bytes": config.MAX_VIDEO_BYTES,
-                         "part_size": config.PART_SIZE}, headers=NO_STORE)
+    u = require_api(request)
+    lim = quota.limits(u)
+    return JSONResponse({"max_video_sec": lim["video_len"], "max_video_bytes": config.MAX_VIDEO_BYTES,
+                         "part_size": config.PART_SIZE, "plan_label": lim["label"],
+                         "video_block": quota.check_video(u, 0), "image_block": quota.check_image(u)},
+                        headers=NO_STORE)
 
 
 def _upload_info(j):
@@ -479,9 +699,7 @@ def _upload_info(j):
 
 @app.post("/api/uploads")
 async def create_upload(request: Request):
-    require_api(request)
-    if not request.state.owner:
-        raise HTTPException(401, "合言葉を入れ直してください")
+    u = require_api(request)
     b = await _json_body(request)
     try:
         size, dur = int(b.get("bytes") or 0), float(b.get("duration") or 0)
@@ -491,12 +709,13 @@ async def create_upload(request: Request):
         raise HTTPException(400, "動画を選び直してください")
     if size > config.MAX_VIDEO_BYTES:
         raise HTTPException(413, f"この動画は {size / 1048576:.0f}MB です。試験版は1GBまでです")
-    if dur > config.MAX_VIDEO_SEC + 0.5:
-        raise HTTPException(400, f"この動画は {_mmss(dur)} です。試験版は{_mmss(config.MAX_VIDEO_SEC)}までです")
+    msg = quota.check_video(u, dur)
+    if msg:
+        raise HTTPException(402, msg)
     job_id = secrets.token_urlsafe(9)
     os.makedirs(os.path.join(job_dir(job_id), "parts"), exist_ok=True)
     db.insert_job(job_id, kind="video", status="uploading", bytes=size, duration_sec=dur or None,
-                  owner=request.state.owner, mosaic_style="pixel",
+                  user_id=u["id"], mosaic_style="pixel",
                   expires_at=time.time() + config.UPLOAD_KEEP_HOURS * 3600)
     log.info("upload 開始 %s %.1fMB %.1fs", job_id, size / 1048576, dur)
     return JSONResponse(_upload_info(db.get_job(job_id)), headers=NO_STORE)
@@ -539,7 +758,7 @@ async def put_part(request: Request, job_id: str, n: int):
 
 @app.post("/api/uploads/{job_id}/complete")
 async def complete_upload(request: Request, job_id: str):
-    require_api(request)
+    u = require_api(request)
     j = _video(request, job_id, ("uploading",))
     info = _upload_info(j)
     missing = [n for n in range(info["parts"]) if n not in set(info["received"])]
@@ -560,12 +779,12 @@ async def complete_upload(request: Request, job_id: str):
         shutil.rmtree(os.path.join(d, "parts"), ignore_errors=True)
         return vengine.probe(src)
 
-    def reject(msg, e=None):
+    def reject(msg, e=None, code=400):
         log.warning("upload 不可 %s: %s %s", job_id, msg, e or "")
         shutil.rmtree(d, ignore_errors=True)
         db.drop_parts(job_id)
         db.update_job(job_id, status="failed", error=msg, src_path=None, expires_at=None)
-        raise HTTPException(400, msg)
+        raise HTTPException(code, msg)
 
     try:
         try:
@@ -574,11 +793,14 @@ async def complete_upload(request: Request, job_id: str):
             reject("動画として読み込めませんでした。iPhone のカメラで撮った動画を選んでください", e)
         if os.path.getsize(src) != info["bytes"]:
             reject("受け取った大きさが合いませんでした。もう一度送ってください")
-        if v["duration"] > config.MAX_VIDEO_SEC + 0.5:
-            reject(f"この動画は {_mmss(v['duration'])} です。試験版は{_mmss(config.MAX_VIDEO_SEC)}までです")
+        msg = quota.check_video(u, v["duration"])
+        if msg:
+            reject(msg, code=402)
         db.drop_parts(job_id)
         db.update_job(job_id, status="queued", src_path=src, duration_sec=round(v["duration"], 2),
-                      width=v["out_width"], height=v["out_height"], fps=v["fps"], expires_at=None)
+                      width=v["out_width"], height=v["out_height"], fps=v["fps"], expires_at=None,
+                      queued_at=time.time())
+        quota.count_video(db.get_job(job_id), v["duration"])
     finally:
         COMPLETING.discard(job_id)
     log.info("upload 完了 %s %dx%d %.1fs %.2ffps", job_id, v["out_width"], v["out_height"], v["duration"], v["fps"])
@@ -612,7 +834,8 @@ async def video_picks(request: Request, job_id: str):
     with open(os.path.join(p["dir"], "review.json"), "w", encoding="utf-8") as f:
         json.dump(rv, f)
     db.update_job(job_id, status="awaiting_review", picks=json.dumps(picks), keep=json.dumps(sorted(keep)),
-                  blur=json.dumps(sorted(blur)), expires_at=time.time() + config.IDLE_DELETE_HOURS * 3600)
+                  blur=json.dumps(sorted(blur)), expires_at=time.time() + config.IDLE_DELETE_HOURS * 3600,
+                  idle_notified=0)
     log.info("picks %s 選択 %d → keep %d blur %d（確認に出す モザイク %d・かけない %d）", job_id, len(picks),
              len(keep), len(blur), len(lists["blur"]), len(lists["keep"]))
     return JSONResponse(_public(db.get_job(job_id), with_faces=True), headers=NO_STORE)
@@ -675,3 +898,94 @@ def video_result(request: Request, job_id: str, dl: int = 0):
         name = time.strftime("mosaic_%Y%m%d_%H%M.mp4", time.localtime(j["updated_at"]))
         headers["Content-Disposition"] = f'attachment; filename="{name}"'
     return FileResponse(j["out_path"], media_type="video/mp4", headers=headers)
+
+
+# ---------------------------------------------------------------- 利用者（設定・プラン・退会）
+
+IG_RE = re.compile(r"^[A-Za-z0-9._]{1,30}$")
+WITHDRAW_REASONS = {"unused": "使わなくなった", "price": "料金", "quality": "画質", "slow": "処理が遅い",
+                    "other_service": "他のサービスにした", "other": "その他"}
+
+
+def _me(u):
+    st = quota.status(u)
+    lim = st["limits"]
+    return {"id": u["id"], "display_name": u["display_name"], "instagram_username": u["instagram_username"],
+            "notify": bool(u["notify"]), "auth_mode": config.AUTH_MODE, "plan": lim["plan"], "plan_label": lim["label"],
+            "campaign": lim["campaign"], "video_allowed": lim["video_allowed"], "video_len": lim["video_len"],
+            "limits": {"images": lim["images"], "video_sec_month": lim["video_sec_month"],
+                       "video_count_month": lim["video_count_month"]},
+            "usage": {"images": st["usage"]["image_count"], "videos": st["usage"]["video_count"],
+                      "video_sec": st["usage"]["video_seconds_used"]},
+            "remaining": st["remaining"], "source_hours": config.SOURCE_RETENTION_HOURS,
+            "output_days": config.OUTPUT_RETENTION_DAYS}
+
+
+@app.get("/api/me")
+def api_me(request: Request):
+    return JSONResponse(_me(require_api(request)), headers=NO_STORE)
+
+
+@app.get("/api/plans")
+def api_plans(request: Request):
+    u = require_api(request)
+    plans = [dict(quota.PLANS[k], key=k) for k in quota.PAID]
+    return JSONResponse({"me": _me(u), "plans": plans}, headers=NO_STORE)
+
+
+@app.post("/api/me/instagram")
+async def api_instagram(request: Request):
+    """Instagram のユーザー名（任意）。skip=true は初回の「あとで」。空文字は登録を消す。"""
+    u = require_api(request)
+    b = await _json_body(request)
+    fields = {"ig_asked_at": u["ig_asked_at"] or time.time()}
+    if not b.get("skip"):
+        name = str(b.get("username") or "").strip().lstrip("@")
+        if name and not IG_RE.match(name):
+            raise HTTPException(400, "ユーザー名は半角の英数字・ピリオド・アンダーバー（30文字まで）で入れてください")
+        fields["instagram_username"] = name or None
+    db.update_user(u["id"], **fields)
+    new = fields.get("instagram_username")
+    if new and new != u["instagram_username"]:
+        discord.usage(f"Instagram名の登録: {discord.who(db.get_user(u['id']))}")
+    return JSONResponse(_me(db.get_user(u["id"])), headers=NO_STORE)
+
+
+@app.post("/api/me/agree")
+def api_agree(request: Request):
+    u = require_api(request)
+    if not u["agreed_at"]:
+        db.update_user(u["id"], agreed_at=time.time())
+    return JSONResponse({"ok": True}, headers=NO_STORE)
+
+
+@app.post("/api/me/notify")
+async def api_notify(request: Request):
+    u = require_api(request)
+    b = await _json_body(request)
+    db.update_user(u["id"], notify=1 if b.get("on") else 0)
+    return JSONResponse(_me(db.get_user(u["id"])), headers=NO_STORE)
+
+
+@app.post("/api/me/withdraw")
+async def api_withdraw(request: Request):
+    """退会: 購読の解約（③b）→ 完成品・履歴・Instagram 名を即削除 → users は withdrawn（理由だけ残す）。"""
+    u = require_api(request)
+    b = await _json_body(request)
+    reason = b.get("reason")
+    if reason not in WITHDRAW_REASONS:
+        raise HTTPException(400, "退会の理由を1つ選んでください")
+    note = str(b.get("note") or "").strip()[:500]
+    billing.cancel_subscription(u)
+    for j in db.user_jobs(u["id"]):
+        shutil.rmtree(job_dir(j["id"]), ignore_errors=True)
+    n = db.delete_jobs_of(u["id"])
+    db.update_user(u["id"], status="withdrawn", instagram_username=None, notify=0, withdraw_reason=reason,
+                   withdraw_note=note or None, withdrawn_at=time.time())
+    discord.usage(f"退会: #{u['id']} {u['display_name'] or 'ゲスト'}（{config.AUTH_MODE}）\n理由: {WITHDRAW_REASONS[reason]}"
+                  + (f"\nひとこと: {note}" if note else ""))
+    log.info("withdraw user=%s reason=%s 削除 %d 件", u["id"], reason, n)
+    res = JSONResponse({"ok": True}, headers=NO_STORE)
+    res.delete_cookie(config.COOKIE_NAME, path="/")
+    res.delete_cookie(config.OWNER_COOKIE, path="/")
+    return res

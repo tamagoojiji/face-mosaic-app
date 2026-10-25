@@ -1,0 +1,64 @@
+"""LINE 通知4種（Messaging API の push）。DESIGN 3節「LINE通知の一覧」。
+
+送れないとき（LINE_MSG_* 未設定・line_user_id なし・通知 OFF）は送らずに notify(skip) を1行ログに出す。
+送れない人にも同じ内容がホームの一覧に出る（選択待ち・放置の警告・失敗の理由・完成）。
+"""
+
+import json
+import logging
+import urllib.request
+
+from .. import config, db
+
+log = logging.getLogger("uvicorn.error")
+PUSH_URL = "https://api.line.me/v2/bot/message/push"
+
+
+def _link(path):
+    if not config.APP_BASE_URL:
+        return ""
+    return f"\n{config.APP_BASE_URL}{path}?openExternalBrowser=1"
+
+
+def message(kind, job, reason=None):
+    jid = job["id"]
+    if kind == "ready":
+        return "選択の準備ができました。残したい顔をタップしてください。" + _link(f"/pick/{jid}")
+    if kind == "done":
+        return f"できました。{config.OUTPUT_RETENTION_DAYS:g}日間はいつでも保存できます。" + _link(f"/done/{jid}")
+    if kind == "idle":
+        page = "pick" if job["status"] == "awaiting_pick" else "review"
+        left = config.IDLE_DELETE_HOURS - config.IDLE_WARN_HOURS
+        return f"まだ選択が残っています。あと{left}時間で動画を削除します。" + _link(f"/{page}/{jid}")
+    if kind == "failed":
+        refunded = "消費した分数は戻しました。" if job.get("_refunded") else ""
+        return f"処理できませんでした（{reason or '理由不明'}）。{refunded}" + _link("/home")
+    raise ValueError(kind)
+
+
+def push(kind, job, reason=None):
+    """kind: ready（①選択の準備）| done（②できました）| failed（③処理できなかった）| idle（④1時間選択なし）"""
+    user = db.get_user(job.get("user_id"))
+    skip = None
+    if not config.LINE_MSG_CHANNEL_ACCESS_TOKEN:
+        skip = "LINE_MSG未設定"
+    elif not user or not user.get("line_user_id"):
+        skip = "line_user_idなし"
+    elif not user.get("notify"):
+        skip = "通知OFF"
+    elif user.get("status") != "active":
+        skip = "利用者が無効"
+    if skip:
+        log.info("notify(skip) kind=%s job=%s user=%s reason=%s", kind, job["id"], job.get("user_id"), skip)
+        return False
+    body = json.dumps({"to": user["line_user_id"],
+                       "messages": [{"type": "text", "text": message(kind, job, reason)}]}).encode()
+    req = urllib.request.Request(PUSH_URL, data=body, method="POST", headers={
+        "Content-Type": "application/json", "Authorization": "Bearer " + config.LINE_MSG_CHANNEL_ACCESS_TOKEN})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            log.info("notify(sent) kind=%s job=%s user=%s status=%s", kind, job["id"], user["id"], r.status)
+        return True
+    except Exception as e:  # 通知の失敗で処理は止めない（画面にも同じ内容が出る）
+        log.warning("notify 失敗 kind=%s job=%s: %s", kind, job["id"], type(e).__name__)
+        return False
