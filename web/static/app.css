@@ -88,6 +88,7 @@ label.field{display:block;font-weight:600;margin:0 0 var(--s2)}
 .seg label:has(input:checked){border-color:var(--pri);background:var(--pri-soft)}
 .seg label:has(input:checked)::before{border:5px solid var(--pri)}
 .seg label:has(input:focus-visible){outline:3px solid var(--focus);outline-offset:2px}
+@media (max-width:359px){.seg label{padding:var(--s2);gap:6px}.seg .m{font-size:14px;white-space:nowrap}}
 
 /* オン・オフのスイッチ（状態は色＋つまみの位置＋「オン／オフ」の文字） */
 .sw{position:relative;display:flex;align-items:center;gap:var(--s3);min-height:56px;cursor:pointer;font-weight:600}

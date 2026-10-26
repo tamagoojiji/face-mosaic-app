@@ -4,20 +4,20 @@
 <title>処理中｜顔モザイク</title>
 <link rel="stylesheet" href="/static/app.css">
 <style>
-.eta{display:flex;gap:12px;margin:0 0 16px}
-.eta div{flex:1;background:var(--surface);border-radius:var(--radius);padding:12px}
-.eta .k{font-size:13px;color:var(--sub)}
-.eta .v{font-size:20px;font-weight:700}
-.tl{list-style:none;margin:0 0 16px;padding:0}
-.tl li{position:relative;display:flex;align-items:center;gap:12px;min-height:44px;padding:4px 0;color:var(--sub)}
-.tl li::before{content:"";flex:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--line);background:#fff;box-sizing:border-box}
+.eta{display:flex;gap:var(--s3);margin:0 0 var(--s5)}
+.eta div{flex:1;background:var(--surface);border-radius:var(--radius);padding:var(--s3) var(--s4)}
+.eta .k{font-size:14px;color:var(--sub)}
+.eta .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tl{list-style:none;margin:0 0 var(--s4);padding:0}
+.tl li{position:relative;display:flex;align-items:center;gap:var(--s3);min-height:44px;padding:var(--s1) 0;color:var(--sub)}
+.tl li::before{content:"";flex:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--line-strong);background:var(--paper);box-sizing:border-box}
 .tl li.done{color:var(--fg)}
 .tl li.done::before{border-color:var(--pri);background:var(--pri)}
-.tl li.done::after{content:"✓";position:absolute;left:6px;color:#fff;font-size:13px;font-weight:700}
+.tl li.done::after{content:"✓";position:absolute;left:6px;color:var(--on-pri);font-size:13px;font-weight:700}
 .tl li.on{color:var(--fg);font-weight:700}
 .tl li.on::before{border:6px solid var(--pri)}
-.calm{background:#EEF5FD;border-radius:var(--radius);padding:12px;margin:0 0 16px}
-[hidden]{display:none !important}
+#calm{margin:0 0 var(--s4)}
+#acts{margin-top:var(--s5)}
 </style>
 </head><body>
 <div class="bar"><a class="back" href="/home" aria-label="ホームに戻る">‹ ホーム</a></div>
@@ -30,7 +30,7 @@
     <div><div class="k">完了の目安</div><div class="v" id="left">—</div></div>
   </div>
   <ol class="tl" id="tl" aria-label="処理の進み具合"></ol>
-  <p class="calm" id="calm" hidden>閉じても大丈夫です。この画面はホームの一覧から戻れます。</p>
+  <p class="notice" id="calm" hidden>閉じても大丈夫です。この画面はホームの一覧から戻れます。</p>
   <p class="err" id="err" role="alert" hidden></p>
   <div class="stack" id="acts" hidden>
     <a class="btn btn-pri" href="/upload?type=video">もう一度送る</a>

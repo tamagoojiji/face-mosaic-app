@@ -4,14 +4,16 @@
 <title>できあがり｜顔モザイク</title>
 <link rel="stylesheet" href="/static/app.css">
 <style>
-h1{margin-top:16px}
-.pv{display:block;width:100%;max-height:56vh;background:#0E1A30;border-radius:var(--radius);margin:0 0 8px}
-.summary{font-weight:600;margin:0 0 4px}
-.remain{color:var(--sub);font-size:13px;margin:0 0 16px}
+h1{margin-top:var(--s4)}
+.pv{display:block;width:100%;max-height:56vh;background:var(--dark);border-radius:var(--radius);margin:0 0 var(--s3)}
+.summary{font-weight:700;margin:0 0 var(--s1)}
+.remain{color:var(--sub);font-size:14px;margin:0 0 var(--s4)}
 .remain b{color:var(--fg)}
-.hint{color:var(--sub);font-size:13px;margin:-4px 0 0}
-.stack{padding-bottom:calc(16px + env(safe-area-inset-bottom))}
-[hidden]{display:none !important}
+.hint{color:var(--sub);font-size:14px;margin:calc(-1 * var(--s1)) 0 0}
+#exErr{margin:0}
+.next{margin-top:var(--s5);padding-top:var(--s5);border-top:1px solid var(--line)}
+.stack.next{padding-bottom:calc(var(--s5) + env(safe-area-inset-bottom))}
+.stack:not(:has(> :not([hidden]))) + .next{margin-top:var(--s3);padding-top:0;border-top:0}
 </style>
 </head><body>
 <div class="bar"><a class="back" href="/home" aria-label="ホームに戻る">‹ ホーム</a></div>
@@ -22,12 +24,14 @@ h1{margin-top:16px}
   <p class="summary" id="sum"></p>
   <p class="remain" id="remain"></p>
   <div class="stack">
+    <p class="err" id="exErr" role="alert" hidden></p>
     <button type="button" class="btn btn-pri" id="save">動画に保存する</button>
     <p class="hint" id="saveHint" role="status" hidden>この端末では共有シートが使えません。「ファイルに保存する」から保存してください</p>
     <a class="btn btn-sec" id="dl" download>ファイルに保存する（ダウンロード）</a>
+  </div>
+  <div class="stack next">
     <a class="btn btn-sec" href="/upload?type=video">もう1本送る</a>
     <a class="btn btn-ter" id="again">モザイクを選び直す</a>
-    <p class="err" id="exErr" role="alert" hidden></p>
   </div>
 </main>
 <script src="/static/common.js"></script>
@@ -42,6 +46,7 @@ const id = jobIdFromPath(), $ = x => document.getElementById(x);
     if (j.status === 'deleted') {
       $('h').textContent = 'この動画は消えました';
       $('sum').textContent = '保存期間が過ぎたので、完成した動画を削除しました。'; $('again').remove();
+      document.querySelector('.next .btn-sec').className = 'btn btn-pri';
     } else {
       $('h').textContent = 'まだ書き出していません';
       $('sum').textContent = 'モザイクを確認して「この内容で書き出す」を押してください。';

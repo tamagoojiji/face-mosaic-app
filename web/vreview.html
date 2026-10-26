@@ -4,49 +4,42 @@
 <title>モザイクの確認｜顔モザイク</title>
 <link rel="stylesheet" href="/static/app.css">
 <style>
-h1{margin-top:16px}
-.lead{margin:0 0 12px}
-.warnbox{background:#FDEEE7;color:var(--warn-tag);font-weight:600;font-size:14px;border-radius:10px;padding:8px 12px;margin:0 0 12px}
-.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 16px;border:0;padding:0;min-width:0}
-.seg legend{font-size:13px;font-weight:700;color:var(--sub);padding:0;margin:0 0 6px}
-.seg label{position:relative;display:flex;flex-direction:column;justify-content:center;min-height:64px;padding:6px 10px 6px 36px;
-  border:1.5px solid var(--line);border-radius:10px;cursor:pointer;line-height:1.35}
-.seg label .m{font-weight:700;font-size:15px}
-.seg label .d{font-size:12px;color:var(--sub)}
-.seg input{position:absolute;opacity:0;pointer-events:none}
-.seg label::before{content:"";box-sizing:border-box;position:absolute;left:10px;top:50%;width:16px;height:16px;margin-top:-8px;border-radius:50%;border:2px solid #8E9AB0;background:#fff}
-.seg label:has(input:checked){border-color:var(--pri);background:#EEF5FD}
-.seg label:has(input:checked)::before{border:5px solid var(--pri)}
-.tabs{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line);margin:0 0 8px}
-.tabs button{min-height:52px;font:inherit;font-size:14px;font-weight:700;background:none;border:0;border-bottom:3px solid transparent;color:var(--sub);cursor:pointer;padding:4px 6px;line-height:1.3}
+h1{margin-top:var(--s4)}
+.lead{margin:0 0 var(--s4)}
+#warn{margin:0 0 var(--s3)}
+.seg{margin:0 0 var(--s4)}
+.seg label{min-height:64px}
+.tabs{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line);margin:0 0 var(--s3)}
+.tabs button{min-height:56px;font:inherit;font-size:15px;font-weight:700;background:none;border:0;border-bottom:3px solid transparent;margin-bottom:-1px;color:var(--sub);cursor:pointer;padding:var(--s1) 6px;line-height:1.3}
+.tabs button:hover{color:var(--fg)}
 .tabs button[aria-selected=true]{color:var(--fg);border-color:var(--pri)}
-.tabs button .n{display:block;font-size:13px}
+.tabs button .n{display:block;font-size:14px;font-variant-numeric:tabular-nums}
 .tabs #tb[aria-selected=true] .n{color:var(--warn-tag)}
-.tabs #tk[aria-selected=true] .n{color:var(--keep)}
-.help{font-size:13px;color:var(--sub);margin:0 0 8px}
-.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.t{position:relative;display:block;padding:0;border:3px solid var(--warn);border-radius:10px;background:#fff;overflow:hidden;color:var(--fg);cursor:pointer;font:inherit;text-align:left}
+.tabs #tk[aria-selected=true] .n{color:var(--keep-ink)}
+.help{font-size:14px;color:var(--sub);margin:0 0 var(--s3)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2)}
+.t{position:relative;display:block;padding:0;border:3px solid var(--warn);border-radius:var(--radius-sm);background:var(--paper);overflow:hidden;color:var(--fg);cursor:pointer;font:inherit;text-align:left}
 .t img{display:block;width:100%;height:auto;aspect-ratio:1/1;object-fit:cover;background:var(--surface)}
-.t .cap{display:flex;justify-content:space-between;gap:4px;padding:2px 6px;font-size:12px;line-height:20px}
+.t .cap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:0 var(--s1);padding:2px 6px;font-size:12px;line-height:20px}
+.t .cap > *{white-space:nowrap}
 .t .cap b{color:var(--warn-tag)}
 .t.k{border-color:var(--keep)}
-.t.k .cap b{color:var(--keep)}
-.empty{color:var(--sub);font-size:14px;padding:8px 0}
-.repick{margin:16px 0 0}
-.hqbox{display:flex;gap:8px;align-items:flex-start;background:#EEF5FD;border-radius:10px;padding:10px 12px;margin:-4px 0 16px;font-size:14px;line-height:1.5}
+.t.k .cap b{color:var(--keep-ink)}
+.empty{grid-column:1/-1;background:var(--surface);border-radius:var(--radius-sm);color:var(--sub);font-size:14px;padding:var(--s3) var(--s4);margin:0}
+.repick{margin:var(--s5) 0 0}
+.hqbox{display:flex;gap:var(--s2);align-items:flex-start;background:var(--pri-soft);border-radius:var(--radius-sm);padding:var(--s3);margin:calc(-1 * var(--s1)) 0 var(--s4);font-size:14px;line-height:1.5}
 .hqbox::before{content:"";flex:none;width:16px;height:16px;margin-top:3px;border-radius:4px;background:var(--pri) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E") center/12px no-repeat}
 .hqbox b{display:block}
-.hqbox span{color:var(--sub);font-size:13px}
-#toast{position:fixed;left:16px;right:16px;z-index:11;text-align:center;background:#14284A;color:#fff;font-size:14px;border-radius:10px;padding:10px 12px;
+.hqbox span{color:var(--sub);font-size:14px}
+#toast{position:fixed;left:var(--s4);right:var(--s4);z-index:11;text-align:center;background:var(--fg);color:var(--on-pri);font-size:14px;border-radius:var(--radius-sm);padding:var(--s3);
   opacity:0;transition:opacity .2s;pointer-events:none}
 #toast.show{opacity:1}
-#ft{position:fixed;left:0;right:0;bottom:0;z-index:10;border-top:1px solid var(--line);background:#fff;
-  padding:8px 16px calc(8px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:6px}
+#ft{position:fixed;left:0;right:0;bottom:0;z-index:10;border-top:1px solid var(--line);background:var(--paper);
+  padding:var(--s2) var(--s4) calc(var(--s2) + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:6px}
 #cnt{font-size:15px;font-weight:700;line-height:22px}
 #cnt .m{color:var(--warn-tag)}
-#cnt .k{color:var(--keep)}
+#cnt .k{color:var(--keep-ink)}
 #ferr{margin:0}
-[hidden]{display:none !important}
 @media (prefers-reduced-motion:reduce){#toast{transition:none}}
 </style>
 </head><body>
@@ -55,11 +48,11 @@ h1{margin-top:16px}
   <ol class="steps"><li class="done">1 送る</li><li class="done">2 選ぶ</li><li class="on">3 確認</li><li>4 保存</li></ol>
   <h1>モザイクの確認</h1>
   <p class="lead">顔をタップすると、もう一方の列に移ります。</p>
-  <p class="warnbox" id="warn" role="status" hidden></p>
+  <p class="notice warn" id="warn" role="status" hidden></p>
   <fieldset class="seg">
     <legend>モザイクの種類（標準はブロック粗め）</legend>
-    <label><input type="radio" name="st" value="pixel" checked><span class="m">ブロック粗め</span><span class="d">マス目で強く隠す</span></label>
-    <label><input type="radio" name="st" value="blur"><span class="m">すりガラス</span><span class="d">ぼかして隠す。約2.5分長くかかります</span></label>
+    <label><input type="radio" name="st" value="pixel" checked><span><span class="m">ブロック粗め</span><span class="d">マス目で強く隠す</span></span></label>
+    <label><input type="radio" name="st" value="blur"><span><span class="m">すりガラス</span><span class="d">ぼかして隠す。約2.5分長くかかります</span></span></label>
   </fieldset>
   <p class="hqbox" id="hq" hidden><span><b>高画質で書き出す</b><span id="hqd"></span></span></p>
   <div class="tabs" role="tablist" aria-label="モザイクの予定">
@@ -95,7 +88,10 @@ function render() {
 }
 function fill(el, items, kept) {
   if (!items.length) {
-    const p = document.createElement('p'); p.className = 'empty'; p.textContent = 'ありません'; el.replaceChildren(p); return;
+    const p = document.createElement('p'); p.className = 'empty';
+    p.textContent = kept ? 'ありません。残したいものは「モザイクをかける予定」でタップすると、ここに移ります。'
+      : 'ありません。モザイクが必要な顔は「かけない予定」でタップすると、ここに移ります。';
+    el.replaceChildren(p); return;
   }
   el.replaceChildren(...items.map(it => {
     const t = document.createElement('button'); t.type = 'button'; t.className = 't' + (kept ? ' k' : '');
