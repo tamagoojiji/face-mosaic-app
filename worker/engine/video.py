@@ -109,17 +109,13 @@ def probe(path):
             "has_audio": any(s.get("codec_type") == "audio" for s in d["streams"])}
 
 
-def transpose_filter(rot):
-    return {90: "transpose=2", 180: "transpose=1,transpose=1", 270: "transpose=1"}.get(rot, "")
-
-
 def join_vf(*parts):
     return ",".join([p for p in parts if p])
 
 
 def grab_frame(path, t, vf, width, out_png):
     filt = join_vf(vf, f"scale={width}:-2")
-    cmd = [FFMPEG, "-v", "error", "-noautorotate", "-ss", f"{t:.3f}", "-i", path,
+    cmd = [FFMPEG, "-v", "error", "-ss", f"{t:.3f}", "-i", path,
            "-frames:v", "1", "-vf", filt, "-y", out_png]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0 or not os.path.exists(out_png):
@@ -142,7 +138,9 @@ def pick_encoder():
 def prepare(path, work_dir):
     """戻り値 (info, vf, hdr_info)。HDR の LUT は work_dir に作る。"""
     info = probe(path)
-    vf = transpose_filter(info["rotation"])
+    # 回転（縦動画の displaymatrix）は ffmpeg の自動回転に任せる。vf に transpose を足すと、
+    # -noautorotate で回した 1080p 版にも displaymatrix が残り（ffmpeg 7.1 で確認）、後の工程で二重に回って縦動画が横になる
+    vf = ""
     try:
         hdr_vf, hdr_info = hdr_sdr.plan(path, work_dir, None, None, ffprobe=FFPROBE,
                                         label=os.path.basename(path), quiet=True)
@@ -153,11 +151,14 @@ def prepare(path, work_dir):
 
 
 def to_1080(path, vf, out):
-    """最初に1回だけ 1080p・30fps・SDR へ変換する。以降の工程はすべてこのファイルで行う。"""
+    """最初に1回だけ 1080p・30fps・SDR へ変換する。以降の工程はすべてこのファイルで行う。
+
+    自動回転で画素を正立させ、長辺を1920に合わせる（縦は1080x1920・横は1920x1080）。
+    自動回転を効かせると displaymatrix は出力に引き継がれず、回転情報の無い正立動画になる。"""
     if os.path.exists(out):
         return out
-    filt = join_vf(vf, "scale=1080:1920:force_original_aspect_ratio=decrease:force_divisible_by=2", "fps=30")
-    cmd = [FFMPEG, "-v", "error", "-y", *HWACCEL, "-noautorotate", "-i", path,
+    filt = join_vf(vf, "scale='if(gt(iw,ih),1920,-2)':'if(gt(iw,ih),-2,1920)'", "fps=30")
+    cmd = [FFMPEG, "-v", "error", "-y", *HWACCEL, "-i", path,
            "-vf", filt, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "16",
            "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709",
            "-colorspace", "bt709", "-c:a", "copy", "-metadata:s:v", "rotate=0", out + ".part.mp4"]
@@ -174,7 +175,7 @@ def track_faces(path, info, vf, args):
     dw = max(2, int(round(ow * scale / 2)) * 2)
     dh = max(2, int(round(oh * scale / 2)) * 2)
 
-    cmd = [FFMPEG, "-v", "error", *HWACCEL, "-noautorotate",
+    cmd = [FFMPEG, "-v", "error", *HWACCEL,
            "-i", path, "-an", "-sn", "-dn",
            "-vf", join_vf(vf, f"scale={dw}:{dh}")]
     cmd += ["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
@@ -400,7 +401,7 @@ def compute_features(path, info, vf, tracks, dw, cache):
     det = cv2.FaceDetectorYN.create(YUNET_PATH, "", (160, 160), score_threshold=0.3)
     rec = cv2.FaceRecognizerSF.create(SFACE_PATH, "")
     faces, cloths = {}, {}
-    cmd = [FFMPEG, "-v", "error", *HWACCEL, "-noautorotate",
+    cmd = [FFMPEG, "-v", "error", *HWACCEL,
            "-i", path, "-an", "-sn", "-dn"]
     feat_vf = join_vf(vf, f"scale={fw}:{fh}" if fw != ow else "")
     if feat_vf:
@@ -590,7 +591,7 @@ def make_thumbs(path, info, vf, tracks, dw, out_dir):
     fw = min(SHOT_W, ow)
     fh = int(round(oh * fw / float(ow) / 2)) * 2
     k = fw / float(dw)
-    cmd = [FFMPEG, "-v", "error", *HWACCEL, "-noautorotate",
+    cmd = [FFMPEG, "-v", "error", *HWACCEL,
            "-i", path, "-an", "-sn", "-dn", "-vf", join_vf(vf, f"scale={fw}:{fh}"),
            "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
     fsize = fw * fh * 3
@@ -734,7 +735,7 @@ def render(path, info, vf, per_frame, out_path, encoder, style):
     fsize = w * h * 3
     bitrate = min(int(info["bit_rate"] * BITRATE_SCALE) or BITRATE_CAP, BITRATE_CAP)
 
-    dec_cmd = [FFMPEG, "-v", "error", *HWACCEL, "-noautorotate",
+    dec_cmd = [FFMPEG, "-v", "error", *HWACCEL,
                "-i", path, "-an", "-sn", "-dn"]
     if vf:
         dec_cmd += ["-vf", vf]
