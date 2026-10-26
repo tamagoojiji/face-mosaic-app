@@ -41,16 +41,18 @@
     <div class="k">いまのプラン</div>
     <div class="v" id="cur">—</div>
     <p class="s" id="curs"></p>
+    <p class="s" id="pend" hidden></p>
   </div>
   <p class="note" id="free" hidden></p>
   <ul class="plans" id="list"></ul>
   <section class="opt" id="opt" aria-labelledby="optl" hidden>
-    <label class="sw"><span class="lb" id="optl">高画質オプション ＋500円/月（動画A・B）</span><span class="st" id="optst">準備中</span><input type="checkbox" id="hq" disabled><span class="track" aria-hidden="true"></span></label>
+    <label class="sw"><span class="lb" id="optl">高画質オプション ＋500円/月（動画A・B）</span><span class="st" id="optst"></span><input type="checkbox" id="hq" disabled><span class="track" aria-hidden="true"></span></label>
     <p class="d">元の解像度と fps で書き出し（HDR は通常の色に変換）</p>
     <p class="pr" id="optpr"></p>
     <p class="note" id="optnow"></p>
   </section>
-  <p class="note">お支払い（月額）の受付は準備中です。始まったら、この画面から申し込めます。</p>
+  <p class="note" id="prep" hidden>お支払い（月額）の受付は準備中です。始まったら、この画面から申し込めます。</p>
+  <p class="note" id="lock" hidden></p>
   <p class="err" id="err" role="alert" hidden></p>
   <div style="height:24px"></div>
 </main>
@@ -58,10 +60,43 @@
 <script>
 const $ = id => document.getElementById(id);
 const len = s => s % 60 === 0 ? (s / 60) + '分' : mmss(s);
+const ORDER = ['free', 'image', 'video_a', 'video_b'];
+const md = ts => { const t = new Date(ts * 1000); return (t.getMonth() + 1) + '月' + t.getDate() + '日'; };
+function showErr(e) { $('err').textContent = e.message; $('err').hidden = false; }
+const post = (path, body) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 (async () => {
   let d;
-  try { d = await api('/api/plans'); } catch (e) { $('err').textContent = e.message; $('err').hidden = false; return; }
-  const me = d.me;
+  try { d = await api('/api/plans'); } catch (e) { showErr(e); return; }
+  const me = d.me, label = k => (d.plans.find(p => p.key === k) || {}).label || k;
+  const hqPlans = d.hq_option.plans.map(x => x.key);
+  const ready = me.stripe_ready, subscribed = me.sub_status === 'active';
+  const canStart = ready && me.plan === 'free' && !['active', 'canceling', 'past_due'].includes(me.sub_status);
+  const nextDay = me.current_period_end ? '次の更新日 ' + md(me.current_period_end) : '次の更新日';
+  // 次の更新日からの予約（下位へ・高画質外し）を反映した「次の」プランと高画質
+  const tgtPlan = me.pending_plan || me.plan;
+  const tgtHq = me.pending_hq === 0 ? false : me.hq;
+  if (me.pending_plan || me.pending_hq === 0) {
+    $('pend').textContent = nextDay + 'から ' + label(tgtPlan) + (tgtHq ? '＋高画質' : '') + ' に変わります';
+    $('pend').hidden = false;
+  }
+  $('prep').hidden = ready;
+  if (ready && me.sub_status === 'canceling') { $('lock').textContent = '解約処理中のため、プランは変えられません。'; $('lock').hidden = false; }
+  if (ready && me.sub_status === 'past_due') { $('lock').textContent = 'お支払いの確認ができていないため、プランは変えられません。設定の「支払いを管理する」から支払い方法を更新してください。'; $('lock').hidden = false; }
+  async function choose(p) {
+    $('err').hidden = true;
+    try {
+      if (canStart) { const r = await post('/api/billing/checkout', { plan: p.key, hq: false }); location.href = r.url; return; }
+      const up = ORDER.indexOf(p.key) > ORDER.indexOf(me.plan);
+      const hq = tgtHq && hqPlans.includes(p.key);
+      const lines = [label(p.key) + (hq ? '＋高画質' : '') + ' に変えます。'];
+      if (up) lines.push('すぐに切り替わります（差額は日割り）。');
+      else if (p.key !== me.plan) lines.push(nextDay + 'から変わります。');
+      if (me.hq && !hq) lines.push('高画質オプションは' + nextDay + 'から外れます。');
+      if (!confirm(lines.join('\n'))) return;
+      await post('/api/billing/change', { plan: p.key, hq });
+      location.reload();
+    } catch (e) { showErr(e); }
+  }
   $('cur').textContent = me.plan_label + (me.campaign ? '（リリース記念で増量中）' : '');
   $('curs').textContent = quotaLine(me);
   if (me.campaign) { $('free').textContent = '無料プラン: リリース記念の期間は 写真が月' + me.limits.images + '枚・1分までの動画が月' + me.limits.video_count_month + '本 使えます（ふだんは写真5枚・動画なし）。'; $('free').hidden = false; }
@@ -81,15 +116,34 @@ const len = s => s % 60 === 0 ? (s / 60) + '分' : mmss(s);
     row('書き出しの画質', p.quality);
     li.append(head, dl);
     if (p.note) { const n = document.createElement('p'); n.className = 'pnote'; n.textContent = '※ ' + p.note; li.append(n); }
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-sec'; b.disabled = true;
-    b.textContent = p.key === me.plan ? 'いまのプランです' : 'このプランにする（準備中）';
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-sec';
+    const isTgt = p.key === tgtPlan;
+    if (p.key === me.plan && !me.pending_plan) { b.textContent = 'いまのプランです'; b.disabled = true; }
+    else if (!ready) { b.textContent = 'このプランにする（準備中）'; b.disabled = true; }
+    else if (p.key === 'free') { b.textContent = '無料プランには戻れません'; b.disabled = true; }
+    else if (canStart || (subscribed && !isTgt)) { b.textContent = 'このプランにする'; b.addEventListener('click', () => choose(p)); }
+    else if (subscribed && p.key === me.plan) { b.textContent = 'いまのプランのままにする'; b.addEventListener('click', () => choose(p)); }
+    else { b.textContent = isTgt ? '次の更新日からのプランです' : 'このプランにする'; b.disabled = true; }
     li.append(b);
     $('list').append(li);
   }
   const o = d.hq_option;
-  $('hq').checked = me.hq;
+  $('hq').checked = tgtHq;
   $('optpr').textContent = o.plans.map(x => x.label + '＋高画質 月' + x.price.toLocaleString('ja-JP') + '円').join('／');
-  $('optnow').textContent = me.hq ? 'いまは高画質オプションが ON です（元の解像度と fps で書き出します）。申し込みの受付は準備中です。' : '申し込みの受付は準備中です。';
+  const hqOk = ready && subscribed && hqPlans.includes(tgtPlan);
+  $('hq').disabled = !hqOk;
+  $('optst').textContent = !ready ? '準備中' : tgtHq ? 'オン' : 'オフ';
+  $('optnow').textContent = !ready ? (me.hq ? 'いまは高画質オプションが ON です（元の解像度と fps で書き出します）。申し込みの受付は準備中です。' : '申し込みの受付は準備中です。')
+    : hqOk ? (me.hq ? 'いまは高画質オプションが ON です（元の解像度と fps で書き出します）。' : '動画A・動画B のときに付けられます。')
+    : '動画A・動画B の有料プランのときに付けられます。';
+  $('hq').addEventListener('change', async () => {
+    $('err').hidden = true;
+    const on = $('hq').checked;
+    const msg = on ? '高画質オプションを付けます。\nすぐに切り替わります（差額は日割り）。' : '高画質オプションを外します。\n' + nextDay + 'から変わります。';
+    if (!confirm(msg)) { $('hq').checked = !on; return; }
+    try { await post('/api/billing/change', { plan: tgtPlan, hq: on }); location.reload(); }
+    catch (e) { $('hq').checked = !on; showErr(e); }
+  });
   $('opt').hidden = false;
 })();
 function quotaLine(me) {

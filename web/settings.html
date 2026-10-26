@@ -33,6 +33,7 @@
     <h2>アカウント</h2>
     <div class="row"><span>表示名</span><span class="v" id="name">—</span></div>
     <div class="row"><span>プラン</span><span class="v" id="plan">—</span></div>
+    <div class="row"><span>契約</span><span class="v" id="sub">—</span></div>
     <div class="row" id="hqrow" hidden><span>高画質オプション</span><span class="v" id="hqv"></span></div>
     <a class="btn btn-sec" href="/plans" style="margin-top:8px">プランを比較する</a>
   </section>
@@ -53,23 +54,46 @@
   </section>
   <section class="sec">
     <h2>お支払い</h2>
-    <button class="btn btn-sec" type="button" disabled>支払いを管理する（準備中）</button>
-    <p class="note">カードの変更や解約は、お支払いの受付が始まったらここからできます。</p>
+    <button class="btn btn-sec" type="button" id="pay" disabled>支払いを管理する（準備中）</button>
+    <p class="note" id="paynote">カードの変更や解約は、お支払いの受付が始まったらここからできます。</p>
+    <p class="err" id="payerr" role="alert" hidden></p>
   </section>
   <a class="leave" href="/withdraw" id="leave">退会する</a>
 </main>
 <script src="/static/common.js"></script>
 <script>
 const $ = id => document.getElementById(id);
+const md = ts => { const t = new Date(ts * 1000); return (t.getMonth() + 1) + '月' + t.getDate() + '日'; };
+function subText(m) {
+  const end = m.current_period_end ? md(m.current_period_end) : '';
+  if (m.sub_status === 'active') return end ? '次の更新日 ' + end : '契約中';
+  if (m.sub_status === 'canceling') return end ? '解約処理中（' + end + 'まで使えます）' : '解約処理中';
+  if (m.sub_status === 'past_due') return 'お支払いの確認ができていません';
+  if (m.trial_days_left !== null) return m.trial_expired ? 'お試し期間終了' : 'お試し（あと' + m.trial_days_left + '日）';
+  return '—';
+}
+let paying = false;
 function show(m) {
   $('name').textContent = m.display_name || 'ゲスト';
   $('plan').textContent = m.plan_label;
+  $('sub').textContent = subText(m);
+  const hasSub = ['active', 'canceling', 'past_due'].includes(m.sub_status);
+  if (m.stripe_ready) {
+    $('pay').textContent = '支払いを管理する';
+    $('pay').disabled = !hasSub || paying;
+    $('paynote').textContent = hasSub ? 'カードの変更や解約ができます（Stripe の画面が開きます）。' : '有料プランに申し込むと、ここからカードの変更や解約ができます。';
+  }
   $('hqrow').hidden = !m.hq_available;
   $('hqv').textContent = m.hq ? 'ON（元の解像度と fps で書き出します）' : 'OFF';
   $('ig').value = m.instagram_username || '';
   $('nt').checked = m.notify; $('nst').textContent = m.notify ? 'オン' : 'オフ';
   if (m.auth_mode !== 'line') $('nnote').textContent = '合言葉で使っている間は LINE 通知は届きません。お知らせはホームの一覧に出ます。';
 }
+$('pay').addEventListener('click', async () => {
+  $('payerr').hidden = true; paying = true; $('pay').disabled = true;
+  try { const r = await api('/api/billing/portal', { method: 'POST' }); location.href = r.url; }
+  catch (e) { paying = false; $('pay').disabled = false; $('payerr').textContent = e.message; $('payerr').hidden = false; }
+});
 api('/api/me').then(show).catch(e => { $('igerr').textContent = e.message; $('igerr').hidden = false; });
 $('igf').addEventListener('submit', async ev => {
   ev.preventDefault();

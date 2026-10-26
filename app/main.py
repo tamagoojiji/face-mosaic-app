@@ -16,6 +16,7 @@ import urllib.parse
 import urllib.request
 from contextlib import asynccontextmanager
 
+import stripe
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -40,7 +41,7 @@ def job_dir(job_id):
 
 
 PERIODIC = (retention.cleanup_expired, retention.notify_idle, monitor.check_worker, monitor.check_disk,
-            monitor.daily_summary)
+            monitor.daily_summary, monitor.check_past_due)
 
 
 async def retention_loop():
@@ -127,6 +128,8 @@ def _owner_serializer():
 @app.middleware("http")
 async def owner_cookie(request: Request, call_next):
     """初回アクセスで端末ごとの owner_id を発行（署名付き Cookie・1年）。"""
+    if request.url.path == "/stripe/webhook":  # Stripe からの通知にはセッションも Cookie も要らない
+        return await call_next(request)
     owner, fresh = None, False
     if config.SESSION_SECRET:
         token = request.cookies.get(config.OWNER_COOKIE)
@@ -238,7 +241,8 @@ def _login_line_user(request, line_user_id, name):
     u = db.user_by("line_user_id", line_user_id)
     if not u:
         try:
-            u = db.create_user(line_user_id=line_user_id, display_name=name)
+            u = db.create_user(line_user_id=line_user_id, display_name=name,
+                               trial_ends_at=time.time() + db.TRIAL_DAYS * 86400)
             discord.usage(f"新規登録: {discord.who(u)}")
         except sqlite3.IntegrityError:
             u = db.user_by("line_user_id", line_user_id)
@@ -470,9 +474,17 @@ def get_job(request: Request, job_id: str):
     return JSONResponse(_public(_load(request, job_id), with_faces=True), headers=NO_STORE)
 
 
+def _check_blocked(u):
+    """お試し期限切れ・お支払い未確認の間は送れない。"""
+    b = quota.blocked(u)
+    if b:
+        raise HTTPException(403, quota.BLOCKED_MSG[b])
+
+
 @app.post("/api/photos")
 def upload_photo(request: Request, file: UploadFile = File(...)):
     u = require_api(request)
+    _check_blocked(u)
     msg = quota.check_image(u)
     if msg:
         raise HTTPException(402, msg)
@@ -732,6 +744,7 @@ def _upload_info(j):
 @app.post("/api/uploads")
 async def create_upload(request: Request):
     u = require_api(request)
+    _check_blocked(u)
     b = await _json_body(request)
     try:
         size, dur = int(b.get("bytes") or 0), float(b.get("duration") or 0)
@@ -938,12 +951,17 @@ def video_result(request: Request, job_id: str, dl: int = 0):
 IG_RE = re.compile(r"^[A-Za-z0-9._]{1,30}$")
 WITHDRAW_REASONS = {"unused": "使う場面がなくなりました", "price": "料金が使い方に合いませんでした",
                     "quality": "仕上がりの画質に満足できませんでした", "slow": "処理に時間がかかりすぎました",
-                    "other_service": "ほかのサービスを使うことにしました", "other": "その他"}
+                    "other_service": "ほかのサービスを使うことにしました", "other": "その他",
+                    "sub_ended": "更新日に自動退会", "past_due_expired": "お支払い未確認のまま猶予終了"}
+USER_WITHDRAW_REASONS = ("unused", "price", "quality", "slow", "other_service", "other")  # 退会アンケートの選択肢
 
 
 def _me(u):
     st = quota.status(u)
     lim = st["limits"]
+    now = time.time()
+    trial = u.get("trial_ends_at") if lim["plan"] == "free" and u.get("line_user_id") else None
+    blocked = quota.blocked(u, now)
     return {"id": u["id"], "display_name": u["display_name"], "instagram_username": u["instagram_username"],
             "notify": bool(u["notify"]), "auth_mode": config.AUTH_MODE, "plan": lim["plan"], "plan_label": lim["label"],
             "hq": lim["hq"], "hq_available": lim["plan"] in quota.HQ_OPTION["plans"],
@@ -953,7 +971,12 @@ def _me(u):
             "usage": {"images": st["usage"]["image_count"], "videos": st["usage"]["video_count"],
                       "video_sec": st["usage"]["video_seconds_used"]},
             "remaining": st["remaining"], "source_hours": config.SOURCE_RETENTION_HOURS,
-            "output_days": config.OUTPUT_RETENTION_DAYS}
+            "output_days": config.OUTPUT_RETENTION_DAYS,
+            "sub_status": u.get("sub_status"), "trial_ends_at": trial,
+            "trial_days_left": max(0, -(-int(trial - now) // 86400)) if trial else None,
+            "trial_expired": blocked == "trial_expired", "current_period_end": u.get("current_period_end"),
+            "cancel_at_period_end": bool(u.get("cancel_at_period_end")), "pending_plan": u.get("pending_plan"),
+            "pending_hq": u.get("pending_hq"), "stripe_ready": billing.ready(), "blocked": blocked}
 
 
 @app.get("/api/me")
@@ -1005,16 +1028,10 @@ async def api_notify(request: Request):
     return JSONResponse(_me(db.get_user(u["id"])), headers=NO_STORE)
 
 
-@app.post("/api/me/withdraw")
-async def api_withdraw(request: Request):
-    """退会: 購読の解約（③b）→ 完成品・履歴・Instagram 名を即削除 → users は withdrawn（理由だけ残す）。"""
-    u = require_api(request)
-    b = await _json_body(request)
-    reason = b.get("reason")
-    if reason not in WITHDRAW_REASONS:
-        raise HTTPException(400, "退会の理由を1つ選んでください")
-    note = str(b.get("note") or "").strip()[:500]
-    billing.cancel_subscription(u)
+def withdraw_user(u, reason, note=None, cancel=True):
+    """退会処理（本人の退会・購読終了の自動退会で共用）。cancel=False は Stripe 側で終わっているとき。"""
+    if cancel:
+        billing.cancel_subscription(u)
     for j in db.user_jobs(u["id"]):
         shutil.rmtree(job_dir(j["id"]), ignore_errors=True)
     n = db.delete_jobs_of(u["id"])
@@ -1023,7 +1040,95 @@ async def api_withdraw(request: Request):
     discord.usage(f"退会: #{u['id']} {u['display_name'] or 'ゲスト'}（{config.AUTH_MODE}）\n理由: {WITHDRAW_REASONS[reason]}"
                   + (f"\nひとこと: {note}" if note else ""))
     log.info("withdraw user=%s reason=%s 削除 %d 件", u["id"], reason, n)
+
+
+@app.post("/api/me/withdraw")
+async def api_withdraw(request: Request):
+    """退会: 購読の解約 → 完成品・履歴・Instagram 名を即削除 → users は withdrawn（理由だけ残す）。"""
+    u = require_api(request)
+    b = await _json_body(request)
+    reason = b.get("reason")
+    if reason not in USER_WITHDRAW_REASONS:
+        raise HTTPException(400, "退会の理由を1つ選んでください")
+    withdraw_user(u, reason, str(b.get("note") or "").strip()[:500])
     res = JSONResponse({"ok": True}, headers=NO_STORE)
     res.delete_cookie(config.COOKIE_NAME, path="/")
     res.delete_cookie(config.OWNER_COOKIE, path="/")
     return res
+
+
+# ---------------------------------------------------------------- お支払い（Stripe）
+
+def _base_url(request):
+    return config.APP_BASE_URL or str(request.base_url).rstrip("/")
+
+
+def _require_billing():
+    if not billing.ready():
+        raise HTTPException(503, "お支払いの受付は準備中です")
+
+
+def _plan_body(b):
+    plan, hq = b.get("plan"), bool(b.get("hq"))
+    if plan not in quota.PAID:
+        raise HTTPException(400, "有料プランを選んでください")
+    if hq and plan not in quota.HQ_OPTION["plans"]:
+        raise HTTPException(400, "高画質オプションは動画A・動画B に付けられます")
+    return plan, hq
+
+
+@app.post("/api/billing/checkout")
+async def api_checkout(request: Request):
+    u = require_api(request)
+    plan, hq = _plan_body(await _json_body(request))
+    _require_billing()
+    if u.get("sub_status") in ("active", "canceling", "past_due"):
+        raise HTTPException(400, "すでに契約中です。プランの変更はこの画面の各プランから選んでください")
+    url = await asyncio.to_thread(billing.checkout_url, u, plan, hq, _base_url(request))
+    return JSONResponse({"url": url}, headers=NO_STORE)
+
+
+@app.post("/api/billing/change")
+async def api_change(request: Request):
+    u = require_api(request)
+    plan, hq = _plan_body(await _json_body(request))
+    _require_billing()
+    if u.get("sub_status") != "active" or not u.get("stripe_subscription_id"):
+        msg = {"canceling": "解約処理中はプランを変えられません",
+               "past_due": "お支払いの確認ができていません。支払い方法を更新してください"}.get(u.get("sub_status"))
+        raise HTTPException(400, msg or "契約がありません。プランを選んで申し込んでください")
+    done = await asyncio.to_thread(billing.change, u, plan, hq)
+    return JSONResponse({"me": _me(db.get_user(u["id"])), "done": done}, headers=NO_STORE)
+
+
+@app.post("/api/billing/portal")
+async def api_portal(request: Request):
+    u = require_api(request)
+    _require_billing()
+    if not u.get("stripe_customer_id"):
+        raise HTTPException(400, "お支払いの記録がありません")
+    url = await asyncio.to_thread(billing.portal_url, u, _base_url(request))
+    return JSONResponse({"url": url}, headers=NO_STORE)
+
+
+@app.get("/billing/return")
+def billing_return():
+    return RedirectResponse("/home?paid=1", status_code=302)
+
+
+@app.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    """Stripe の通知（署名検証 → users に反映）。セッション不要。"""
+    if not config.STRIPE_WEBHOOK_SECRET:
+        log.info("billing(skip) webhook reason=鍵が未設定")
+        return JSONResponse({"detail": "not configured"}, status_code=503)
+    payload = await request.body()
+    try:
+        stripe.Webhook.construct_event(payload, request.headers.get("stripe-signature"), config.STRIPE_WEBHOOK_SECRET)
+        event = json.loads(payload)
+    except (ValueError, stripe.SignatureVerificationError):
+        log.warning("stripe webhook 署名NG")
+        return JSONResponse({"detail": "invalid signature"}, status_code=400)
+    typ = await asyncio.to_thread(billing.apply_event, event, withdraw_user)
+    log.info("stripe webhook %s %s%s", event.get("id"), event.get("type"), "" if typ else "（重複・処理済み）")
+    return JSONResponse({"ok": True})

@@ -21,6 +21,8 @@ def _link(path):
 
 
 def message(kind, job, reason=None):
+    if kind == "payment_failed":
+        return "お支払いが確認できません。7日以内にカード情報を更新してください。" + _link("/settings")
     jid = job["id"]
     if kind == "ready":
         return "選択の準備ができました。残したい顔をタップしてください。" + _link(f"/pick/{jid}")
@@ -38,7 +40,13 @@ def message(kind, job, reason=None):
 
 def push(kind, job, reason=None):
     """kind: ready（①選択の準備）| done（②できました）| failed（③処理できなかった）| idle（④1時間選択なし）"""
-    user = db.get_user(job.get("user_id"))
+    return push_user(kind, db.get_user(job.get("user_id")), job, reason)
+
+
+def push_user(kind, user, job=None, reason=None):
+    """利用者に直接送る（payment_failed はジョブなし）。"""
+    jid = job["id"] if job else "-"
+    uid = user["id"] if user else (job or {}).get("user_id")
     skip = None
     if not config.LINE_MSG_CHANNEL_ACCESS_TOKEN:
         skip = "LINE_MSG未設定"
@@ -49,7 +57,7 @@ def push(kind, job, reason=None):
     elif user.get("status") != "active":
         skip = "利用者が無効"
     if skip:
-        log.info("notify(skip) kind=%s job=%s user=%s reason=%s", kind, job["id"], job.get("user_id"), skip)
+        log.info("notify(skip) kind=%s job=%s user=%s reason=%s", kind, jid, uid, skip)
         return False
     body = json.dumps({"to": user["line_user_id"],
                        "messages": [{"type": "text", "text": message(kind, job, reason)}]}).encode()
@@ -57,8 +65,8 @@ def push(kind, job, reason=None):
         "Content-Type": "application/json", "Authorization": "Bearer " + config.LINE_MSG_CHANNEL_ACCESS_TOKEN})
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
-            log.info("notify(sent) kind=%s job=%s user=%s status=%s", kind, job["id"], user["id"], r.status)
+            log.info("notify(sent) kind=%s job=%s user=%s status=%s", kind, jid, user["id"], r.status)
         return True
     except Exception as e:  # 通知の失敗で処理は止めない（画面にも同じ内容が出る）
-        log.warning("notify 失敗 kind=%s job=%s: %s", kind, job["id"], type(e).__name__)
+        log.warning("notify 失敗 kind=%s job=%s: %s", kind, jid, type(e).__name__)
         return False

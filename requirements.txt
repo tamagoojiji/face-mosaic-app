@@ -6,3 +6,4 @@ numpy
 Pillow
 pillow-heif
 opencv-python-headless
+stripe

@@ -68,6 +68,19 @@ CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT
 );
+CREATE TABLE IF NOT EXISTS audit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor_id INTEGER,                -- 運営の users.id（Stripe・自動処理は NULL）
+  action TEXT NOT NULL,
+  target TEXT,
+  detail TEXT,
+  created_at REAL
+);
+CREATE TABLE IF NOT EXISTS billing_events (
+  event_id TEXT PRIMARY KEY,       -- Stripe の event.id（Webhook の重複処理よけ）
+  type TEXT,
+  created_at REAL
+);
 """
 
 # 起動時に足す列（動画モード・DESIGN 4節・③a）
@@ -93,6 +106,17 @@ ADD_COLUMNS = {
     "out_height": "INTEGER",
     "out_fps": "REAL",
 }
+# 起動時に足す列（users・③b 課金）
+ADD_USER_COLUMNS = {
+    "trial_ends_at": "REAL",                               # 無料（お試し）の期限＝登録＋7日
+    "current_period_end": "REAL",                          # 次の更新日
+    "past_due_since": "REAL",                              # 決済失敗の時刻（猶予7日の起点）
+    "cancel_at_period_end": "INTEGER NOT NULL DEFAULT 0",
+    "stripe_price_plan": "TEXT",                           # いまのプランの価格ID
+    "pending_plan": "TEXT",                                # 次の更新日から変わるプラン（下位変更）
+    "pending_hq": "INTEGER",                               # 次の更新日から変わる高画質（外す）
+}
+TRIAL_DAYS = 7
 QUEUED = ("queued", "queued_export")
 PASSCODE_PLAN = "video_b"  # 試験版の合言葉利用者は動画B相当（試験中だけ・DESIGN 7節）
 RUNNING = ("preparing", "exporting")
@@ -113,8 +137,15 @@ def init():
         for name, typ in ADD_COLUMNS.items():  # 旧 DB の移行
             if name not in cols:
                 con.execute(f"ALTER TABLE jobs ADD COLUMN {name} {typ}")
-        if "hq" not in {r["name"] for r in con.execute("PRAGMA table_info(users)")}:
+        ucols = {r["name"] for r in con.execute("PRAGMA table_info(users)")}
+        if "hq" not in ucols:
             con.execute("ALTER TABLE users ADD COLUMN hq INTEGER NOT NULL DEFAULT 0")
+        for name, typ in ADD_USER_COLUMNS.items():
+            if name not in ucols:
+                con.execute(f"ALTER TABLE users ADD COLUMN {name} {typ}")
+        # LINE の無料利用者にお試し期限（登録＋7日）。合言葉・運営は対象外
+        con.execute("UPDATE users SET trial_ends_at=created_at+? WHERE plan='free' AND line_user_id IS NOT NULL "
+                    "AND role!='admin' AND trial_ends_at IS NULL AND created_at IS NOT NULL", (TRIAL_DAYS * 86400,))
         # 旧プラン「動画B 高画質」→ 動画B＋高画質オプション
         con.execute("UPDATE users SET plan='video_b', hq=1 WHERE plan='video_b_hq'")
         con.execute("CREATE INDEX IF NOT EXISTS jobs_owner ON jobs(owner, created_at)")
@@ -279,7 +310,7 @@ def get_user(user_id):
 
 
 def user_by(col, value):
-    assert col in ("line_user_id", "device_id")
+    assert col in ("line_user_id", "device_id", "stripe_subscription_id", "stripe_customer_id")
     with connect() as con:
         r = con.execute(f"SELECT * FROM users WHERE {col}=?", (value,)).fetchone()
     return dict(r) if r else None
@@ -298,6 +329,14 @@ def update_user(user_id, **cols):
     sets = ",".join(f"{k}=?" for k in cols)
     with connect() as con:
         con.execute(f"UPDATE users SET {sets} WHERE id=?", [*cols.values(), user_id])
+
+
+def past_due_users(before):
+    """決済失敗のまま猶予（7日）を過ぎた利用者。"""
+    with connect() as con:
+        rows = con.execute("SELECT * FROM users WHERE status='active' AND sub_status='past_due' "
+                           "AND past_due_since<?", (before,)).fetchall()
+    return [dict(r) for r in rows]
 
 
 def count_users_created_between(t0, t1):
@@ -320,6 +359,25 @@ def add_usage(user_id, month, seconds=0.0, videos=0, images=0):
         con.execute("UPDATE usage SET video_seconds_used=MAX(0, video_seconds_used+?), video_count=MAX(0, video_count+?), "
                     "image_count=MAX(0, image_count+?) WHERE user_id=? AND month=?",
                     (seconds, videos, images, user_id, month))
+
+
+# ---------------------------------------------------------------- 運営・課金の記録
+
+def audit(actor_id, action, target=None, detail=None):
+    with connect() as con:
+        con.execute("INSERT INTO audit_log (actor_id, action, target, detail, created_at) VALUES (?,?,?,?,?)",
+                    (actor_id, action, target, detail, time.time()))
+
+
+def billing_event_seen(event_id):
+    with connect() as con:
+        return con.execute("SELECT 1 FROM billing_events WHERE event_id=?", (event_id,)).fetchone() is not None
+
+
+def add_billing_event(event_id, typ):
+    with connect() as con:
+        con.execute("INSERT OR IGNORE INTO billing_events (event_id, type, created_at) VALUES (?,?,?)",
+                    (event_id, typ, time.time()))
 
 
 # ---------------------------------------------------------------- 設定（key/value）

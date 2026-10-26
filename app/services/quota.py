@@ -73,8 +73,28 @@ def status(user):
     return {"limits": lim, "usage": u, "remaining": rem}
 
 
+BLOCKED_MSG = {"trial_expired": "お試し期間が終わりました。プランを選ぶと続けて使えます",
+               "past_due": "お支払いの確認ができていません。支払い方法を更新してください"}
+
+
+def blocked(user, now=None):
+    """利用停止の理由: "trial_expired"（お試し期限切れ）| "past_due"（決済失敗の猶予中）| None。"""
+    if user.get("role") == "admin":
+        return None
+    if user.get("sub_status") == "past_due":
+        return "past_due"
+    t = user.get("trial_ends_at")
+    if (user.get("plan") or "free") == "free" and user.get("line_user_id") and t is not None \
+            and t < (now or time.time()):
+        return "trial_expired"
+    return None
+
+
 def check_video(user, duration):
     """送ってよければ None、だめなら理由の文。"""
+    b = blocked(user)
+    if b:
+        return BLOCKED_MSG[b]
     st = status(user)
     lim, rem = st["limits"], st["remaining"]
     if not lim["video_allowed"]:
@@ -91,6 +111,9 @@ def check_video(user, duration):
 
 
 def check_image(user):
+    b = blocked(user)
+    if b:
+        return BLOCKED_MSG[b]
     st = status(user)
     if st["remaining"]["images"] is not None and st["remaining"]["images"] <= 0:
         return f"今月の写真は {st['limits']['images']} 枚まで送れます。今月の分はもう使いきりました"

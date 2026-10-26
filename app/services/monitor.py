@@ -8,11 +8,11 @@ import statistics
 import time
 
 from .. import config, db
-from . import discord
+from . import billing, discord
 
 log = logging.getLogger("uvicorn.error")
 STARTED = time.time()
-STATE = {"worker_down": False, "disk_alert_at": 0.0}
+STATE = {"worker_down": False, "disk_alert_at": 0.0, "past_due_at": 0.0}
 DAILY_HOUR = 7
 
 
@@ -69,3 +69,16 @@ def daily_summary(now=None, force=False):
     db.set_setting("daily_summary_last", today)
     discord.usage(daily_summary_text(now_dt.date() - datetime.timedelta(days=1)), wait=True)
     return True
+
+
+def check_past_due(now=None):
+    """決済失敗のまま猶予（7日）を過ぎた購読を、次の更新日で終わらせる（1時間に1回）。"""
+    now = now or time.time()
+    if now - STATE["past_due_at"] < 3600:
+        return 0
+    STATE["past_due_at"] = now
+    n = 0
+    for u in db.past_due_users(now - billing.GRACE_SEC):
+        if u["stripe_subscription_id"] and billing.schedule_cancel(u):
+            n += 1
+    return n

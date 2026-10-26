@@ -33,6 +33,10 @@
 .qgrid .s{font-size:12px;color:var(--sub)}
 .quota .qhq{font-size:13px;font-weight:600;margin:4px 0 0}
 .quota .qlink{display:inline-flex;align-items:center;min-height:44px;font-weight:600}
+.quota .trial{font-size:12px;font-weight:700;color:var(--warn-tag);background:#FDEEE7;border-radius:999px;padding:0 8px}
+.stop{border:1.5px solid var(--warn-tag);border-radius:var(--radius);padding:12px 16px 16px;margin:0}
+.stop h2{margin:0 0 4px;font-size:17px}
+.stop p{margin:0 0 12px;font-size:14px}
 [hidden]{display:none !important}
 </style>
 </head><body>
@@ -40,12 +44,20 @@
 <main class="wrap">
   <h1>動画と写真の顔にモザイクをかける</h1>
   <p class="lead">送ると顔を自動で見つけます。残したい人だけタップして、ほかの顔を隠せます。</p>
-  <div class="sends">
+  <p class="ok" id="paid" role="status" hidden></p>
+  <section class="stop" id="stop" aria-labelledby="stoph" hidden>
+    <h2 id="stoph"></h2>
+    <p id="stopd"></p>
+    <a class="btn btn-pri" id="stopplan" href="/plans" hidden>プランを選ぶ</a>
+    <button class="btn btn-pri" type="button" id="stoppay" hidden>支払い方法を更新する</button>
+    <p class="err" id="stoperr" role="alert" hidden></p>
+  </section>
+  <div class="sends" id="sends">
     <a class="btn btn-pri" id="sendv" href="/upload?type=video">動画を送る</a>
     <a class="btn btn-pri" id="send" href="/upload?type=photo">写真を送る</a>
   </div>
   <section class="quota" aria-labelledby="qh" id="quota" hidden>
-    <div class="qh"><b id="qh">今月の残り</b><span class="pl" id="qpl"></span></div>
+    <div class="qh"><b id="qh">今月の残り <span class="trial" id="qtrial" hidden></span></b><span class="pl" id="qpl"></span></div>
     <div class="qgrid">
       <div><div class="k">動画</div><div class="v" id="qv">—</div><div class="s" id="qvs"></div></div>
       <div><div class="k">写真</div><div class="v" id="qi">—</div><div class="s" id="qis"></div></div>
@@ -61,9 +73,37 @@
 </main>
 <script src="/static/common.js"></script>
 <script>
+// お申し込み直後（Stripe から戻った）
+if (new URLSearchParams(location.search).get('paid') === '1') {
+  const p = document.getElementById('paid');
+  p.textContent = 'お申し込みありがとうございます。使えるようになりました'; p.hidden = false;
+  history.replaceState(null, '', '/home');
+}
+// 利用停止（お試し期限切れ・お支払い未確認）: 送信ボタンと残量を隠して案内だけ
+function showBlocked(m) {
+  const $ = id => document.getElementById(id);
+  $('sends').hidden = true;
+  if (m.blocked === 'trial_expired') {
+    $('stoph').textContent = 'お試し期間が終わりました';
+    $('stopd').textContent = 'プランを選ぶと続けて使えます。完成したものは保存期限まで下の一覧から開けます。';
+    $('stopplan').hidden = false;
+  } else {
+    $('stoph').textContent = 'お支払いの確認ができていません';
+    $('stopd').textContent = '支払い方法を更新すると、また使えるようになります。完成したものは消えません。';
+    $('stoppay').hidden = false;
+    $('stoppay').addEventListener('click', async () => {
+      $('stoperr').hidden = true; $('stoppay').disabled = true;
+      try { const r = await api('/api/billing/portal', { method: 'POST' }); location.href = r.url; }
+      catch (e) { $('stoperr').textContent = e.message; $('stoperr').hidden = false; $('stoppay').disabled = false; }
+    });
+  }
+  $('stop').hidden = false;
+}
 // 今月の残り（分・枚）
 api('/api/me').then(m => {
   const r = m.remaining, $ = id => document.getElementById(id);
+  if (m.blocked) { showBlocked(m); return; }
+  if (m.trial_days_left !== null) { $('qtrial').textContent = 'お試し あと' + m.trial_days_left + '日'; $('qtrial').hidden = false; }
   $('qpl').textContent = m.plan_label + 'プラン';
   if (m.campaign) { const c = document.createElement('span'); c.className = 'camp'; c.textContent = 'リリース記念で増量中'; $('qpl').append(' ', c); }
   if (!m.video_allowed) { $('qv').textContent = 'なし'; $('qvs').textContent = 'プランを変えると送れます'; }
