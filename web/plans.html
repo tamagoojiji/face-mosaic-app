@@ -90,8 +90,8 @@ const yen = n => n.toLocaleString('ja-JP') + '円';
     const day = pv.next_date ? md(pv.next_date) : '次の更新日';
     const name = label(plan) + (hq ? '＋高画質' : '');
     const msg = pv.immediate.length
-      ? 'いま ' + yen(pv.now) + 'を登録しているカードに請求し、次回（' + day + '）から 月' + yen(pv.monthly) + 'になります。切り替えますか？'
-      : '次回（' + day + '）から 月' + yen(pv.monthly) + 'になります。それまでは今のプランのまま使えます。切り替えますか？';
+      ? '差額' + yen(pv.now) + 'を登録しているカードに請求します。\n次回（' + day + '）からは月' + yen(pv.monthly) + 'になります。\n' + name + 'プランに切り替えますか？'
+      : '次回（' + day + '）からは月' + yen(pv.monthly) + 'になります。それまでは今のプランのまま使えます。\n' + name + 'プランに切り替えますか？';
     if (!confirm(msg)) return false;
     const r = await post('/api/billing/change', { plan, hq });
     const flash = pv.immediate.length ? yen(r.charged || 0) + 'を請求しました。プランを ' + name + ' に変えました' : '次回から ' + name + ' に変わります';
