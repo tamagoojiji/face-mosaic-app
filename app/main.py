@@ -294,7 +294,10 @@ def line_start(request: Request):
     state, nonce = secrets.token_urlsafe(16), secrets.token_urlsafe(16)
     q = urllib.parse.urlencode({"response_type": "code", "client_id": config.LINE_LOGIN_CHANNEL_ID,
                                 "redirect_uri": _redirect_uri(request), "state": state,
-                                "scope": "profile openid", "nonce": nonce})
+                                "scope": "profile openid", "nonce": nonce,
+                                # ログインのついでに公式アカウントの友だち追加を案内（通知の経路）。
+                                # LINE Developers のログインチャネル「リンクされたボット」に Messaging API チャネルを設定しておく
+                                "bot_prompt": "aggressive"})
     res = RedirectResponse(LINE_AUTH_URL + "?" + q, status_code=302)
     res.set_cookie(STATE_COOKIE, _state_serializer().dumps({"s": state, "n": nonce}), max_age=600, httponly=True,
                    samesite="lax", secure=request.url.scheme == "https", path="/auth/line")
