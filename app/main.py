@@ -243,9 +243,23 @@ def _notify_registered(u):
         what = f"写真{quota.setting('campaign_images')}枚・1分までの動画{quota.setting('campaign_videos')}本"
     else:
         what = f"写真{quota.PLANS['free']['images']}枚まで。動画はプランを選ぶと送れます"
-    text = f"登録ありがとうございます。{billing._md(u['trial_ends_at'])}まで無料で試せます（{what}）。"
+    kw = {"text": f"登録ありがとうございます。{billing._md(u['trial_ends_at'])}まで無料で試せます（{what}）。"}
+    if u.get("trial_ends_at") and u["trial_ends_at"] <= time.time():  # 再登録でお試しが終わっている
+        kw = {"text": "おかえりなさい。お試し期間は終了しているため、プランを選ぶと使えます。", "link": "/plans"}
     # ログインの画面遷移を LINE API の応答で待たせない
-    threading.Thread(target=notify.push_user, args=("registered", u), kwargs={"text": text}, daemon=True).start()
+    threading.Thread(target=notify.push_user, args=("registered", u), kwargs=kw, daemon=True).start()
+
+
+def reactivate_user(u, name):
+    """退会後の再登録。お試しは LINE アカウントごとに1回だけなので trial_ends_at は付け直さない
+    （前回が NULL のときだけ初回登録日＋7日。過去なら期限切れ＝プランを選ぶまで使えない）。"""
+    trial = u["trial_ends_at"] or ((u["created_at"] or time.time()) + db.TRIAL_DAYS * 86400)
+    db.update_user(u["id"], status="active", display_name=name, plan="free", hq=0, notify=1, ig_asked_at=None,
+                   agreed_at=None, trial_ends_at=trial)
+    u = db.get_user(u["id"])
+    discord.usage(f"新規登録（退会後の再登録）: {discord.who(u)}")
+    _notify_registered(u)
+    return u
 
 
 def _login_line_user(request, line_user_id, name):
@@ -258,12 +272,8 @@ def _login_line_user(request, line_user_id, name):
             _notify_registered(u)
         except sqlite3.IntegrityError:
             u = db.user_by("line_user_id", line_user_id)
-    elif u["status"] == "withdrawn":  # 退会後の再登録: 初回と同じ流れからやり直す
-        db.update_user(u["id"], status="active", display_name=name, plan="free", hq=0, notify=1, ig_asked_at=None,
-                       agreed_at=None, trial_ends_at=time.time() + db.TRIAL_DAYS * 86400)
-        u = db.get_user(u["id"])
-        discord.usage(f"新規登録（退会後の再登録）: {discord.who(u)}")
-        _notify_registered(u)
+    elif u["status"] == "withdrawn":  # 退会後の再登録: 初回と同じ流れ（お試しは付け直さない）
+        u = reactivate_user(u, name)
     elif u["status"] != "active":
         return RedirectResponse("/?e=stopped", status_code=303)
     elif name and name != u["display_name"]:

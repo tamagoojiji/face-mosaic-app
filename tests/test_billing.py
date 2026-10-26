@@ -266,6 +266,24 @@ def test_withdraw_notifies_before_status_change(client, monkeypatch):
     assert v["stripe_customer_id"] == "cus_2"
 
 
+
+def test_reactivate_keeps_expired_trial(client, monkeypatch):
+    import app.main as main_mod
+    sent = []
+    monkeypatch.setattr(main_mod, "_notify_registered", lambda u: sent.append(u["id"]))
+    past = time.time() - 3 * 86400
+    u = db.create_user(line_user_id="Ureg1", display_name="前回", trial_ends_at=past)
+    main_mod.withdraw_user(db.get_user(u["id"]), "unused", cancel=False)
+    v = main_mod.reactivate_user(db.get_user(u["id"]), "再登録")
+    assert v["status"] == "active" and v["plan"] == "free" and v["display_name"] == "再登録"
+    assert v["trial_ends_at"] == past
+    assert quota.blocked(v) == "trial_expired"
+    assert sent == [u["id"]]
+    # 前回が NULL なら初回登録日＋7日
+    w = db.create_user(line_user_id="Ureg2", display_name="x", trial_ends_at=None, created_at=1000.0, status="withdrawn")
+    assert main_mod.reactivate_user(w, "y")["trial_ends_at"] == 1000.0 + 7 * 86400
+
+
 def test_blocked():
     now = time.time()
     base = {"plan": "free", "line_user_id": "U1", "role": "user", "sub_status": None}
