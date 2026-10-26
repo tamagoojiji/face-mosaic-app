@@ -271,7 +271,9 @@ def cancel_at_period_end(user):
     discord.usage(f"解約処理中: {discord.who(user)}")
     day = _md(until) if until else "次の更新日"
     notify.push_user("cancel_requested", db.get_user(user["id"]),
-                     text=f"解約を受け付けました。{day}までは今のまま使えます。更新日に自動で退会となり、返金はありません。")
+                     text=f"解約を受け付けました。{day}までは、いまのプランのまま使えます。{day}に自動で退会となり、"
+                          "保存している動画・写真も消えます。返金はありません。"
+                          "取り消すときは、設定の「支払いを管理する」→「プランを更新」から。")
     return {"until": until}
 
 
