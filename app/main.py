@@ -375,6 +375,11 @@ def plans_page(request: Request):
     return _guarded(request, "plans.html")
 
 
+@app.get("/report")
+def report_page(request: Request):
+    return _guarded(request, "report.html")
+
+
 @app.get("/settings")
 def settings_page(request: Request):
     return _guarded(request, "settings.html")
@@ -1089,6 +1094,14 @@ def withdraw_user(u, reason, note=None, cancel=True):
     discord.usage(f"退会: #{u['id']} {u['display_name'] or 'ゲスト'}（{config.AUTH_MODE}）\n理由: {WITHDRAW_REASONS[reason]}"
                   + (f"\nひとこと: {note}" if note else ""))
     log.info("withdraw user=%s reason=%s 削除 %d 件", u["id"], reason, n)
+
+
+@app.post("/api/logout")
+def api_logout():
+    """ログアウト: セッション Cookie だけ消す（合言葉モードの端末 Cookie は持ち主の判定に使うので残す）。"""
+    res = JSONResponse({"ok": True}, headers=NO_STORE)
+    res.delete_cookie(config.COOKIE_NAME, path="/")
+    return res
 
 
 @app.post("/api/me/withdraw")
