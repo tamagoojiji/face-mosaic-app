@@ -4,34 +4,26 @@
 <title>プランを比較する｜顔モザイク</title>
 <link rel="stylesheet" href="/static/app.css">
 <style>
-.now{background:var(--surface);border-radius:var(--radius);padding:12px 16px;margin:0 0 8px}
-.now .k{font-size:13px;color:var(--sub)}
-.now .v{font-weight:700;font-size:17px}
-.now .s{font-size:13px;color:var(--fg);margin:4px 0 0}
-.plans{list-style:none;margin:16px 0 0;padding:0;display:flex;flex-direction:column;gap:12px}
-.plan{border:1.5px solid var(--line);border-radius:var(--radius);padding:12px 16px 16px}
-.plan.cur{border-color:var(--pri)}
-.plan .head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 0 8px}
-.plan .name{font-weight:700;font-size:17px}
-.plan .price{font-weight:700;font-size:17px;white-space:nowrap}
-.plan .tag{display:inline-block;font-size:12px;font-weight:700;color:#0358B4;background:#E7F1FC;border-radius:999px;padding:0 8px;margin-left:6px;vertical-align:2px}
-.plan dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0 0 12px;font-size:14px}
+.now{background:var(--surface);border-radius:var(--radius);padding:var(--s3) var(--s4);margin:0}
+.now .k{font-size:14px;color:var(--sub)}
+.now .v{font-weight:700;font-size:18px}
+.now .s{font-size:14px;color:var(--fg);margin:var(--s1) 0 0}
+#prep,#lock{margin:var(--s3) 0 0}
+#free{margin:var(--s3) 0 0}
+.plans{list-style:none;margin:var(--s5) 0 0;padding:0;display:flex;flex-direction:column;gap:var(--s3)}
+.plan{border:1.5px solid var(--line);border-radius:var(--radius);padding:var(--s4);background:var(--paper)}
+.plan.cur{border-color:var(--pri);border-width:2px}
+.plan .head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--s2);margin:0 0 var(--s3)}
+.plan .name{font-weight:700;font-size:18px}
+.plan .price{font-weight:700;font-size:18px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.plan .tag{display:inline-block;font-size:12px;font-weight:700;color:var(--pri-press);background:var(--pri-soft);border-radius:6px;padding:0 6px;margin-left:6px;vertical-align:2px}
+.plan dl{display:grid;grid-template-columns:auto 1fr;gap:var(--s1) var(--s3);margin:0 0 var(--s4);font-size:15px}
 .plan dt{color:var(--sub)}
-.plan dd{margin:0;font-weight:600;text-align:right}
-.plan .pnote{font-size:13px;color:var(--sub);margin:-4px 0 12px}
-.opt{border:1.5px solid var(--line);border-radius:var(--radius);padding:12px 16px 16px;margin:16px 0 0}
-.opt .d{font-size:14px;margin:4px 0 0}
-.opt .pr{font-size:14px;font-weight:600;margin:8px 0 0}
-.sw{position:relative;display:flex;align-items:center;gap:12px;min-height:56px;font-weight:700}
-.sw input{position:absolute;opacity:0;width:1px;height:1px}
-.sw .track{position:relative;flex:none;width:52px;height:32px;border-radius:999px;background:#8E9AB0}
-.sw .track::after{content:"";position:absolute;left:3px;top:3px;width:26px;height:26px;border-radius:50%;background:#fff}
-.sw input:checked + .track{background:var(--pri)}
-.sw input:checked + .track::after{left:23px}
-.sw input:disabled + .track{opacity:.6}
-.sw .lb{flex:1}
-.sw .st{font-size:13px;color:var(--sub);font-weight:600}
-[hidden]{display:none !important}
+.plan dd{margin:0;font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+.plan .pnote{font-size:14px;color:var(--sub);margin:calc(-1 * var(--s2)) 0 var(--s3)}
+.opt{border:1.5px solid var(--line);border-radius:var(--radius);padding:var(--s2) var(--s4) var(--s4);margin:var(--s5) 0 0;background:var(--paper)}
+.opt .d{font-size:14px;margin:0}
+.opt .pr{font-size:14px;font-weight:600;margin:var(--s2) 0 0}
 </style>
 </head><body>
 <div class="bar"><a class="back" href="/home" aria-label="ホームに戻る">‹ ホーム</a></div>
@@ -44,18 +36,18 @@
     <p class="s" id="curs"></p>
     <p class="s" id="pend" hidden></p>
   </div>
+  <p class="notice plain" id="prep" hidden>お支払い（月額）の受付は準備中です。始まったら、この画面から申し込めます。</p>
+  <p class="notice warn" id="lock" hidden></p>
   <p class="note" id="free" hidden></p>
   <ul class="plans" id="list"></ul>
   <section class="opt" id="opt" aria-labelledby="optl" hidden>
-    <label class="sw"><span class="lb" id="optl">高画質オプション ＋500円/月（動画A・B）</span><span class="st" id="optst"></span><input type="checkbox" id="hq" disabled><span class="track" aria-hidden="true"></span></label>
+    <label class="sw"><span class="lb" id="optl">高画質オプション <span class="nw">＋500円/月</span><span class="nw">（動画A・B）</span></span><span class="st" id="optst"></span><input type="checkbox" id="hq" disabled><span class="track" aria-hidden="true"></span></label>
     <p class="d">元の解像度と fps で書き出し（HDR は通常の色に変換）</p>
     <p class="pr" id="optpr"></p>
     <p class="note" id="optnow"></p>
   </section>
-  <p class="note" id="prep" hidden>お支払い（月額）の受付は準備中です。始まったら、この画面から申し込めます。</p>
-  <p class="note" id="lock" hidden></p>
   <p class="err" id="err" role="alert" hidden></p>
-  <div style="height:24px"></div>
+  <div style="height:var(--s5)"></div>
 </main>
 <script src="/static/common.js"></script>
 <script>
@@ -140,7 +132,7 @@ const yen = n => n.toLocaleString('ja-JP') + '円';
   }
   const o = d.hq_option;
   $('hq').checked = tgtHq;
-  $('optpr').textContent = o.plans.map(x => x.label + '＋高画質 月' + x.price.toLocaleString('ja-JP') + '円').join('／');
+  $('optpr').replaceChildren(...o.plans.map(x => { const sp = document.createElement('span'); sp.className = 'nw'; sp.textContent = x.label + '＋高画質 月' + x.price.toLocaleString('ja-JP') + '円'; return sp; }).flatMap((sp, i) => i ? ['／', sp] : [sp]));
   const hqOk = ready && subscribed && hqPlans.includes(tgtPlan);
   $('hq').disabled = !hqOk;
   $('optst').textContent = !ready ? '準備中' : tgtHq ? 'オン' : 'オフ';

@@ -4,28 +4,21 @@
 <title>設定｜顔モザイク</title>
 <link rel="stylesheet" href="/static/app.css">
 <style>
-.sec{border-bottom:1px solid var(--line);padding:16px 0}
-.sec h2{margin:0 0 8px;font-size:15px;color:var(--sub)}
-.row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px}
-.row .v{font-weight:600}
+.sec{border-bottom:1px solid var(--line);padding:var(--s5) 0}
+.sec h2{margin:0 0 var(--s3);font-size:16px;color:var(--fg)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);min-height:44px}
+.row > span:first-child{color:var(--sub)}
+.row .v{font-weight:600;text-align:right}
 .at{position:relative}
 .at span{position:absolute;left:16px;top:0;line-height:56px;font-size:17px;color:var(--sub)}
 .at input{padding-left:36px}
-.save{margin:12px 0 0}
-.sw{position:relative;display:flex;align-items:center;gap:12px;min-height:56px;cursor:pointer;font-weight:600}
-.sw input{position:absolute;opacity:0;width:1px;height:1px}
-.sw .track{position:relative;flex:none;width:52px;height:32px;border-radius:999px;background:#8E9AB0;transition:background .15s}
-.sw .track::after{content:"";position:absolute;left:3px;top:3px;width:26px;height:26px;border-radius:50%;background:#fff;transition:left .15s}
-.sw input:checked + .track{background:var(--pri)}
-.sw input:checked + .track::after{left:23px}
-.sw input:focus-visible + .track{outline:3px solid rgba(4,108,220,.45);outline-offset:2px}
-.sw .lb{flex:1}
-.sw .st{font-size:13px;color:var(--sub);font-weight:600}
-.leave{display:inline-flex;align-items:center;min-height:44px;margin:24px 0 32px;color:var(--sub);font-size:14px}
-.out{margin:24px 0 0;color:var(--fg);border-color:var(--line)}
+.save{margin:var(--s3) 0 0}
+.sec .note{margin-top:var(--s2)}
+.sec .btn + .note,.sec .note + .btn{margin-top:var(--s2)}
+#cancel,#resume{margin-top:var(--s3)}
+.leave{display:inline-flex;align-items:center;min-height:44px;margin:var(--s5) 0 var(--s6);color:var(--sub);font-size:14px}
+.out{margin:var(--s5) 0 0}
 .addoa{display:flex;align-items:center;min-height:44px;font-weight:600}
-[hidden]{display:none !important}
-@media (prefers-reduced-motion:reduce){.sw .track,.sw .track::after{transition:none}}
 </style>
 </head><body>
 <div class="bar"><a class="back" href="/home" aria-label="ホームに戻る">‹ ホーム</a></div>
@@ -37,7 +30,7 @@
     <div class="row"><span>プラン</span><span class="v" id="plan">—</span></div>
     <div class="row"><span>契約</span><span class="v" id="sub">—</span></div>
     <div class="row" id="hqrow" hidden><span>高画質オプション</span><span class="v" id="hqv"></span></div>
-    <a class="btn btn-sec" href="/plans" style="margin-top:8px">プランを比較する</a>
+    <a class="btn btn-sec" href="/plans" style="margin-top:var(--s3)">プランを比較する</a>
   </section>
   <section class="sec">
     <h2><label for="ig">Instagram のユーザー名（任意）</label></h2>
@@ -65,10 +58,10 @@
   </section>
   <section class="sec">
     <h2>問題を報告する</h2>
-    <p class="note" style="margin:0 0 8px">うまくいかなかったことを運営に知らせる</p>
+    <p class="note" style="margin:0 0 var(--s3)">うまくいかなかったことを運営に知らせる</p>
     <a class="btn btn-sec" href="/report">問題を報告する</a>
   </section>
-  <button class="btn btn-sec out" type="button" id="logout">ログアウト</button>
+  <button class="btn btn-ter out" type="button" id="logout">ログアウト</button>
   <p class="err" id="outerr" role="alert" hidden></p>
   <a class="leave" href="/withdraw" id="leave">退会する</a>
   <footer class="legal-links"><a href="/legal/terms">利用規約</a><a href="/legal/privacy">プライバシーポリシー</a><a href="/legal/tokushoho">特商法表記</a></footer>

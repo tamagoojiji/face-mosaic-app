@@ -4,15 +4,14 @@
 <title>退会する｜顔モザイク</title>
 <link rel="stylesheet" href="/static/app.css">
 <style>
-fieldset{border:0;margin:0 0 16px;padding:0;min-width:0}
-legend{font-weight:700;margin:0 0 8px;padding:0}
-.opt{display:flex;align-items:center;gap:12px;min-height:52px;padding:6px 12px;border:1.5px solid var(--line);border-radius:10px;margin:0 0 8px;cursor:pointer}
+fieldset{border:0;margin:0 0 var(--s5);padding:0;min-width:0}
+legend{font-weight:700;margin:0 0 var(--s3);padding:0}
+.opt{display:flex;align-items:center;gap:var(--s3);min-height:52px;padding:var(--s2) var(--s3);border:1.5px solid var(--line);border-radius:var(--radius-sm);margin:0 0 var(--s2);cursor:pointer;background:var(--paper)}
 .opt input{width:22px;height:22px;flex:none;accent-color:var(--pri)}
-.opt:has(input:checked){border-color:var(--pri);background:#EEF5FD;font-weight:600}
-textarea{width:100%;min-height:96px;border:1.5px solid var(--line);border-radius:var(--radius);padding:12px 16px;font:inherit;color:var(--fg);resize:vertical}
-.keep{background:var(--surface);border-radius:var(--radius);padding:12px 16px;margin:16px 0}
-.acts{padding-bottom:calc(24px + env(safe-area-inset-bottom))}
-[hidden]{display:none !important}
+.opt:has(input:checked){border-color:var(--pri);background:var(--pri-soft);font-weight:600}
+textarea{width:100%;min-height:96px;padding:var(--s3) var(--s4);resize:vertical}
+.keep{margin:var(--s5) 0;font-size:15px}
+.acts{padding-bottom:calc(var(--s5) + env(safe-area-inset-bottom))}
 </style>
 </head><body>
 <div class="bar"><a class="back" href="/settings" aria-label="設定に戻る">‹ 設定</a></div>
@@ -30,7 +29,7 @@ textarea{width:100%;min-height:96px;border:1.5px solid var(--line);border-radius
     </fieldset>
     <label class="field" for="note">ほかに伝えたいこと（任意）</label>
     <textarea id="note" maxlength="500"></textarea>
-    <p class="keep">退会すると、有料プランの残り期間も終了し（返金はありません）、保存している動画・写真はすぐ消えます。期間の終わりまで使いたいときは、設定の「解約する」を選んでください。</p>
+    <p class="notice plain keep">退会すると、有料プランの残り期間も終了し（返金はありません）、保存している動画・写真はすぐ消えます。期間の終わりまで使いたいときは、設定の「解約する」を選んでください。</p>
     <div class="stack acts">
       <button class="btn btn-danger" type="submit" id="go" disabled>退会する</button>
       <p class="note" id="hint">理由を選ぶと押せるようになります。</p>
