@@ -33,6 +33,7 @@
     <h2>アカウント</h2>
     <div class="row"><span>表示名</span><span class="v" id="name">—</span></div>
     <div class="row"><span>プラン</span><span class="v" id="plan">—</span></div>
+    <div class="row" id="hqrow" hidden><span>高画質オプション</span><span class="v" id="hqv"></span></div>
     <a class="btn btn-sec" href="/plans" style="margin-top:8px">プランを比較する</a>
   </section>
   <section class="sec">
@@ -63,6 +64,8 @@ const $ = id => document.getElementById(id);
 function show(m) {
   $('name').textContent = m.display_name || 'ゲスト';
   $('plan').textContent = m.plan_label;
+  $('hqrow').hidden = !m.hq_available;
+  $('hqv').textContent = m.hq ? 'ON（当面は1080pで書き出し）' : 'OFF';
   $('ig').value = m.instagram_username || '';
   $('nt').checked = m.notify; $('nst').textContent = m.notify ? 'オン' : 'オフ';
   if (m.auth_mode !== 'line') $('nnote').textContent = '合言葉で使っている間は LINE 通知は届きません。お知らせはホームの一覧に出ます。';

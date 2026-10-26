@@ -9,17 +9,18 @@ from .. import config, db
 PLANS = {
     "free": {"label": "無料", "price": 0, "video_sec_month": 0, "video_count_month": 0, "video_len": 60,
              "images": 5, "quality": "1080p・30fps"},
-    "image": {"label": "画像のみ", "price": 480, "video_sec_month": 0, "video_count_month": 0, "video_len": 0,
+    "image": {"label": "画像のみ", "price": 500, "video_sec_month": 0, "video_count_month": 0, "video_len": 0,
               "images": 100, "quality": "画像は長辺4000pxまで"},
     "video_a": {"label": "動画A", "price": 980, "video_sec_month": 600, "video_count_month": None, "video_len": 60,
                 "images": 100, "quality": "1080p・30fps"},
-    "video_b": {"label": "動画B", "price": 1980, "video_sec_month": 5400, "video_count_month": None, "video_len": 180,
+    "video_b": {"label": "動画B", "price": 1480, "video_sec_month": 5400, "video_count_month": None, "video_len": 180,
                 "images": None, "quality": "1080p・30fps"},
-    "video_b_hq": {"label": "動画B 高画質", "price": 2480, "video_sec_month": 5400, "video_count_month": None,
-                   "video_len": 180, "images": None, "quality": "元の解像度・元のfps",
-                   "note": "当面は 1080p・30fps で書き出します（元の解像度での書き出しは準備中）"},
 }
-PAID = ("image", "video_a", "video_b", "video_b_hq")
+PLAN_ORDER = ("free", "image", "video_a", "video_b")
+PAID = ("image", "video_a", "video_b")
+# 高画質オプション（月＋500円・動画A/Bだけ）。元解像度での書き出しは Phase 6。それまでは hq=1 でも 1080p で書き出す
+HQ_OPTION = {"label": "高画質オプション", "price": 500, "plans": ("video_a", "video_b"),
+             "quality": "元の解像度と fps で書き出し", "note": "当面は 1080p・30fps で書き出し"}
 SETTING_DEFAULTS = {"campaign_on": "0", "campaign_from": "", "campaign_to": "",
                     "campaign_images": "10", "campaign_videos": "3"}
 
@@ -49,7 +50,7 @@ def fmt_sec(sec):
 
 def limits(user):
     plan = user.get("plan") if user.get("plan") in PLANS else "free"
-    p = dict(PLANS[plan], plan=plan, campaign=False)
+    p = dict(PLANS[plan], plan=plan, campaign=False, hq=bool(user.get("hq")) and plan in HQ_OPTION["plans"])
     if plan == "free" and campaign_active():
         p.update(campaign=True, images=int(setting("campaign_images") or 10),
                  video_count_month=int(setting("campaign_videos") or 3))

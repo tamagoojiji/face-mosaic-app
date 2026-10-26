@@ -243,7 +243,7 @@ def _login_line_user(request, line_user_id, name):
         except sqlite3.IntegrityError:
             u = db.user_by("line_user_id", line_user_id)
     elif u["status"] == "withdrawn":  # 退会後の再登録: 初回と同じ流れからやり直す
-        db.update_user(u["id"], status="active", display_name=name, plan="free", notify=1, ig_asked_at=None,
+        db.update_user(u["id"], status="active", display_name=name, plan="free", hq=0, notify=1, ig_asked_at=None,
                        agreed_at=None)
         u = db.get_user(u["id"])
         discord.usage(f"新規登録（退会後の再登録）: {discord.who(u)}")
@@ -919,6 +919,7 @@ def _me(u):
     lim = st["limits"]
     return {"id": u["id"], "display_name": u["display_name"], "instagram_username": u["instagram_username"],
             "notify": bool(u["notify"]), "auth_mode": config.AUTH_MODE, "plan": lim["plan"], "plan_label": lim["label"],
+            "hq": lim["hq"], "hq_available": lim["plan"] in quota.HQ_OPTION["plans"],
             "campaign": lim["campaign"], "video_allowed": lim["video_allowed"], "video_len": lim["video_len"],
             "limits": {"images": lim["images"], "video_sec_month": lim["video_sec_month"],
                        "video_count_month": lim["video_count_month"]},
@@ -936,8 +937,11 @@ def api_me(request: Request):
 @app.get("/api/plans")
 def api_plans(request: Request):
     u = require_api(request)
-    plans = [dict(quota.PLANS[k], key=k) for k in quota.PAID]
-    return JSONResponse({"me": _me(u), "plans": plans}, headers=NO_STORE)
+    plans = [dict(quota.PLANS[k], key=k) for k in quota.PLAN_ORDER]
+    hq = dict(quota.HQ_OPTION, plans=[{"key": k, "label": quota.PLANS[k]["label"],
+                                       "price": quota.PLANS[k]["price"] + quota.HQ_OPTION["price"]}
+                                      for k in quota.HQ_OPTION["plans"]])
+    return JSONResponse({"me": _me(u), "plans": plans, "hq_option": hq}, headers=NO_STORE)
 
 
 @app.post("/api/me/instagram")

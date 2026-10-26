@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS users (
   display_name TEXT,
   instagram_username TEXT,         -- 任意・自己申告
   role TEXT NOT NULL DEFAULT 'user',
-  plan TEXT NOT NULL DEFAULT 'free',
+  plan TEXT NOT NULL DEFAULT 'free',          -- free | image | video_a | video_b
+  hq INTEGER NOT NULL DEFAULT 0,               -- 高画質オプション（動画A/Bだけ有効）
   stripe_customer_id TEXT,
   stripe_subscription_id TEXT,
   sub_status TEXT,
@@ -108,6 +109,10 @@ def init():
         for name, typ in ADD_COLUMNS.items():  # 旧 DB の移行
             if name not in cols:
                 con.execute(f"ALTER TABLE jobs ADD COLUMN {name} {typ}")
+        if "hq" not in {r["name"] for r in con.execute("PRAGMA table_info(users)")}:
+            con.execute("ALTER TABLE users ADD COLUMN hq INTEGER NOT NULL DEFAULT 0")
+        # 旧プラン「動画B 高画質」→ 動画B＋高画質オプション
+        con.execute("UPDATE users SET plan='video_b', hq=1 WHERE plan='video_b_hq'")
         con.execute("CREATE INDEX IF NOT EXISTS jobs_owner ON jobs(owner, created_at)")
         con.execute("CREATE INDEX IF NOT EXISTS jobs_user ON jobs(user_id, created_at)")
         now = time.time()
