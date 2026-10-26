@@ -22,7 +22,7 @@
 
 | 種別 | ID | 内容 |
 |---|---|---|
-| Webhook エンドポイント（名前 face-mosaic） | `we_1UULAoCK9wiENSxsZ1TFOykC` | `https://mosaic.tamago-ai-world.com/stripe/webhook`・イベント6件（checkout.session.completed / customer.subscription.created・updated・deleted / invoice.payment_failed / invoice.paid）。署名シークレットは VPS の設定ファイル STRIPE_WEBHOOK_SECRET |
+| Webhook エンドポイント（face-mosaic・2026-10-26 再発行。旧 `we_1UULAoCK9wiENSxsZ1TFOykC` は署名シークレットの転記ミスで同日削除） | `we_1UUjJ8CK9wiENSxs9O7tLmzI` | `https://mosaic.tamago-ai-world.com/stripe/webhook`・イベント6件（checkout.session.completed / customer.subscription.created・updated・deleted / invoice.payment_failed / invoice.paid）。署名シークレットは VPS の設定ファイル STRIPE_WEBHOOK_SECRET |
 | カスタマーポータル設定（アプリ専用） | `bpc_1UUipICK9wiENSxs7NHsJyeD` | カード変更ON・解約ON（期末）・プラン切替OFF（プラン変更と高画質はアプリ内 API）・請求履歴ON。settings `stripe_portal_config` |
 | カスタマーポータル（既定設定・不使用） | `bpc_1UOY5bCK9wiENSxseyvgtp1V` | 旧。アプリは上の専用設定を使う |
 

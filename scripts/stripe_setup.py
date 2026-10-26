@@ -23,7 +23,7 @@ PRICES = (("image", "fm_image_500", "画像のみ", 500),
           ("hq", "fm_hq_500", "高画質オプション", 500))
 # 旧商品（docs/external-ids.md・2026-10-26 価格改定でアーカイブ。価格は商品の既定価格なので商品ごと止める）
 OLD_PRODUCTS = ("prod_VVLoTIM3d8p0EP", "prod_VVLpJlHhbUxKGw", "prod_VVLp4pIQb9ifqS", "prod_VVLpWvGmYuNyI9")
-WEBHOOK_ID = "we_1UULAoCK9wiENSxsZ1TFOykC"
+WEBHOOK_ID = "we_1UUjJ8CK9wiENSxs9O7tLmzI"  # 2026-10-26 再発行（旧 we_1UULAo… は削除）
 WEBHOOK_EVENTS = ["checkout.session.completed", "customer.subscription.created", "customer.subscription.updated",
                   "customer.subscription.deleted", "invoice.payment_failed", "invoice.paid"]
 PORTAL = {"features": {"payment_method_update": {"enabled": True},
