@@ -34,6 +34,17 @@
 .rp textarea:focus-visible,.rp select:focus-visible{outline:3px solid rgba(4,108,220,.45);outline-offset:2px}
 .rp .cnt{text-align:right;font-size:13px;color:var(--sub);margin:4px 0 0}
 .rp .cnt.over{color:var(--warn-tag);font-weight:600}
+.rp .pick{position:relative;display:flex;margin:0}
+.rp .pick input{position:absolute;opacity:0;width:1px;height:1px}
+.rp .pick:focus-within{outline:3px solid rgba(4,108,220,.45);outline-offset:2px;border-radius:var(--radius)}
+.rp .pick.full{color:#6B778C;border-color:var(--line);cursor:default}
+.rp .thumbs:empty{display:none}
+.rp .thumbs{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0 0;padding:0;list-style:none}
+.rp .thumbs li{width:96px;display:flex;flex-direction:column;align-items:center;gap:4px}
+.rp .thumbs img,.rp .thumbs .noprev{width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:var(--surface)}
+.rp .thumbs .noprev{display:flex;align-items:center;justify-content:center;padding:4px;font-size:11px;line-height:1.4;color:var(--sub);text-align:center}
+.rp .thumbs .fn{width:100%;font-size:12px;color:var(--sub);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp .thumbs button{min-height:44px;min-width:64px;padding:0 10px;border:0;background:none;color:var(--pri);font:inherit;font-size:14px;font-weight:600;cursor:pointer}
 [hidden]{display:none !important}
 @media (prefers-reduced-motion:reduce){.sw .track,.sw .track::after{transition:none}}
 </style>
@@ -111,6 +122,11 @@
       <label class="lbl" for="rpj">対象の動画・写真（任意）</label>
       <select id="rpj"><option value="">選ばない</option></select>
       <p class="note" id="rpjnone" hidden>送った動画・写真はまだありません。送ったあとは、ここで選べます。</p>
+      <span class="lbl" id="rpil">スクリーンショット（任意・3枚まで）</span>
+      <p class="note" id="rpinote" style="margin:0 0 8px">エラー画面や、顔が隠れていない場面の画面写真があると調べやすくなります（1枚10MBまで）。</p>
+      <label class="btn btn-sec pick" id="rpipick"><input type="file" id="rpi" accept="image/*" multiple aria-labelledby="rpil rpipick" aria-describedby="rpinote">画像を選ぶ</label>
+      <ul class="thumbs" id="rpthumbs" aria-label="選んだ画像"></ul>
+      <p class="err" id="rpierr" role="alert" hidden></p>
       <button class="btn btn-sec save" type="submit" id="rps">運営に報告を送る</button>
       <p class="ok" id="rpok" role="status" hidden></p>
       <p class="err" id="rperr" role="alert" hidden></p>
@@ -212,6 +228,42 @@ api('/api/jobs').then(jobs => {
     $('rpj').append(o);
   });
 }).catch(() => {});
+// スクリーンショット（最大3枚・1枚10MB）
+const RP_IMG_MAX = 3, RP_IMG_BYTES = 10 * 1024 * 1024;
+let rpFiles = [];
+function rpImgErr(msg) { $('rpierr').textContent = msg || ''; $('rpierr').hidden = !msg; }
+function rpRender() {
+  const ul = $('rpthumbs');
+  ul.querySelectorAll('img').forEach(i => URL.revokeObjectURL(i.src));
+  ul.replaceChildren();
+  rpFiles.forEach((f, i) => {
+    const li = document.createElement('li');
+    const img = document.createElement('img');
+    img.alt = f.name; img.src = URL.createObjectURL(f);
+    img.onerror = () => { const d = document.createElement('div'); d.className = 'noprev'; d.textContent = 'プレビューできません（送れます）'; img.replaceWith(d); };
+    const fn = document.createElement('span'); fn.className = 'fn'; fn.textContent = f.name; fn.title = f.name;
+    const rm = document.createElement('button'); rm.type = 'button'; rm.textContent = '外す';
+    rm.setAttribute('aria-label', f.name + ' を外す');
+    rm.addEventListener('click', () => { rpFiles.splice(i, 1); rpImgErr(''); rpRender(); });
+    li.append(img, fn, rm); ul.append(li);
+  });
+  const full = rpFiles.length >= RP_IMG_MAX;
+  $('rpipick').lastChild.textContent = full ? '3枚選びました（外すと選び直せます）'
+    : rpFiles.length ? '画像を追加する（あと' + (RP_IMG_MAX - rpFiles.length) + '枚）' : '画像を選ぶ';
+  $('rpipick').classList.toggle('full', full);
+  $('rpi').disabled = full;
+}
+$('rpi').addEventListener('change', () => {
+  const add = [...$('rpi').files];
+  $('rpi').value = '';
+  rpImgErr('');
+  const big = add.filter(f => f.size > RP_IMG_BYTES);
+  const ok = add.filter(f => f.size <= RP_IMG_BYTES);
+  if (rpFiles.length + ok.length > RP_IMG_MAX) { rpImgErr('画像は3枚までです'); return; }
+  if (big.length) rpImgErr('画像は1枚10MBまでです（' + big.map(f => f.name).join('、') + ' は選べません）');
+  rpFiles = rpFiles.concat(ok);
+  rpRender();
+});
 $('rpf').addEventListener('submit', async ev => {
   ev.preventDefault();
   $('rpok').hidden = $('rperr').hidden = true;
@@ -220,9 +272,14 @@ $('rpf').addEventListener('submit', async ev => {
   if (picked.value === 'other' && !body) { $('rperr').textContent = '内容を書いてください'; $('rperr').hidden = false; $('rpb').focus(); return; }
   $('rps').disabled = true;
   try {
-    await api('/api/reports', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      category: picked.value, body, job_id: $('rpj').value || null }) });
+    const fd = new FormData();
+    fd.append('category', picked.value);
+    fd.append('body', body);
+    fd.append('job_id', $('rpj').value);
+    rpFiles.forEach(f => fd.append('images', f, f.name));
+    await api('/api/reports', { method: 'POST', body: fd });
     $('rpb').value = ''; $('rpj').value = ''; picked.checked = false; rpCount();
+    rpFiles = []; rpImgErr(''); rpRender();
     $('rpok').textContent = '報告を受け付けました。運営が確認します'; $('rpok').hidden = false;
   } catch (e) { $('rperr').textContent = e.message; $('rperr').hidden = false; }
   $('rps').disabled = false;

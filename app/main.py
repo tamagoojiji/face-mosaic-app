@@ -40,7 +40,7 @@ def job_dir(job_id):
     return os.path.join(config.DATA_DIR, "jobs", job_id)
 
 
-PERIODIC = (retention.cleanup_expired, retention.notify_idle, monitor.check_worker, monitor.check_disk,
+PERIODIC = (retention.cleanup_expired, retention.cleanup_report_images, retention.notify_idle, monitor.check_worker, monitor.check_disk,
             monitor.daily_summary, monitor.check_past_due)
 
 
@@ -1062,6 +1062,9 @@ def withdraw_user(u, reason, note=None, cancel=True):
     for j in db.user_jobs(u["id"]):
         shutil.rmtree(job_dir(j["id"]), ignore_errors=True)
     n = db.delete_jobs_of(u["id"])
+    for r in db.reports_of(u["id"]):  # 通報の画像は消す（文字は残す）
+        if r["image_count"] or os.path.isdir(retention.report_dir(r["id"])):
+            retention.delete_report_images(r)
     # 契約の値はクリア（stripe_customer_id は Stripe の請求履歴との突合用に残す）
     db.update_user(u["id"], status="withdrawn", instagram_username=None, notify=0, withdraw_reason=reason,
                    withdraw_note=note or None, withdrawn_at=time.time(),
@@ -1121,10 +1124,49 @@ def job_label(j):
     return "写真"
 
 
+REPORT_IMAGES_MAX = 3
+REPORT_IMAGE_BYTES = 10 * 1024 * 1024
+REPORT_IMAGE_SIDE = 2000
+
+
+def _report_image(raw):
+    """スクリーンショット1枚 → 長辺2000px・JPEG 品質85・EXIF なし（HEIC も pillow-heif で読める）。"""
+    from io import BytesIO
+
+    from PIL import Image, ImageOps
+    try:
+        im = Image.open(BytesIO(raw))
+        im = ImageOps.exif_transpose(im)  # 向きだけ反映して、EXIF は保存しない
+        im = im.convert("RGB")
+    except Exception:
+        raise HTTPException(400, "画像ファイルを選んでください")
+    im.thumbnail((REPORT_IMAGE_SIDE, REPORT_IMAGE_SIDE))
+    out = BytesIO()
+    im.save(out, "JPEG", quality=85)
+    return out.getvalue()
+
+
+async def _report_form(request):
+    """JSON か multipart/form-data（画像つき）。返すのは (項目の dict, 画像の生バイト列のリスト)。"""
+    if not request.headers.get("content-type", "").startswith("multipart/form-data"):
+        return await _json_body(request), []
+    form = await request.form()
+    files = [f for f in form.getlist("images") if hasattr(f, "read") and (f.filename or f.size)]
+    if len(files) > REPORT_IMAGES_MAX:
+        raise HTTPException(400, f"画像は{REPORT_IMAGES_MAX}枚までです")
+    raws = []
+    for f in files:
+        raw = await f.read(REPORT_IMAGE_BYTES + 1)
+        if len(raw) > REPORT_IMAGE_BYTES:
+            raise HTTPException(400, "画像は1枚10MBまでです")
+        raws.append(raw)
+    return {k: form.get(k) for k in ("category", "body", "job_id")}, raws
+
+
 @app.post("/api/reports")
 async def api_report(request: Request):
     u = require_api(request)
-    b = await _json_body(request)
+    b, raws = await _report_form(request)
     cat = b.get("category")
     if cat not in REPORT_CATEGORIES:
         raise HTTPException(400, "あてはまるものを1つ選んでください")
@@ -1139,12 +1181,21 @@ async def api_report(request: Request):
         j = db.get_job(str(jid)) if JOB_ID_RE.match(str(jid)) else None
         if not j or j["user_id"] != u["id"]:
             raise HTTPException(400, "対象の動画・写真が見つかりません。選び直してください")
+    images = [await asyncio.to_thread(_report_image, raw) for raw in raws]  # 全部読めてから記録する
     rid = db.add_report(u["id"], cat, body, j["id"] if j else None)
+    if images:
+        d = retention.report_dir(rid)
+        os.makedirs(d, exist_ok=True)
+        for n, data in enumerate(images, 1):
+            with open(os.path.join(d, f"{n}.jpg"), "wb") as f:
+                f.write(data)
+        db.update_report(rid, image_count=len(images))
     target = f"{job_label(j)}（job={j['id']}）" if j else "なし"
     stage, label = REPORT_CATEGORIES[cat]
     discord.report(f"#{rid} {stage} › {label}\n通報者: {discord.who(u)}\n対象: {target}\n"
-                   f"内容: {body[:200] if body else '（なし）'}")
-    log.info("report #%s user=%s category=%s", rid, u["id"], cat)
+                   f"内容: {body[:200] if body else '（なし）'}" + (f"\n画像 {len(images)} 枚" if images else ""),
+                   files=[(f"report{rid}_{n}.jpg", data) for n, data in enumerate(images, 1)])
+    log.info("report #%s user=%s category=%s 画像 %d 枚", rid, u["id"], cat, len(images))
     return JSONResponse({"id": rid}, status_code=201, headers=NO_STORE)
 
 

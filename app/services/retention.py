@@ -11,8 +11,32 @@ from . import notify, quota
 log = logging.getLogger("uvicorn.error")
 
 
+REPORT_IMAGE_DAYS = 90  # 通報の画像は作成から90日で消す（文字は残す）
+
+
 def job_dir(job_id):
     return os.path.join(config.DATA_DIR, "jobs", job_id)
+
+
+def report_dir(report_id):
+    return os.path.join(config.DATA_DIR, "reports", str(report_id))
+
+
+def delete_report_images(r):
+    shutil.rmtree(report_dir(r["id"]), ignore_errors=True)
+    db.update_report(r["id"], image_count=0)
+
+
+def cleanup_report_images(now=None):
+    """作成から90日を過ぎた通報の画像を消す。"""
+    now = now or time.time()
+    rs = db.old_report_images(now - REPORT_IMAGE_DAYS * 86400)
+    for r in rs:
+        delete_report_images(r)
+    if rs:
+        log.info("retention: 通報の画像 %d 件を削除（作成から%d日）: %s", len(rs), REPORT_IMAGE_DAYS,
+                 ",".join(f"#{r['id']}" for r in rs))
+    return len(rs)
 
 
 def purge_source(j):

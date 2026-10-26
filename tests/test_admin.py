@@ -15,7 +15,10 @@ for k in ("LINE_MSG_CHANNEL_ACCESS_TOKEN", "DISCORD_WEBHOOK_ALERTS", "DISCORD_WE
           "APP_BASE_URL"):
     os.environ.pop(k, None)
 
+import io  # noqa: E402
+
 import pytest  # noqa: E402
+from PIL import Image  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app import config, db  # noqa: E402
@@ -56,7 +59,7 @@ def test_require_admin_404():
 
 def test_post_report(monkeypatch):
     sent = []
-    monkeypatch.setattr(discord, "send", lambda ch, text, wait=False: sent.append((ch, text)))
+    monkeypatch.setattr(discord, "send", lambda ch, text, wait=False, files=None: sent.append((ch, text)))
     c, u = login("dev-rep1")
     db.insert_job("jobREP000001", kind="video", status="done", user_id=u["id"], duration_sec=83.0)
     r = c.post("/api/reports", json={"category": "out_uncovered", "body": "  0:42 で顔が見えます  ", "job_id": "jobREP000001"})
@@ -137,3 +140,55 @@ def test_settings_override_retention(monkeypatch):
     for k in ("idle_warn_hours", "idle_delete_hours", "source_retention_hours"):
         with db.connect() as con:
             con.execute("DELETE FROM settings WHERE key=?", (k,))
+
+
+def _png(w=40, h=30):
+    b = io.BytesIO()
+    Image.new("RGB", (w, h), (200, 30, 30)).save(b, "PNG")
+    return b.getvalue()
+
+
+def test_report_images(monkeypatch):
+    sent = []
+    monkeypatch.setattr(discord, "send", lambda ch, text, wait=False, files=None: sent.append((ch, text, files)))
+    c, u = login("dev-img1")
+    r = c.post("/api/reports", data={"category": "out_uncovered", "body": "画像つき"},
+               files=[("images", ("a.png", _png(), "image/png"))])
+    assert r.status_code == 201, r.text
+    rid = r.json()["id"]
+    assert db.get_report(rid)["image_count"] == 1
+    p = os.path.join(retention.report_dir(rid), "1.jpg")
+    assert os.path.exists(p) and Image.open(p).format == "JPEG"
+    assert sent[-1][2] and len(sent[-1][2]) == 1 and "画像 1 枚" in sent[-1][1]
+    # 管理画面だけが見られる
+    a, _ = login("dev-admin-img", role="admin")
+    g = a.get(f"/admin/api/reports/{rid}/images/1")
+    assert g.status_code == 200 and g.headers["content-type"] == "image/jpeg"
+    assert a.get(f"/admin/api/reports/{rid}/images/2").status_code == 404
+    assert c.get(f"/admin/api/reports/{rid}/images/1").status_code == 404
+    # 4枚・画像でないファイルは 400（記録もしない）
+    with db.connect() as con:
+        before = con.execute("SELECT COUNT(*) FROM reports").fetchone()[0]
+    r = c.post("/api/reports", data={"category": "login"}, files=[("images", (f"{i}.png", _png(), "image/png")) for i in range(4)])
+    assert r.status_code == 400 and "3枚" in r.json()["detail"]
+    r = c.post("/api/reports", data={"category": "login"}, files=[("images", ("x.png", b"not an image", "image/png"))])
+    assert r.status_code == 400 and r.json()["detail"] == "画像ファイルを選んでください"
+    with db.connect() as con:
+        assert con.execute("SELECT COUNT(*) FROM reports").fetchone()[0] == before
+    # 退会で画像は消える（通報の文字は残る）
+    monkeypatch.setattr(notify, "push_user", lambda *a, **k: False)
+    assert c.post("/api/me/withdraw", json={"reason": "other"}).status_code == 200
+    assert not os.path.exists(retention.report_dir(rid))
+    rep = db.get_report(rid)
+    assert rep["image_count"] == 0 and rep["body"] == "画像つき"
+
+
+def test_report_images_expire():
+    u = db.create_user(device_id="dev-img-old", display_name="古い")
+    rid = db.add_report(u["id"], "login", None)
+    d = retention.report_dir(rid)
+    os.makedirs(d, exist_ok=True)
+    open(os.path.join(d, "1.jpg"), "wb").write(b"x")
+    db.update_report(rid, image_count=1, created_at=time.time() - 91 * 86400)
+    assert retention.cleanup_report_images() >= 1
+    assert not os.path.exists(d) and db.get_report(rid)["image_count"] == 0

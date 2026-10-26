@@ -85,7 +85,8 @@ CREATE TABLE IF NOT EXISTS reports (
   status TEXT NOT NULL DEFAULT 'open',   -- open | closed
   admin_note TEXT,
   created_at REAL,
-  updated_at REAL
+  updated_at REAL,
+  image_count INTEGER NOT NULL DEFAULT 0   -- 添付のスクリーンショット（DATA_DIR/reports/<id>/<n>.jpg）
 );
 CREATE TABLE IF NOT EXISTS billing_events (
   event_id TEXT PRIMARY KEY,       -- Stripe の event.id（Webhook の重複処理よけ）
@@ -166,6 +167,8 @@ def init():
             con.execute("INSERT INTO reports SELECT id, user_id, job_id, category, body, status, admin_note, created_at, "
                         "updated_at FROM reports_old")
             con.execute("DROP TABLE reports_old")
+        if "image_count" not in {r["name"] for r in con.execute("PRAGMA table_info(reports)")}:
+            con.execute("ALTER TABLE reports ADD COLUMN image_count INTEGER NOT NULL DEFAULT 0")
         con.execute("CREATE INDEX IF NOT EXISTS jobs_owner ON jobs(owner, created_at)")
         con.execute("CREATE INDEX IF NOT EXISTS jobs_user ON jobs(user_id, created_at)")
         now = time.time()
@@ -412,6 +415,17 @@ def get_report(report_id):
     with connect() as con:
         r = con.execute("SELECT * FROM reports WHERE id=?", (report_id,)).fetchone()
     return dict(r) if r else None
+
+
+def reports_of(user_id):
+    with connect() as con:
+        return [dict(r) for r in con.execute("SELECT * FROM reports WHERE user_id=?", (user_id,))]
+
+
+def old_report_images(before):
+    """画像の保存期限（作成から90日）を過ぎた通報。"""
+    with connect() as con:
+        return [dict(r) for r in con.execute("SELECT * FROM reports WHERE image_count>0 AND created_at<?", (before,))]
 
 
 def update_report(report_id, **cols):

@@ -12,11 +12,11 @@ import shutil
 import time
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from . import config, db
 from . import main as core
-from .services import discord, monitor, quota
+from .services import discord, monitor, quota, retention
 
 router = APIRouter(prefix="/admin")
 NOT_FOUND = "Not Found"  # 存在しないページと同じ応答
@@ -329,7 +329,7 @@ def _report_row(r, users, jobs):
             "stage": core.REPORT_CATEGORIES.get(r["category"], ("（旧分類）", ""))[0],
             "category_label": core.REPORT_CATEGORIES.get(r["category"], ("", r["category"]))[1], "body": r["body"],
             "status": r["status"], "admin_note": r["admin_note"], "created_at": r["created_at"],
-            "updated_at": r["updated_at"]}
+            "updated_at": r["updated_at"], "image_count": r["image_count"]}
 
 
 @router.get("/api/reports")
@@ -353,6 +353,16 @@ def api_reports(request: Request, status: str = "", stage: str = ""):
     return _ok({"reports": [_report_row(r, users, jobs) for r in rows],
                 "counts": {s: _count("SELECT COUNT(*) FROM reports WHERE status=?", (s,)) for s in ("open", "closed")},
                 "stages": list(core.REPORT_STAGES)})
+
+
+@router.get("/api/reports/{rid}/images/{n}")
+def api_report_image(request: Request, rid: int, n: int):
+    require_admin(request, api=True)
+    r = db.get_report(rid)
+    p = os.path.join(retention.report_dir(rid), f"{n}.jpg")
+    if not r or not 1 <= n <= r["image_count"] or not os.path.exists(p):
+        raise HTTPException(404, "画像が見つかりません（作成から90日たったか、退会で削除済みです）")
+    return FileResponse(p, media_type="image/jpeg", headers=core.NO_STORE)
 
 
 @router.post("/api/reports/{rid}")
