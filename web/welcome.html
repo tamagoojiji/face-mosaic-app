@@ -7,6 +7,7 @@
 .at{position:relative}
 .at span{position:absolute;left:16px;top:0;line-height:56px;font-size:17px;color:var(--sub)}
 .at input{padding-left:36px}
+.acts{margin-top:var(--s5)}
 </style>
 </head><body>
 <main class="wrap">
@@ -19,8 +20,10 @@
       <div class="at"><span aria-hidden="true">@</span><input id="ig" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="31" placeholder="tamago_example"></div>
       <p class="err" id="err" role="alert" hidden></p>
     </div>
-    <button class="btn btn-pri" type="submit" id="go">登録して次へ</button>
-    <button class="btn btn-ter" type="button" id="skip">あとで入れる</button>
+    <div class="stack acts">
+      <button class="btn btn-pri" type="submit" id="go">登録して規約の確認へ進む</button>
+      <button class="btn btn-ter" type="button" id="skip">あとで入れる</button>
+    </div>
   </form>
 </main>
 <script src="/static/common.js"></script>

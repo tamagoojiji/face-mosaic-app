@@ -1,44 +1,111 @@
+/* 顔モザイク 共通トークンと部品（利用者画面・運営画面の両方で読む）
+   配色 70:25:5 = ニュートラル（背景・面・線・文字）／主役の青（主ボタン・選択中・今いる場所）／意味の色（オレンジ=モザイク・緑=残す・赤茶=エラー）
+   主役の青は旧 #046CDC（HSL 211/96/44）から彩度・明度を各10%下げた #0E62BC。文字のコントラストは docs/ui-review-2026-10-27.md に実測値 */
 :root{
-  --bg:#fff; --surface:#F4F6FA; --line:#D8DEE8;
+  /* ニュートラル */
+  --bg:#FBFCFD; --paper:#FDFEFF; --surface:#F1F4F8; --line:#D5DCE6; --line-strong:#8492A6;
   --fg:#14284A; --sub:#4A5872;
-  --pri:#046CDC; --pri-press:#0358B4;
-  --warn:#D9541E; --warn-tag:#B5431A;
-  --keep:#15803D; --low:#5A6478;
-  --radius:12px;
+  /* 主役（青） */
+  --pri:#0E62BC; --pri-press:#0B509A; --pri-soft:#EAF1FA; --on-pri:#FBFCFD; --focus:rgba(14,98,188,.45);
+  /* 意味の色 */
+  --warn:#D9541E; --warn-tag:#B5431A; --warn-soft:#FCEFE8;
+  --keep:#15803D; --keep-ink:#11703A; --keep-soft:#E9F5EE; --low:#5A6478;
+  --dis-bg:#E8ECF2; --dis-fg:#5C687C;
+  --dark:#0E1A30;
+  /* 余白（中＜外: 一緒に読むものは 4〜8、まとまりの間は 24〜32） */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+  --radius:12px; --radius-sm:10px;
   color-scheme:light;
 }
 *{box-sizing:border-box}
+[hidden]{display:none !important}
 html,body{margin:0;background:var(--bg);color:var(--fg)}
-body{font:15px/1.6 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;-webkit-text-size-adjust:100%}
+body{font:16px/1.6 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;-webkit-text-size-adjust:100%}
 a{color:var(--pri)}
-.wrap{max-width:560px;margin:0 auto;padding:0 16px}
-.bar{display:flex;align-items:center;gap:8px;min-height:52px;border-bottom:1px solid var(--line);padding:0 16px}
+.wrap{max-width:560px;margin:0 auto;padding:0 var(--s4)}
+.bar{display:flex;align-items:center;gap:var(--s2);min-height:52px;border-bottom:1px solid var(--line);padding:0 var(--s4);background:var(--paper)}
 .bar .brand{font-weight:700;font-size:16px;color:var(--fg);text-decoration:none}
-.bar .end{margin-left:auto;display:inline-flex;align-items:center;min-height:44px;padding:0 4px;font-weight:600;text-decoration:none;color:var(--pri)}
+.bar .end{margin-left:auto;display:inline-flex;align-items:center;min-height:44px;padding:0 var(--s1);font-weight:600;text-decoration:none;color:var(--pri)}
 .bar .back{display:inline-flex;align-items:center;min-height:44px;min-width:44px;font-weight:600;text-decoration:none;color:var(--pri)}
-h1{font-size:22px;line-height:1.4;margin:24px 0 8px}
-h2{font-size:17px;line-height:1.4;margin:32px 0 8px}
-.lead{color:var(--sub);margin:0 0 24px}
-.note{color:var(--sub);font-size:13px;margin:8px 0 0}
+
+/* 文字: 見出し 22／小見出し 18／本文 16／補足 14 */
+h1{font-size:22px;line-height:1.4;margin:var(--s5) 0 var(--s2)}
+h2{font-size:18px;line-height:1.4;margin:var(--s6) 0 var(--s2)}
+h1,h2{word-break:auto-phrase;text-wrap:pretty}
+.lead{color:var(--sub);margin:0 0 var(--s5)}
+.note{color:var(--sub);font-size:14px;line-height:1.6;margin:var(--s2) 0 0}
+.nw{white-space:nowrap}
+
+/* ボタン 3階層: 主（塗り）／副（白＋枠）／補助（薄グレー）。危険は赤茶の枠 */
 .btn{display:flex;align-items:center;justify-content:center;width:100%;min-height:56px;border-radius:var(--radius);
-  font-family:inherit;font-size:17px;font-weight:700;line-height:1.2;text-decoration:none;cursor:pointer;border:0;padding:0 16px;text-align:center}
-.btn-pri{background:var(--pri);color:#fff}
-.btn-pri:active{background:var(--pri-press)}
-.btn-pri:disabled{background:#8AA9CF;cursor:default}
-.btn-sec{background:#fff;color:var(--pri);border:1.5px solid var(--pri)}
-.btn-ter{background:transparent;color:var(--pri);min-height:44px;font-size:15px}
-.btn-danger{background:#fff;color:var(--warn-tag);border:1.5px solid var(--warn-tag)}
-.btn-danger:disabled,.btn-sec:disabled{color:#8E9AB0;border-color:var(--line);cursor:default}
-.stack{display:flex;flex-direction:column;gap:12px}
-.err{color:var(--warn-tag);font-weight:600;margin:8px 0 0}
-.ok{color:var(--keep);font-weight:600;margin:8px 0 0}
-input[type=password],input[type=text]{width:100%;height:56px;border:1.5px solid var(--line);border-radius:var(--radius);
-  padding:0 16px;font:inherit;font-size:17px;color:var(--fg);background:#fff}
-input:focus-visible,button:focus-visible,a:focus-visible,label:focus-within{outline:3px solid rgba(4,108,220,.45);outline-offset:2px}
-label.field{display:block;font-weight:600;margin:0 0 8px}
-.steps{display:flex;gap:8px;margin:16px 0 0;padding:0;list-style:none;font-size:13px;color:var(--sub)}
-.steps li{flex:1;border-top:3px solid var(--line);padding-top:6px}
+  font-family:inherit;font-size:16px;font-weight:700;line-height:1.3;text-decoration:none;cursor:pointer;border:0;padding:var(--s2) var(--s4);text-align:center}
+.btn-pri{background:var(--pri);color:var(--on-pri)}
+.btn-pri:hover{background:var(--pri-press)}
+.btn-pri:active{background:var(--pri-press);transform:translateY(1px)}
+.btn-pri:disabled{background:var(--dis-bg);color:var(--dis-fg);cursor:default;transform:none}
+.btn-sec{background:var(--paper);color:var(--pri);border:1.5px solid var(--pri)}
+.btn-sec:hover{background:var(--pri-soft)}
+.btn-ter{background:var(--surface);color:var(--fg);min-height:48px;font-weight:600}
+.btn-ter:hover{background:var(--dis-bg)}
+.btn-danger{background:var(--paper);color:var(--warn-tag);border:1.5px solid var(--warn-tag)}
+.btn-danger:disabled,.btn-sec:disabled{background:var(--dis-bg);color:var(--dis-fg);border-color:var(--dis-bg);cursor:default}
+.stack{display:flex;flex-direction:column;gap:var(--s3)}
+.group{margin-top:var(--s5)}
+
+/* 押したあとの反応・エラー（操作した場所のすぐ下に出す） */
+.err{color:var(--warn-tag);font-weight:600;margin:var(--s2) 0 0}
+.ok{color:var(--keep-ink);font-weight:600;margin:var(--s2) 0 0}
+
+/* お知らせの面（情報=青の淡色・注意=オレンジの淡色）。表示だけで押せない */
+.notice{background:var(--pri-soft);color:var(--fg);border-radius:var(--radius-sm);padding:var(--s3) var(--s4);font-size:14px;line-height:1.6;margin:var(--s3) 0 0}
+.notice.warn{background:var(--warn-soft);color:var(--warn-tag);font-weight:600}
+.notice.plain{background:var(--surface)}
+
+/* 入力 */
+input[type=password],input[type=text]{width:100%;height:56px;border:1.5px solid var(--line-strong);border-radius:var(--radius);
+  padding:0 var(--s4);font:inherit;font-size:17px;color:var(--fg);background:var(--paper)}
+textarea,select{font:inherit;font-size:16px;color:var(--fg);background:var(--paper);border:1.5px solid var(--line-strong);border-radius:var(--radius)}
+input:focus-visible,button:focus-visible,a:focus-visible,label:focus-within,textarea:focus-visible,select:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+label.field{display:block;font-weight:600;margin:0 0 var(--s2)}
+
+/* 選ぶ行（ラジオ・チェック）: 枠つきの行。選ぶと枠が青・面が淡い青・文字が太字 */
+.choice{display:flex;align-items:center;gap:var(--s3);min-height:52px;padding:var(--s2) var(--s3);border:1.5px solid var(--line);border-radius:var(--radius-sm);
+  background:var(--paper);cursor:pointer;line-height:1.45;margin:0 0 var(--s2)}
+.choice input{width:22px;height:22px;flex:none;margin:0;accent-color:var(--pri)}
+.choice:has(input:checked){border-color:var(--pri);background:var(--pri-soft);font-weight:600}
+
+/* 2択の切り替え（モザイクの種類）: 丸印は文字と並べる（重ねない） */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin:0 0 var(--s3);border:0;padding:0;min-width:0}
+.seg legend{font-size:14px;font-weight:700;color:var(--sub);padding:0;margin:0 0 var(--s2)}
+.seg label{display:flex;align-items:center;gap:var(--s2);min-height:56px;padding:var(--s2) var(--s3);
+  border:1.5px solid var(--line);border-radius:var(--radius-sm);background:var(--paper);cursor:pointer;line-height:1.3}
+.seg label::before{content:"";flex:none;box-sizing:border-box;width:18px;height:18px;border-radius:50%;border:2px solid var(--line-strong);background:var(--paper)}
+.seg label > span{display:flex;flex-direction:column;min-width:0}
+.seg .m{font-weight:700;font-size:15px}
+.seg .d{font-size:13px;color:var(--sub)}
+.seg input{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px}
+.seg label:has(input:checked){border-color:var(--pri);background:var(--pri-soft)}
+.seg label:has(input:checked)::before{border:5px solid var(--pri)}
+.seg label:has(input:focus-visible){outline:3px solid var(--focus);outline-offset:2px}
+
+/* オン・オフのスイッチ（状態は色＋つまみの位置＋「オン／オフ」の文字） */
+.sw{position:relative;display:flex;align-items:center;gap:var(--s3);min-height:56px;cursor:pointer;font-weight:600}
+.sw input{position:absolute;opacity:0;width:1px;height:1px}
+.sw .track{position:relative;flex:none;width:52px;height:32px;border-radius:999px;background:var(--line-strong);transition:background .15s}
+.sw .track::after{content:"";position:absolute;left:3px;top:3px;width:26px;height:26px;border-radius:50%;background:var(--paper);transition:left .15s}
+.sw input:checked + .track{background:var(--pri)}
+.sw input:checked + .track::after{left:23px}
+.sw input:disabled + .track{opacity:.5}
+.sw input:focus-visible + .track{outline:3px solid var(--focus);outline-offset:2px}
+.sw .lb{flex:1;min-width:0}
+.sw .st{font-size:14px;color:var(--sub);font-weight:600;white-space:nowrap}
+
+/* 手順の位置 */
+.steps{display:flex;gap:var(--s2);margin:var(--s4) 0 0;padding:0;list-style:none;font-size:13px;color:var(--sub)}
+.steps li{flex:1;border-top:3px solid var(--line);padding-top:6px;min-width:0}
 .steps li.on{border-color:var(--pri);color:var(--fg);font-weight:700}
 .steps li.done{border-color:var(--pri)}
-.legal-links{display:flex;flex-wrap:wrap;gap:0 16px;margin:24px 0 0;padding:8px 0 calc(24px + env(safe-area-inset-bottom));border-top:1px solid var(--line);font-size:13px}
+
+.legal-links{display:flex;flex-wrap:wrap;gap:0 var(--s4);margin:var(--s5) 0 0;padding:var(--s2) 0 calc(var(--s5) + env(safe-area-inset-bottom));border-top:1px solid var(--line);font-size:14px}
 .legal-links a{display:inline-flex;align-items:center;min-height:44px;color:var(--sub)}
+@media (prefers-reduced-motion:reduce){.sw .track,.sw .track::after{transition:none}.btn-pri:active{transform:none}}

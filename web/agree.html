@@ -4,12 +4,12 @@
 <title>利用規約への同意｜顔モザイク</title>
 <link rel="stylesheet" href="/static/app.css">
 <style>
-.terms{background:var(--surface);border-radius:var(--radius);padding:12px 16px;margin:0 0 16px}
+.terms{background:var(--surface);border-radius:var(--radius);padding:var(--s4);margin:0 0 var(--s5)}
 .terms ul{margin:0;padding-left:1.2em}
-.terms li{margin:4px 0}
-.check{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 12px;border:1.5px solid var(--line);border-radius:var(--radius);font-weight:600;cursor:pointer;margin:0 0 16px}
-.check input{width:24px;height:24px;flex:none;accent-color:var(--pri)}
-.check:has(input:checked){border-color:var(--pri);background:#EEF5FD}
+.terms li{margin:0 0 var(--s2)}
+.terms .note{margin-top:var(--s3)}
+.choice{font-weight:600;min-height:56px;margin:0 0 var(--s3)}
+.choice input{width:24px;height:24px}
 </style>
 </head><body>
 <main class="wrap">
@@ -24,15 +24,16 @@
     </ul>
     <p class="note">全文：<a href="/legal/terms" target="_blank" rel="noopener">利用規約</a>／<a href="/legal/privacy" target="_blank" rel="noopener">プライバシーポリシー</a>／<a href="/legal/tokushoho" target="_blank" rel="noopener">特定商取引法に基づく表記</a>（別のタブで開きます）</p>
   </div>
-  <label class="check"><input type="checkbox" id="ok">利用規約とプライバシーポリシーに同意します</label>
+  <label class="choice"><input type="checkbox" id="ok">利用規約とプライバシーポリシーに同意します</label>
   <button class="btn btn-pri" id="go" disabled>同意してはじめる</button>
+  <p class="note" id="hint">同意のチェックを入れると押せるようになります。</p>
   <p class="err" id="err" role="alert" hidden></p>
 </main>
 <script src="/static/common.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 api('/api/me').then(m => { $('sh').textContent = m.source_hours; $('od').textContent = m.output_days; }).catch(() => { });
-$('ok').addEventListener('change', () => { $('go').disabled = !$('ok').checked; });
+$('ok').addEventListener('change', () => { $('go').disabled = !$('ok').checked; $('hint').hidden = $('ok').checked; });
 $('go').addEventListener('click', async () => {
   $('go').disabled = true;
   try { await api('/api/me/agree', { method: 'POST' }); location.href = '/home'; }
