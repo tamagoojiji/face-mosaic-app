@@ -4,12 +4,14 @@
 <title>できあがり｜顔モザイク</title>
 <link rel="stylesheet" href="/static/app.css">
 <style>
-.pv{display:block;width:100%;max-height:60vh;object-fit:contain;background:var(--surface);border-radius:var(--radius);margin:0 0 8px}
-.summary{font-weight:600;margin:0 0 4px}
-.remain{color:var(--sub);font-size:13px;margin:0 0 16px}
+.pv{display:block;width:100%;max-height:60vh;object-fit:contain;background:var(--surface);border-radius:var(--radius);margin:0 0 var(--s3)}
+.summary{font-weight:700;margin:0 0 var(--s1)}
+.remain{color:var(--sub);font-size:14px;margin:0 0 var(--s4)}
 .remain b{color:var(--fg)}
-.hint{color:var(--sub);font-size:13px;margin:-4px 0 0}
-.hint[hidden]{display:none}
+.hint{color:var(--sub);font-size:14px;margin:calc(-1 * var(--s1)) 0 0}
+.next{margin-top:var(--s5);padding-top:var(--s5);border-top:1px solid var(--line)}
+.stack.next{padding-bottom:calc(var(--s5) + env(safe-area-inset-bottom))}
+.stack:not(:has(*)) + .next{margin-top:var(--s3);padding-top:0;border-top:0}
 </style>
 </head><body>
 <div class="bar"><a class="back" href="/home" aria-label="ホームに戻る">‹ ホーム</a></div>
@@ -23,6 +25,8 @@
     <button type="button" class="btn btn-pri" id="save">写真に保存する</button>
     <p class="hint" id="saveHint" role="status" hidden>画像を長押しして「"写真"に保存」を選んでください</p>
     <a class="btn btn-sec" id="dl" download>ファイルに保存する（ダウンロード）</a>
+  </div>
+  <div class="stack next">
     <a class="btn btn-sec" href="/upload?type=photo">もう1枚送る</a>
     <a class="btn btn-ter" id="again">残す顔を選び直す</a>
   </div>
@@ -37,7 +41,7 @@ const id = jobIdFromPath(), $ = x => document.getElementById(x);
     $('pv').remove(); document.querySelector('h1').textContent = j.status === 'deleted' ? 'この写真は消えました' : 'まだ書き出していません';
     $('sum').textContent = j.status === 'deleted' ? '保存期間が過ぎたので、完成した写真を削除しました。' : '残す顔を選んで「この内容で書き出す」を押してください。';
     $('save').remove(); $('saveHint').remove(); $('dl').remove();
-    if (j.status === 'deleted') $('again').remove(); else $('again').href = '/pick/' + id;
+    if (j.status === 'deleted') { $('again').remove(); document.querySelector('.next .btn-sec').className = 'btn btn-pri'; } else $('again').href = '/pick/' + id;
     return;
   }
   const src = '/api/jobs/' + id + '/result.jpg';

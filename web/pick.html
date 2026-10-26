@@ -5,42 +5,35 @@
 <link rel="stylesheet" href="/static/app.css">
 <style>
 body{overflow-x:hidden}
-#hd{padding:0 16px 8px}
-#hd h1{font-size:18px;margin:12px 0 4px}
-#hd .lead{font-size:13px;margin:0 0 10px}
-.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 8px;border:0;padding:0}
-.seg legend{font-size:13px;font-weight:700;color:var(--sub);padding:0;margin:0 0 6px}
-.seg label{position:relative;display:flex;flex-direction:column;justify-content:center;min-height:52px;padding:6px 10px 6px 36px;
-  border:1.5px solid var(--line);border-radius:10px;cursor:pointer;line-height:1.3}
-.seg label .m{font-weight:700;font-size:15px}
-.seg label .d{font-size:12px;color:var(--sub)}
-.seg input{position:absolute;opacity:0;pointer-events:none}
-.seg label::before{content:"";box-sizing:border-box;position:absolute;left:10px;top:50%;width:16px;height:16px;margin-top:-8px;border-radius:50%;border:2px solid #8E9AB0;background:#fff}
-.seg label:has(input:checked){border-color:var(--pri);background:#EEF5FD}
-.seg label:has(input:checked)::before{border:5px solid var(--pri)}
-.tools{display:flex;align-items:center;gap:8px}
-.opt{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--sub);min-height:44px;cursor:pointer}
-.opt input{width:20px;height:20px;margin:0}
+#hd{padding:0 var(--s4) var(--s2)}
+#hd h1{font-size:20px;margin:var(--s3) 0 var(--s1)}
+#hd .lead{font-size:14px;margin:0 0 var(--s3)}
+.tools{display:flex;align-items:center;gap:var(--s2)}
+.opt{display:flex;align-items:center;gap:var(--s2);font-size:14px;color:var(--fg);min-height:44px;cursor:pointer}
+.opt input{width:20px;height:20px;margin:0;accent-color:var(--pri)}
 .zoom{margin-left:auto;display:flex;gap:6px}
-.zoom button{min-width:44px;min-height:44px;font:inherit;font-size:20px;border-radius:10px;border:1.5px solid var(--line);background:#fff;color:var(--fg);cursor:pointer}
-#sc{overflow:auto;touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch;background:#0E1A30}
+.zoom button{min-width:44px;min-height:44px;font:inherit;font-size:20px;border-radius:var(--radius-sm);border:1.5px solid var(--line);background:var(--paper);color:var(--fg);cursor:pointer}
+#sc{overflow:auto;touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch;background:var(--dark)}
 #in{position:relative;margin:0 auto}
 #in img{display:block;width:100%;user-select:none;-webkit-user-drag:none;-webkit-touch-callout:none}
-.b{position:absolute;padding:0;margin:0;background:transparent;border:2px solid var(--warn);border-radius:4px;cursor:pointer;box-shadow:0 0 0 1px rgba(0,0,0,.6)}
-.b::before{content:"";position:absolute;left:50%;top:50%;width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}
-.b .tag{position:absolute;left:0;top:0;background:var(--warn-tag);color:#fff;font:700 12px/1 -apple-system,"Hiragino Sans",sans-serif;padding:3px 4px;border-radius:0 0 4px 0;white-space:nowrap;pointer-events:none}
-.b.keep{border-color:var(--keep);border-width:3px;background:rgba(21,128,61,.22)}
+/* 顔の枠: 選んだかどうかは「色＋太さ＋塗り」で示す（番号は余裕のある枠だけ・枠の内側の左上に小さく） */
+.b{position:absolute;padding:0;margin:0;background:transparent;border:2px solid var(--warn);border-radius:4px;cursor:pointer;box-shadow:0 0 0 1px rgba(14,26,48,.7)}
+.b .tag{display:none;position:absolute;left:0;top:0;background:var(--warn-tag);color:var(--on-pri);font:700 11px/1 -apple-system,"Hiragino Sans",sans-serif;padding:2px 3px;border-radius:0 0 3px 0;white-space:nowrap;pointer-events:none}
+.b.num .tag{display:block}
+.b.keep{border-color:var(--keep);border-width:3px;background:rgba(21,128,61,.28)}
 .b.keep .tag{background:var(--keep)}
 .b.low{border-style:dashed}
 .b.low .tag{background:var(--low)}
 .b.low.keep .tag{background:var(--keep)}
 .b.hide{display:none}
-#ft{position:fixed;left:0;right:0;bottom:0;z-index:10;border-top:1px solid var(--line);background:#fff;
-  padding:8px 16px calc(8px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:6px}
+.b.off{visibility:hidden}
+#ft{position:fixed;left:0;right:0;bottom:0;z-index:10;border-top:1px solid var(--line);background:var(--paper);
+  padding:var(--s2) var(--s4) calc(var(--s2) + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:6px}
 #cnt{font-size:15px;font-weight:700;line-height:22px}
-#cnt .k{color:var(--keep)}
+#cnt .k{color:var(--keep-ink)}
 #ferr{margin:0}
-#msg{padding:24px 16px}
+#msg{padding:var(--s5) var(--s4)}
+#msg p{margin:0 0 var(--s4)}
 </style>
 </head><body>
 <div class="bar"><a class="back" href="/home" aria-label="ホームに戻る">‹ ホーム</a></div>
@@ -49,8 +42,8 @@ body{overflow-x:hidden}
   <p class="lead">タップした枠は緑になり、そのまま残ります。オレンジの枠にはモザイクがかかります。</p>
   <fieldset class="seg">
     <legend>モザイクの種類（標準はブロック粗め）</legend>
-    <label><input type="radio" name="st" value="pixel" checked><span class="m">ブロック粗め</span><span class="d">マス目で隠す</span></label>
-    <label><input type="radio" name="st" value="blur"><span class="m">すりガラス</span><span class="d">ぼかして隠す</span></label>
+    <label><input type="radio" name="st" value="pixel" checked><span><span class="m">ブロック粗め</span><span class="d">マス目で隠す</span></span></label>
+    <label><input type="radio" name="st" value="blur"><span><span class="m">すりガラス</span><span class="d">ぼかして隠す</span></span></label>
   </fieldset>
   <div class="tools">
     <label class="opt"><input type="checkbox" id="low"><span id="lowlabel">自信の低い枠も表示</span></label>
@@ -98,13 +91,50 @@ function fit() {
   const r = sc.getBoundingClientRect();
   base = Math.min(r.width, r.height * R);
   inn.style.width = (base * zoom) + 'px';
+  tags();
 }
 function setZoom(z, cx, cy) {
   const old = zoom; zoom = Math.min(6, Math.max(1, z));
   const r = sc.getBoundingClientRect(); cx = cx ?? r.width / 2; cy = cy ?? r.height / 2;
   const px = (sc.scrollLeft + cx) / old, py = (sc.scrollTop + cy) / old;
   inn.style.width = (base * zoom) + 'px'; sc.scrollLeft = px * zoom - cx; sc.scrollTop = py * zoom - cy;
+  tags();
 }
+// 番号札: 枠の内側に収まり、ほかの枠と 4px 以上離れ、見えている範囲にあるときだけ出す（密集していたら省いて枠の色と太さで示す）
+let tagQ = 0;
+function tags() { cancelAnimationFrame(tagQ); tagQ = requestAnimationFrame(placeTags); }
+function placeTags() {
+  const vis = shown().filter(d => d.el), view = sc.getBoundingClientRect(), G = 4;
+  const rects = new Map(vis.map(d => [d, d.el.getBoundingClientRect()]));
+  vis.forEach(d => { d.el.classList.remove('num'); const q = rects.get(d);  // 拡大中に見えている範囲の外にある枠は描かない
+    d.el.classList.toggle('off', q.right <= view.left || q.left >= view.right || q.bottom <= view.top || q.top >= view.bottom); });
+  vis.slice().sort((a, b) => b.w * b.h - a.w * a.h).forEach(d => {
+    const r = rects.get(d), t = d.el.firstChild;
+    d.el.classList.add('num');
+    const tw = t.offsetWidth, th = t.offsetHeight, bw = parseFloat(getComputedStyle(d.el).borderTopWidth) || 0;
+    const T = { l: r.left + bw - G, t: r.top + bw - G, r: r.left + bw + tw + G, b: r.top + bw + th + G };
+    const fits = r.width >= tw + 2 * bw + 2 && r.height >= th + 2 * bw + 2;
+    const inView = T.l >= view.left && T.r <= view.right && T.t >= view.top && T.b <= view.bottom;
+    const clear = vis.every(o => o === d || (() => { const q = rects.get(o); return q.right <= T.l || q.left >= T.r || q.bottom <= T.t || q.top >= T.b; })());
+    if (!(fits && inView && clear)) d.el.classList.remove('num');
+  });
+}
+// 小さい枠も指で押せるように: 押した点を含む枠（小さい枠は 44px 四方に広げて判定）のうち、いちばん上に重なっているもの
+function hitAt(x, y) {
+  const els = [...inn.querySelectorAll('.b:not(.hide):not(.off)')].reverse();
+  return els.find(e => {
+    const r = e.getBoundingClientRect(), w = Math.max(r.width, 44), h = Math.max(r.height, 44);
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    return Math.abs(x - cx) <= w / 2 && Math.abs(y - cy) <= h / 2;
+  });
+}
+inn.addEventListener('click', e => {
+  const el = e.detail === 0 ? e.target.closest('.b') : hitAt(e.clientX, e.clientY);  // detail 0 = キーボード操作
+  if (!el) return;
+  e.preventDefault(); e.stopPropagation();
+  const d = D.find(x => x.el === el); keep.has(d.id) ? keep.delete(d.id) : keep.add(d.id); paint(d); count(); tags();
+}, true);
+sc.addEventListener('scroll', tags, { passive: true });
 $('zi').onclick = () => setZoom(zoom * 1.5);
 $('zo').onclick = () => setZoom(zoom / 1.5);
 sc.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); const r = sc.getBoundingClientRect(); setZoom(zoom * Math.exp(-e.deltaY / 200), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
@@ -119,7 +149,7 @@ document.addEventListener('gesturestart', e => e.preventDefault());
 new ResizeObserver(fit).observe(ft);
 window.addEventListener('resize', fit);
 $('ph').addEventListener('load', fit);
-low.onchange = () => { D.forEach(d => { if (d.low) d.el.classList.toggle('hide', !low.checked); }); count(); };
+low.onchange = () => { D.forEach(d => { if (d.low) d.el.classList.toggle('hide', !low.checked); }); count(); tags(); };
 
 (async () => {
   let j;
@@ -137,7 +167,6 @@ low.onchange = () => { D.forEach(d => { if (d.low) d.el.classList.toggle('hide',
     e.className = 'b' + (d.low ? ' low' : '') + (d.low && !low.checked ? ' hide' : '');
     Object.assign(e.style, { left: d.l + '%', top: d.t + '%', width: d.w + '%', height: d.h + '%' });
     const t = document.createElement('span'); t.className = 'tag'; e.appendChild(t); d.el = e; paint(d);
-    e.onclick = () => { keep.has(d.id) ? keep.delete(d.id) : keep.add(d.id); paint(d); count(); };
     inn.appendChild(e);
   });
   if (!D.length) $('cm').textContent = '顔は見つかりませんでした';

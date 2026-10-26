@@ -4,22 +4,24 @@
 <title>送る｜顔モザイク</title>
 <link rel="stylesheet" href="/static/app.css">
 <style>
-.tabs{display:grid;grid-template-columns:1fr 1fr;margin:16px 0 0;border:1.5px solid var(--line);border-radius:var(--radius);overflow:hidden}
-.tabs a{display:flex;align-items:center;justify-content:center;min-height:48px;font-weight:700;text-decoration:none;color:var(--sub);background:#fff}
-.tabs a[aria-current=page]{background:var(--pri);color:#fff}
-.drop{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:180px;border:2px dashed #9FB3CF;
-  border-radius:var(--radius);background:var(--surface);cursor:pointer;text-align:center;padding:16px}
-.drop .big{font-weight:700;font-size:17px;color:var(--pri)}
-.drop .small{font-size:13px;color:var(--sub)}
+/* 送るもの（動画・写真）の切り替え: ライン型のタブ。選択中は青の文字＋太線 */
+.tabs{display:grid;grid-template-columns:1fr 1fr;margin:var(--s2) 0 0;border-bottom:1px solid var(--line)}
+.tabs a{display:flex;align-items:center;justify-content:center;min-height:48px;font-weight:700;text-decoration:none;color:var(--sub);border-bottom:3px solid transparent;margin-bottom:-1px}
+.tabs a:hover{color:var(--fg)}
+.tabs a[aria-current=page]{color:var(--pri);border-bottom-color:var(--pri)}
+.drop{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--s1);min-height:180px;border:2px dashed var(--line-strong);
+  border-radius:var(--radius);background:var(--surface);cursor:pointer;text-align:center;padding:var(--s4)}
+.drop:hover{border-color:var(--pri);background:var(--pri-soft)}
+.drop .big{font-weight:700;font-size:18px;color:var(--pri)}
+.drop .small{font-size:14px;color:var(--sub)}
 .drop input{position:absolute;opacity:0;width:1px;height:1px}
-.prog{margin:16px 0 0}
+.drop:focus-within{outline:3px solid var(--focus);outline-offset:2px}
+.prog{margin:var(--s4) 0 0}
 .prog .label{font-weight:600}
-.prog .sub{color:var(--sub);font-size:13px;margin:4px 0 0}
-.track{height:10px;border-radius:999px;background:var(--surface);overflow:hidden;margin:8px 0 0;border:1px solid var(--line)}
+.prog .sub{color:var(--sub);font-size:14px;margin:var(--s1) 0 0}
+.track{height:10px;border-radius:999px;background:var(--surface);overflow:hidden;margin:var(--s2) 0 0;border:1px solid var(--line)}
 .fill{height:100%;width:0;background:var(--pri);transition:width .2s}
-.resume{margin:12px 0 0}
-.info{margin:12px 0 0;padding:12px;border-radius:var(--radius);background:var(--surface);font-size:13px;color:var(--fg)}
-[hidden]{display:none !important}
+.resume{margin:var(--s3) 0 0}
 @media (prefers-reduced-motion:reduce){.fill{transition:none}}
 </style>
 </head><body>
@@ -39,7 +41,7 @@
       <span class="big" id="vbig">動画を選ぶ</span>
       <span class="small" id="vlimit">1本1GBまで</span>
     </label>
-    <p class="info" id="vpending" hidden></p>
+    <p class="notice" id="vpending" hidden></p>
     <div class="prog" id="vprog" hidden>
       <div class="label" id="vlabel" aria-live="polite">送信しています…</div>
       <div class="track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-labelledby="vlabel" id="vtrack"><div class="fill" id="vfill"></div></div>
