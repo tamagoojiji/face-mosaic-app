@@ -21,9 +21,8 @@ PRICES = (("image", "fm_image_500", "画像のみ", 500),
           ("video_a", "fm_video_a_980", "動画A", 980),
           ("video_b", "fm_video_b_1480", "動画B", 1480),
           ("hq", "fm_hq_500", "高画質オプション", 500))
-# 旧価格（docs/external-ids.md・2026-10-26 価格改定でアーカイブ）
-OLD_PRICES = ("price_1UUL7FCK9wiENSxsJfbCiNX3", "price_1UUL7fCK9wiENSxsa3liLGkz",
-              "price_1UUL7uCK9wiENSxsLwo8FZhg", "price_1UUL89CK9wiENSxsWTk06r8x")
+# 旧商品（docs/external-ids.md・2026-10-26 価格改定でアーカイブ。価格は商品の既定価格なので商品ごと止める）
+OLD_PRODUCTS = ("prod_VVLoTIM3d8p0EP", "prod_VVLpJlHhbUxKGw", "prod_VVLp4pIQb9ifqS", "prod_VVLpWvGmYuNyI9")
 WEBHOOK_ID = "we_1UULAoCK9wiENSxsZ1TFOykC"
 WEBHOOK_EVENTS = ["checkout.session.completed", "customer.subscription.created", "customer.subscription.updated",
                   "customer.subscription.deleted", "invoice.payment_failed", "invoice.paid"]
@@ -37,7 +36,7 @@ PORTAL = {"features": {"payment_method_update": {"enabled": True},
 def dry_run():
     for key, lk, name, yen in PRICES:
         print(f"price {key}: lookup_key={lk} 商品「{name}」 {yen}円/月（無ければ作成）→ settings stripe_price_{key}")
-    print(f"旧価格のアーカイブ: {len(OLD_PRICES)} 件 {', '.join(OLD_PRICES)}")
+    print(f"旧商品のアーカイブ: {len(OLD_PRODUCTS)} 件 {', '.join(OLD_PRODUCTS)}")
     print(f"webhook {WEBHOOK_ID}: enabled_events {len(WEBHOOK_EVENTS)} 件 {', '.join(WEBHOOK_EVENTS)}")
     print("portal: 設定を1つ作成（カード変更ON・解約ON（期末）・プラン切替OFF・請求履歴ON）→ settings stripe_portal_config"
           "（既にあればスキップ）")
@@ -63,14 +62,14 @@ def run():
         db.set_setting(f"stripe_price_{key}", pid)
         print(f"price {key}: {pid}（{how}）")
     archived = 0
-    for pid in OLD_PRICES:
+    for pid in OLD_PRODUCTS:
         try:
-            if stripe.Price.retrieve(pid)["active"]:
-                stripe.Price.modify(pid, active=False)
+            if stripe.Product.retrieve(pid)["active"]:
+                stripe.Product.modify(pid, active=False)
                 archived += 1
         except stripe.InvalidRequestError as e:
-            print(f"旧価格 {pid}: スキップ（{getattr(e, 'code', None) or type(e).__name__}）")
-    print(f"旧価格のアーカイブ: {archived} 件（対象 {len(OLD_PRICES)} 件）")
+            print(f"旧商品 {pid}: スキップ（{getattr(e, 'code', None) or type(e).__name__}）")
+    print(f"旧商品のアーカイブ: {archived} 件（対象 {len(OLD_PRODUCTS)} 件）")
     we = stripe.WebhookEndpoint.modify(WEBHOOK_ID, enabled_events=WEBHOOK_EVENTS)
     print(f"webhook {we['id']}: enabled_events {len(we['enabled_events'])} 件")
     cfg = db.get_setting("stripe_portal_config")
