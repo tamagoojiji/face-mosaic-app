@@ -27,7 +27,7 @@ WEBHOOK_ID = "we_1UUjJ8CK9wiENSxs9O7tLmzI"  # 2026-10-26 再発行（旧 we_1UUL
 WEBHOOK_EVENTS = ["checkout.session.completed", "customer.subscription.created", "customer.subscription.updated",
                   "customer.subscription.deleted", "invoice.payment_failed", "invoice.paid"]
 PORTAL = {"features": {"payment_method_update": {"enabled": True},
-                       "subscription_cancel": {"enabled": True, "mode": "at_period_end"},
+                       "subscription_cancel": {"enabled": False},  # 解約はアプリ内「解約する」だけ
                        "subscription_update": {"enabled": False},
                        "invoice_history": {"enabled": True}},
           "business_profile": {"headline": "らくちんモザイク"}}
@@ -38,8 +38,8 @@ def dry_run():
         print(f"price {key}: lookup_key={lk} 商品「{name}」 {yen}円/月（無ければ作成）→ settings stripe_price_{key}")
     print(f"旧商品のアーカイブ: {len(OLD_PRODUCTS)} 件 {', '.join(OLD_PRODUCTS)}")
     print(f"webhook {WEBHOOK_ID}: enabled_events {len(WEBHOOK_EVENTS)} 件 {', '.join(WEBHOOK_EVENTS)}")
-    print("portal: 設定を1つ作成（カード変更ON・解約ON（期末）・プラン切替OFF・請求履歴ON）→ settings stripe_portal_config"
-          "（既にあればスキップ）")
+    print("portal: 設定を1つ作成（カード変更ON・解約OFF・プラン切替OFF・請求履歴ON）→ settings stripe_portal_config"
+          "（既にあれば同じ内容に同期）")
     print("dry-run: Stripe と DB には何もしていません")
     return 0
 
@@ -74,7 +74,8 @@ def run():
     print(f"webhook {we['id']}: enabled_events {len(we['enabled_events'])} 件")
     cfg = db.get_setting("stripe_portal_config")
     if cfg:
-        print(f"portal: {cfg}（既存・スキップ）")
+        stripe.billing_portal.Configuration.modify(cfg, **PORTAL)
+        print(f"portal: {cfg}（既存・同期）")
     else:
         cfg = stripe.billing_portal.Configuration.create(**PORTAL)["id"]
         db.set_setting("stripe_portal_config", cfg)

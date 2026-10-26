@@ -21,7 +21,7 @@ def _link(path):
 
 
 def message(kind, job, reason=None, text=None):
-    if kind == "plan_changed":
+    if kind in ("plan_changed", "cancel_requested"):
         return text + _link("/settings")
     if kind == "payment_failed":
         return "お支払いが確認できません。7日以内にカード情報を更新してください。" + _link("/settings")
@@ -46,7 +46,7 @@ def push(kind, job, reason=None):
 
 
 def push_user(kind, user, job=None, reason=None, text=None):
-    """利用者に直接送る（payment_failed・plan_changed はジョブなし。plan_changed は本文を text で渡す）。"""
+    """利用者に直接送る（payment_failed・plan_changed・cancel_requested はジョブなし。後ろ2つは本文を text で渡す）。"""
     jid = job["id"] if job else "-"
     uid = user["id"] if user else (job or {}).get("user_id")
     skip = None

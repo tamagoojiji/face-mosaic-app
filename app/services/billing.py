@@ -2,12 +2,14 @@
 
 価格ID・ポータル設定IDは settings（stripe_price_image|video_a|video_b|hq・stripe_portal_config）。
 鍵が空なら Stripe を呼ばずに billing(skip) を1行ログに出して None を返す（notify/discord と同じ流儀）。
-プラン変更と高画質の ON/OFF はアプリ内で実行（ポータルはカード変更・解約だけ）。
+プラン変更・高画質の ON/OFF・解約はアプリ内で実行（ポータルはカード変更・請求履歴だけ）。
 """
 
+import datetime
 import json
 import logging
 import time
+import zoneinfo
 
 import stripe
 
@@ -17,6 +19,7 @@ from . import discord, notify, quota
 log = logging.getLogger("uvicorn.error")
 PRICE_KEYS = ("image", "video_a", "video_b", "hq")
 GRACE_SEC = 7 * 86400  # 決済失敗の猶予
+JST = zoneinfo.ZoneInfo("Asia/Tokyo")
 
 
 def _d(obj):
@@ -250,6 +253,26 @@ def cancel_subscription(user):
         return False
     db.audit(None, "billing.cancel", f"user:{user['id']}", None)
     return True
+
+
+def _md(ts):
+    t = datetime.datetime.fromtimestamp(ts, JST)
+    return f"{t.month}月{t.day}日"
+
+
+def cancel_at_period_end(user):
+    """設定の「解約する」: 次の更新日で終わらせる（それまでは通常どおり・更新日に deleted で自動退会・返金なし）。"""
+    if not _api():
+        return _skip("cancel_at_period_end", user)
+    stripe.Subscription.modify(user["stripe_subscription_id"], cancel_at_period_end=True)
+    db.update_user(user["id"], sub_status="canceling", cancel_at_period_end=1)
+    until = user.get("current_period_end")
+    db.audit(user["id"], "billing.cancel_requested", f"user:{user['id']}", json.dumps({"until": until}))
+    discord.usage(f"解約処理中: {discord.who(user)}")
+    day = _md(until) if until else "次の更新日"
+    notify.push_user("cancel_requested", db.get_user(user["id"]),
+                     text=f"解約を受け付けました。{day}までは今のまま使えます。更新日に自動で退会となり、返金はありません。")
+    return {"until": until}
 
 
 def schedule_cancel(user):

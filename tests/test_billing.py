@@ -208,6 +208,24 @@ def test_preview_shape(client, up_stripe, monkeypatch):
     assert pv["now"] == 0 and pv["deferred"] == ["plan"] and pv["immediate"] == [] and len(seen) == n
 
 
+def test_cancel_button(client, up_stripe, monkeypatch):
+    import app.main as main_mod
+    u = _sub_user("Ucan1")
+    end = time.time() + 20 * 86400
+    db.update_user(u["id"], current_period_end=end)
+    monkeypatch.setattr(main_mod, "require_api", lambda request: db.get_user(u["id"]))
+    r = client.post("/api/billing/cancel")
+    assert r.status_code == 200 and r.json() == {"ok": True, "until": end}
+    mod = up_stripe[-1]
+    assert mod[0] == "modify" and mod[1] == "sub_2" and mod[2] == {"cancel_at_period_end": True}
+    v = db.get_user(u["id"])
+    assert v["sub_status"] == "canceling" and v["cancel_at_period_end"] == 1
+    # 解約処理中にもう一度 → 400
+    r = client.post("/api/billing/cancel")
+    assert r.status_code == 400 and r.json()["detail"] == "すでに解約処理中です"
+    assert len(up_stripe) == 1
+
+
 def test_blocked():
     now = time.time()
     base = {"plan": "free", "line_user_id": "U1", "role": "user", "sub_status": None}

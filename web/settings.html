@@ -56,6 +56,8 @@
     <h2>お支払い</h2>
     <button class="btn btn-sec" type="button" id="pay" disabled>支払いを管理する（準備中）</button>
     <p class="note" id="paynote">カードの変更や解約は、お支払いの受付が始まったらここからできます。</p>
+    <button class="btn btn-sec" type="button" id="cancel" hidden>解約する</button>
+    <p class="ok" id="cancelok" role="status" hidden></p>
     <p class="err" id="payerr" role="alert" hidden></p>
   </section>
   <a class="leave" href="/withdraw" id="leave">退会する</a>
@@ -72,17 +74,22 @@ function subText(m) {
   if (m.trial_days_left !== null) return m.trial_expired ? 'お試し期間終了' : 'お試し（あと' + m.trial_days_left + '日）';
   return '—';
 }
-let paying = false;
+let paying = false, me = null;
 function show(m) {
+  me = m;
   $('name').textContent = m.display_name || 'ゲスト';
   $('plan').textContent = m.plan_label;
   $('sub').textContent = subText(m);
   const hasSub = ['active', 'canceling', 'past_due'].includes(m.sub_status);
   if (m.stripe_ready) {
-    $('pay').textContent = '支払いを管理する';
+    $('pay').textContent = '支払いを管理する（カード変更・請求履歴）';
     $('pay').disabled = !hasSub || paying;
-    $('paynote').textContent = hasSub ? 'カードの変更や解約ができます（Stripe の画面が開きます）。' : '有料プランに申し込むと、ここからカードの変更や解約ができます。';
+    const end = m.current_period_end ? md(m.current_period_end) : '次の更新日';
+    $('paynote').textContent = m.sub_status === 'canceling'
+      ? '解約処理中です（' + end + 'まで使えます）。取り消すときは「支払いを管理する」から「プランを更新」を選んでください。'
+      : hasSub ? 'カードの変更や請求履歴の確認ができます（Stripe の画面が開きます）。' : '有料プランに申し込むと、ここからカードの変更や請求履歴の確認ができます。';
   }
+  $('cancel').hidden = !(m.stripe_ready && m.sub_status === 'active');
   $('hqrow').hidden = !m.hq_available;
   $('hqv').textContent = m.hq ? 'ON（元の解像度と fps で書き出します）' : 'OFF';
   $('ig').value = m.instagram_username || '';
@@ -93,6 +100,20 @@ $('pay').addEventListener('click', async () => {
   $('payerr').hidden = true; paying = true; $('pay').disabled = true;
   try { const r = await api('/api/billing/portal', { method: 'POST' }); location.href = r.url; }
   catch (e) { paying = false; $('pay').disabled = false; $('payerr').textContent = e.message; $('payerr').hidden = false; }
+});
+$('cancel').addEventListener('click', async () => {
+  $('payerr').hidden = $('cancelok').hidden = true;
+  const day = me && me.current_period_end ? md(me.current_period_end) : '次の更新日';
+  if (!confirm('解約すると、次の更新日（' + day + '）までは今のまま使えます。更新日に自動で退会となり、保存している動画・写真も消えます。返金はありません。解約後に無料プランへは戻れません。解約しますか？')) return;
+  $('cancel').disabled = true;
+  try {
+    const r = await api('/api/billing/cancel', { method: 'POST' });
+    const until = r.until || me.current_period_end;
+    show(Object.assign({}, me, { sub_status: 'canceling', current_period_end: until }));
+    $('cancelok').textContent = '解約を受け付けました。' + (until ? md(until) : '次の更新日') + 'まで使えます';
+    $('cancelok').hidden = false;
+  } catch (e) { $('payerr').textContent = e.message; $('payerr').hidden = false; }
+  $('cancel').disabled = false;
 });
 api('/api/me').then(show).catch(e => { $('igerr').textContent = e.message; $('igerr').hidden = false; });
 $('igf').addEventListener('submit', async ev => {

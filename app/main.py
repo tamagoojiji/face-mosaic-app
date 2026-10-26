@@ -1088,11 +1088,20 @@ async def api_checkout(request: Request):
     return JSONResponse({"url": url}, headers=NO_STORE)
 
 
-def _require_sub(u):
+def _require_sub(u, msgs=None):
     if u.get("sub_status") != "active" or not u.get("stripe_subscription_id"):
-        msg = {"canceling": "解約処理中はプランを変えられません",
-               "past_due": "お支払いの確認ができていません。支払い方法を更新してください"}.get(u.get("sub_status"))
+        msg = (msgs or {"canceling": "解約処理中はプランを変えられません",
+                        "past_due": "お支払いの確認ができていません。支払い方法を更新してください"}).get(u.get("sub_status"))
         raise HTTPException(400, msg or "契約がありません。プランを選んで申し込んでください")
+
+
+@app.post("/api/billing/cancel")
+async def api_cancel(request: Request):
+    u = require_api(request)
+    _require_billing()
+    _require_sub(u, {"canceling": "すでに解約処理中です", "past_due": "お支払いの確認ができていません"})
+    r = await asyncio.to_thread(billing.cancel_at_period_end, u)
+    return JSONResponse({"ok": True, "until": (r or {}).get("until")}, headers=NO_STORE)
 
 
 @app.post("/api/billing/preview")
