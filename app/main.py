@@ -538,7 +538,7 @@ def get_job(request: Request, job_id: str):
 
 
 def _check_blocked(u):
-    """お試し期限切れ・お支払い未確認の間は送れない。"""
+    """お試し期限切れ・お支払い未確認の間は送れない・書き出せない（完成品の取得は期限まで可）。"""
     b = quota.blocked(u)
     if b:
         raise HTTPException(403, quota.BLOCKED_MSG[b])
@@ -603,7 +603,8 @@ def view_image(request: Request, job_id: str):
 
 @app.post("/api/jobs/{job_id}/export")
 async def export_job(request: Request, job_id: str):
-    require_api(request)
+    u = require_api(request)
+    _check_blocked(u)
     j = _load(request, job_id)
     if j["kind"] != "image":
         raise HTTPException(404, "見つかりません")
@@ -951,7 +952,8 @@ async def video_picks(request: Request, job_id: str):
 
 @app.post("/api/jobs/{job_id}/review")
 async def video_review(request: Request, job_id: str):
-    require_api(request)
+    u = require_api(request)
+    _check_blocked(u)
     j = _video(request, job_id, ("awaiting_review", "done"))
     b = await _json_body(request)
     try:

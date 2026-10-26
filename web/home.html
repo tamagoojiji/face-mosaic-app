@@ -95,11 +95,11 @@ function showBlocked(m) {
   $('sends').hidden = true;
   if (m.blocked === 'trial_expired') {
     $('stoph').textContent = 'お試し期間が終わりました';
-    $('stopd').textContent = 'プランを選ぶと続けて使えます。完成したものは保存期限まで下の一覧から開けます。';
+    $('stopd').textContent = 'プランを選ぶと続けて使えます。新しい送信と書き出しはできません。完成したものは保存期限まで保存できます。';
     $('stopplan').hidden = false;
   } else {
     $('stoph').textContent = 'お支払いの確認ができていません';
-    $('stopd').textContent = '支払い方法を更新すると、また使えるようになります。完成したものは消えません。';
+    $('stopd').textContent = '支払い方法を更新すると、また使えるようになります。新しい送信と書き出しはできません。完成したものは保存期限まで保存できます。';
     $('stoppay').hidden = false;
     $('stoppay').addEventListener('click', async () => {
       $('stoperr').hidden = true; $('stoppay').disabled = true;
