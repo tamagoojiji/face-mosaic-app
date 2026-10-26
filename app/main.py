@@ -1088,17 +1088,36 @@ async def api_checkout(request: Request):
     return JSONResponse({"url": url}, headers=NO_STORE)
 
 
+def _require_sub(u):
+    if u.get("sub_status") != "active" or not u.get("stripe_subscription_id"):
+        msg = {"canceling": "解約処理中はプランを変えられません",
+               "past_due": "お支払いの確認ができていません。支払い方法を更新してください"}.get(u.get("sub_status"))
+        raise HTTPException(400, msg or "契約がありません。プランを選んで申し込んでください")
+
+
+@app.post("/api/billing/preview")
+async def api_preview(request: Request):
+    u = require_api(request)
+    plan, hq = _plan_body(await _json_body(request))
+    _require_billing()
+    _require_sub(u)
+    pv = await asyncio.to_thread(billing.preview, u, plan, hq)
+    return JSONResponse(pv, headers=NO_STORE)
+
+
 @app.post("/api/billing/change")
 async def api_change(request: Request):
     u = require_api(request)
     plan, hq = _plan_body(await _json_body(request))
     _require_billing()
-    if u.get("sub_status") != "active" or not u.get("stripe_subscription_id"):
-        msg = {"canceling": "解約処理中はプランを変えられません",
-               "past_due": "お支払いの確認ができていません。支払い方法を更新してください"}.get(u.get("sub_status"))
-        raise HTTPException(400, msg or "契約がありません。プランを選んで申し込んでください")
-    done = await asyncio.to_thread(billing.change, u, plan, hq)
-    return JSONResponse({"me": _me(db.get_user(u["id"])), "done": done}, headers=NO_STORE)
+    _require_sub(u)
+    try:
+        done = await asyncio.to_thread(billing.change, u, plan, hq)
+    except billing.PaymentFailed as e:
+        raise HTTPException(402, str(e))
+    return JSONResponse({"me": _me(db.get_user(u["id"])), "done": done,
+                         "charged": (done or {}).get("charged", 0), "monthly": (done or {}).get("monthly")},
+                        headers=NO_STORE)
 
 
 @app.post("/api/billing/portal")

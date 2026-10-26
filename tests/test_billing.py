@@ -136,6 +136,78 @@ def test_flow(client, calls):
         assert con.execute("SELECT COUNT(*) FROM audit_log WHERE action LIKE 'billing.%'").fetchone()[0] >= 5
 
 
+def _sub_user(line_id):
+    u = db.create_user(line_user_id=line_id, display_name="変更", trial_ends_at=time.time() + 86400)
+    db.update_user(u["id"], plan="video_a", hq=0, stripe_customer_id="cus_2", stripe_subscription_id="sub_2",
+                   stripe_price_plan=PRICES["video_a"], sub_status="active")
+    return db.get_user(u["id"])
+
+
+@pytest.fixture
+def up_stripe(monkeypatch):
+    log = []
+    monkeypatch.setattr(stripe.Subscription, "retrieve",
+                        lambda sid, **kw: stripe.StripeObject.construct_from(sub_obj([PRICES["video_a"]]), "k"))
+    monkeypatch.setattr(stripe.Subscription, "modify", lambda sid, **kw: log.append(("modify", sid, kw)))
+    monkeypatch.setattr(stripe.Invoice, "list", lambda **kw: stripe.StripeObject.construct_from(
+        {"object": "list", "data": [{"id": "in_up", "object": "invoice", "billing_reason": "subscription_update",
+                                     "amount_paid": 499}]}, "k"))
+    return log
+
+
+def test_change_up_charges_now(client, up_stripe):
+    from app.services import billing
+    u = _sub_user("Uchg1")
+    done = billing.change(u, "video_b", False)
+    mod = up_stripe[-1]
+    assert mod[0] == "modify" and mod[1] == "sub_2"
+    assert mod[2]["proration_behavior"] == "always_invoice"
+    assert mod[2]["payment_behavior"] == "error_if_incomplete"
+    assert mod[2]["items"] == [{"id": "si_" + PRICES["video_a"], "price": PRICES["video_b"]}]
+    assert done["charged"] == 499 and done["invoice_id"] == "in_up" and done["now"] == ["plan"]
+    assert done["monthly"] == quota.PLANS["video_b"]["price"]
+    assert db.get_user(u["id"])["plan"] == "video_b"
+
+
+def test_change_card_declined_keeps_db(client, up_stripe, monkeypatch):
+    from app.services import billing
+
+    def declined(sid, **kw):
+        raise stripe.CardError("Your card was declined.", None, "card_declined")
+    monkeypatch.setattr(stripe.Subscription, "modify", declined)
+    u = _sub_user("Uchg2")
+    before = dict(db.get_user(u["id"]))
+    with pytest.raises(billing.PaymentFailed) as e:
+        billing.change(u, "video_b", True)
+    assert "お支払いができませんでした" in str(e.value)
+    assert dict(db.get_user(u["id"])) == before
+
+
+def test_preview_shape(client, up_stripe, monkeypatch):
+    from app.services import billing
+    seen = []
+
+    def fake_preview(**kw):
+        seen.append(kw)
+        return stripe.StripeObject.construct_from({"object": "invoice", "lines": {"object": "list", "data": [
+            {"amount": -490, "parent": {"subscription_item_details": {"proration": True}}},
+            {"amount": 740, "parent": {"subscription_item_details": {"proration": True}}},
+            {"amount": 1480, "parent": {"subscription_item_details": {"proration": False}}},
+        ]}}, "k")
+    monkeypatch.setattr(stripe.Invoice, "create_preview", fake_preview)
+    u = _sub_user("Uchg3")
+    pv = billing.preview(u, "video_b", True)
+    assert set(pv) == {"now", "monthly", "next_date", "immediate", "deferred"}
+    assert pv["now"] == 250 and pv["monthly"] == 1480 + 500
+    assert pv["immediate"] == ["plan", "hq"] and pv["deferred"] == [] and pv["next_date"]
+    sd = seen[-1]["subscription_details"]
+    assert sd["proration_behavior"] == "always_invoice" and seen[-1]["customer"] == "cus_2"
+    # 下位へは請求なし（プレビューも呼ばない）
+    n = len(seen)
+    pv = billing.preview(u, "image", False)
+    assert pv["now"] == 0 and pv["deferred"] == ["plan"] and pv["immediate"] == [] and len(seen) == n
+
+
 def test_blocked():
     now = time.time()
     base = {"plan": "free", "line_user_id": "U1", "role": "user", "sub_status": None}

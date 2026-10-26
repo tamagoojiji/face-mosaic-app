@@ -37,6 +37,7 @@
 <div class="bar"><a class="back" href="/home" aria-label="ホームに戻る">‹ ホーム</a></div>
 <main class="wrap">
   <h1>プランを比較する</h1>
+  <p class="ok" id="ok" role="status" hidden></p>
   <div class="now">
     <div class="k">いまのプラン</div>
     <div class="v" id="cur">—</div>
@@ -60,11 +61,12 @@
 <script>
 const $ = id => document.getElementById(id);
 const len = s => s % 60 === 0 ? (s / 60) + '分' : mmss(s);
-const ORDER = ['free', 'image', 'video_a', 'video_b'];
 const md = ts => { const t = new Date(ts * 1000); return (t.getMonth() + 1) + '月' + t.getDate() + '日'; };
 function showErr(e) { $('err').textContent = e.message; $('err').hidden = false; }
 const post = (path, body) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+const yen = n => n.toLocaleString('ja-JP') + '円';
 (async () => {
+  try { const f = sessionStorage.getItem('planFlash'); if (f) { $('ok').textContent = f; $('ok').hidden = false; sessionStorage.removeItem('planFlash'); } } catch (e) { }
   let d;
   try { d = await api('/api/plans'); } catch (e) { showErr(e); return; }
   const me = d.me, label = k => (d.plans.find(p => p.key === k) || {}).label || k;
@@ -82,20 +84,29 @@ const post = (path, body) => api(path, { method: 'POST', headers: { 'Content-Typ
   $('prep').hidden = ready;
   if (ready && me.sub_status === 'canceling') { $('lock').textContent = '解約処理中のため、プランは変えられません。'; $('lock').hidden = false; }
   if (ready && me.sub_status === 'past_due') { $('lock').textContent = 'お支払いの確認ができていないため、プランは変えられません。設定の「支払いを管理する」から支払い方法を更新してください。'; $('lock').hidden = false; }
-  async function choose(p) {
+  // 金額を見せて確認 → 変更。true=変えた／false=やめた（失敗は throw）
+  async function changeTo(plan, hq) {
+    const pv = await post('/api/billing/preview', { plan, hq });
+    const day = pv.next_date ? md(pv.next_date) : '次の更新日';
+    const name = label(plan) + (hq ? '＋高画質' : '');
+    const msg = pv.immediate.length
+      ? 'いま ' + yen(pv.now) + 'を登録しているカードに請求し、次回（' + day + '）から 月' + yen(pv.monthly) + 'になります。切り替えますか？'
+      : '次回（' + day + '）から 月' + yen(pv.monthly) + 'になります。それまでは今のプランのまま使えます。切り替えますか？';
+    if (!confirm(msg)) return false;
+    const r = await post('/api/billing/change', { plan, hq });
+    const flash = pv.immediate.length ? yen(r.charged || 0) + 'を請求しました。プランを ' + name + ' に変えました' : '次回から ' + name + ' に変わります';
+    try { sessionStorage.setItem('planFlash', flash); } catch (e) { }
+    location.reload();
+    return true;
+  }
+  async function choose(p, b) {
     $('err').hidden = true;
+    b.disabled = true;
     try {
       if (canStart) { const r = await post('/api/billing/checkout', { plan: p.key, hq: false }); location.href = r.url; return; }
-      const up = ORDER.indexOf(p.key) > ORDER.indexOf(me.plan);
       const hq = tgtHq && hqPlans.includes(p.key);
-      const lines = [label(p.key) + (hq ? '＋高画質' : '') + ' に変えます。'];
-      if (up) lines.push('すぐに切り替わります（差額は日割り）。');
-      else if (p.key !== me.plan) lines.push(nextDay + 'から変わります。');
-      if (me.hq && !hq) lines.push('高画質オプションは' + nextDay + 'から外れます。');
-      if (!confirm(lines.join('\n'))) return;
-      await post('/api/billing/change', { plan: p.key, hq });
-      location.reload();
-    } catch (e) { showErr(e); }
+      if (!await changeTo(p.key, hq)) b.disabled = false;
+    } catch (e) { b.disabled = false; showErr(e); }
   }
   $('cur').textContent = me.plan_label + (me.campaign ? '（リリース記念で増量中）' : '');
   $('curs').textContent = quotaLine(me);
@@ -121,8 +132,8 @@ const post = (path, body) => api(path, { method: 'POST', headers: { 'Content-Typ
     if (p.key === me.plan && !me.pending_plan) { b.textContent = 'いまのプランです'; b.disabled = true; }
     else if (!ready) { b.textContent = 'このプランにする（準備中）'; b.disabled = true; }
     else if (p.key === 'free') { b.textContent = '無料プランには戻れません'; b.disabled = true; }
-    else if (canStart || (subscribed && !isTgt)) { b.textContent = 'このプランにする'; b.addEventListener('click', () => choose(p)); }
-    else if (subscribed && p.key === me.plan) { b.textContent = 'いまのプランのままにする'; b.addEventListener('click', () => choose(p)); }
+    else if (canStart || (subscribed && !isTgt)) { b.textContent = 'このプランにする'; b.addEventListener('click', () => choose(p, b)); }
+    else if (subscribed && p.key === me.plan) { b.textContent = 'いまのプランのままにする'; b.addEventListener('click', () => choose(p, b)); }
     else { b.textContent = isTgt ? '次の更新日からのプランです' : 'このプランにする'; b.disabled = true; }
     li.append(b);
     $('list').append(li);
@@ -139,10 +150,9 @@ const post = (path, body) => api(path, { method: 'POST', headers: { 'Content-Typ
   $('hq').addEventListener('change', async () => {
     $('err').hidden = true;
     const on = $('hq').checked;
-    const msg = on ? '高画質オプションを付けます。\nすぐに切り替わります（差額は日割り）。' : '高画質オプションを外します。\n' + nextDay + 'から変わります。';
-    if (!confirm(msg)) { $('hq').checked = !on; return; }
-    try { await post('/api/billing/change', { plan: tgtPlan, hq: on }); location.reload(); }
-    catch (e) { $('hq').checked = !on; showErr(e); }
+    $('hq').disabled = true;
+    try { if (!await changeTo(tgtPlan, on)) { $('hq').checked = !on; $('hq').disabled = false; } }
+    catch (e) { $('hq').checked = !on; $('hq').disabled = false; showErr(e); }
   });
   $('opt').hidden = false;
 })();

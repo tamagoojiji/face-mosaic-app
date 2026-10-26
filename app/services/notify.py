@@ -20,7 +20,9 @@ def _link(path):
     return f"\n{config.APP_BASE_URL}{path}?openExternalBrowser=1"
 
 
-def message(kind, job, reason=None):
+def message(kind, job, reason=None, text=None):
+    if kind == "plan_changed":
+        return text + _link("/settings")
     if kind == "payment_failed":
         return "お支払いが確認できません。7日以内にカード情報を更新してください。" + _link("/settings")
     jid = job["id"]
@@ -43,8 +45,8 @@ def push(kind, job, reason=None):
     return push_user(kind, db.get_user(job.get("user_id")), job, reason)
 
 
-def push_user(kind, user, job=None, reason=None):
-    """利用者に直接送る（payment_failed はジョブなし）。"""
+def push_user(kind, user, job=None, reason=None, text=None):
+    """利用者に直接送る（payment_failed・plan_changed はジョブなし。plan_changed は本文を text で渡す）。"""
     jid = job["id"] if job else "-"
     uid = user["id"] if user else (job or {}).get("user_id")
     skip = None
@@ -60,7 +62,7 @@ def push_user(kind, user, job=None, reason=None):
         log.info("notify(skip) kind=%s job=%s user=%s reason=%s", kind, jid, uid, skip)
         return False
     body = json.dumps({"to": user["line_user_id"],
-                       "messages": [{"type": "text", "text": message(kind, job, reason)}]}).encode()
+                       "messages": [{"type": "text", "text": message(kind, job, reason, text)}]}).encode()
     req = urllib.request.Request(PUSH_URL, data=body, method="POST", headers={
         "Content-Type": "application/json", "Authorization": "Bearer " + config.LINE_MSG_CHANNEL_ACCESS_TOKEN})
     try:

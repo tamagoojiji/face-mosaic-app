@@ -114,13 +114,20 @@ def portal_url(user, base):
     return _d(stripe.billing_portal.Session.create(**params))["url"]
 
 
-def change(user, plan, hq):
-    """有料プラン間の変更。上位へ・高画質追加は即時（日割り）、下位へ・高画質外しは次の更新日（pending）。
+class PaymentFailed(Exception):
+    """差額の即時請求でカードが通らなかった（購読もDBも変えていない）。"""
 
-    返り値: {"now": [...], "next": [...]}（即時に変えたもの・次の更新日に回したもの）
-    """
-    if not _api():
-        return _skip("change", user)
+
+def _monthly(plan, hq):
+    return quota.PLANS[plan]["price"] + (quota.HQ_OPTION["price"] if hq else 0)
+
+
+def _plan_text(plan, hq):
+    return quota.PLANS[plan]["label"] + ("＋高画質" if hq else "")
+
+
+def _plan_diff(user, plan, hq):
+    """いまの購読と選んだ内容の差。即時に差し替えるライン items（上位へ・高画質追加）を返す。"""
     order = quota.PLAN_ORDER
     cur_plan, cur_hq = user["plan"], bool(user["hq"])
     plan_up = order.index(plan) > order.index(cur_plan)
@@ -139,10 +146,66 @@ def change(user, plan, hq):
         items.append({"id": plan_item["id"], "price": ids[plan]})
     if hq_on and not hq_item:
         items.append({"price": ids["hq"], "quantity": 1})
+    return {"sub": sub, "items": items, "plan_up": plan_up, "plan_down": plan_down, "hq_on": hq_on,
+            "hq_off": hq_off, "immediate": (["plan"] if plan_up else []) + (["hq"] if hq_on else []),
+            "deferred": (["plan"] if plan_down else []) + (["hq"] if hq_off else [])}
+
+
+def _is_proration(line):
+    """日割り行か（SDK の create_preview 説明: parent.subscription_item_details.proration が真の行）。"""
+    parent = line.get("parent") or {}
+    det = parent.get("subscription_item_details") or parent.get("invoice_item_details") or {}
+    return bool(det.get("proration") or line.get("proration"))
+
+
+def preview(user, plan, hq):
+    """押す前に見せる金額。now=いま請求する差額（円）・monthly=変更後の月額。"""
+    if not _api():
+        return _skip("preview", user)
+    diff = _plan_diff(user, plan, hq)
+    now = 0
+    if diff["items"]:
+        inv = _d(stripe.Invoice.create_preview(
+            customer=user["stripe_customer_id"], subscription=user["stripe_subscription_id"],
+            subscription_details={"items": diff["items"], "proration_behavior": "always_invoice"}))
+        lines = ((inv.get("lines") or {}).get("data")) or []
+        now = sum(int(ln.get("amount") or 0) for ln in lines if _is_proration(ln))
+    return {"now": now, "monthly": _monthly(plan, hq), "next_date": _period_end(diff["sub"]),
+            "immediate": diff["immediate"], "deferred": diff["deferred"]}
+
+
+def _last_update_invoice(sub_id):
+    invs = _d(stripe.Invoice.list(subscription=sub_id, limit=1))
+    data = (invs.get("data") if isinstance(invs, dict) else None) or []
+    if data and data[0].get("billing_reason") == "subscription_update":
+        return data[0]
+    return None
+
+
+def change(user, plan, hq):
+    """有料プラン間の変更。上位へ・高画質追加は即時（差額をその場で登録カードに請求）、
+    下位へ・高画質外しは次の更新日（pending・請求なし）。カードが通らなければ PaymentFailed（何も変えない）。
+
+    返り値: {"now": [...], "next": [...], "charged": 円, "invoice_id": str|None, "monthly": 円}
+    """
+    if not _api():
+        return _skip("change", user)
+    cur_plan, cur_hq = user["plan"], bool(user["hq"])
+    ids = price_ids()
+    diff = _plan_diff(user, plan, hq)
+    plan_up, plan_down, hq_on, hq_off = diff["plan_up"], diff["plan_down"], diff["hq_on"], diff["hq_off"]
     fields, done = {}, {"now": [], "next": []}
-    if items:
-        stripe.Subscription.modify(user["stripe_subscription_id"], items=items,
-                                   proration_behavior="create_prorations")
+    charged, invoice_id = 0, None
+    if diff["items"]:
+        try:
+            stripe.Subscription.modify(user["stripe_subscription_id"], items=diff["items"],
+                                       proration_behavior="always_invoice", payment_behavior="error_if_incomplete")
+        except (stripe.CardError, stripe.InvalidRequestError) as e:
+            log.warning("billing 差額請求失敗 user=%s: %s %s", user["id"], type(e).__name__, getattr(e, "code", ""))
+            raise PaymentFailed("お支払いができませんでした。カードを確認して、もう一度お試しください") from e
+        inv = _last_update_invoice(user["stripe_subscription_id"])
+        if inv:
+            charged, invoice_id = int(inv.get("amount_paid") or 0), inv.get("id")
     if plan_up:
         fields.update(plan=plan, stripe_price_plan=ids[plan])
         done["now"].append("plan")
@@ -157,13 +220,19 @@ def change(user, plan, hq):
     if hq_off:
         done["next"].append("hq")
     db.update_user(user["id"], **fields)
+    monthly = _monthly(plan, hq)
     db.audit(user["id"], "billing.change", f"user:{user['id']}",
-             json.dumps({"from": [cur_plan, int(cur_hq)], "to": [plan, int(hq)], **done}))
+             json.dumps({"from": [cur_plan, int(cur_hq)], "to": [plan, int(hq)], **done,
+                         "charged": charged, "invoice": invoice_id}))
     if done["now"] or done["next"]:
         discord.usage(f"プラン変更: {discord.who(user)} {cur_plan}{'+高画質' if cur_hq else ''} → "
                       f"{plan}{'+高画質' if hq else ''}（即時: {','.join(done['now']) or 'なし'}・"
-                      f"次の更新日: {','.join(done['next']) or 'なし'}）")
-    return done
+                      f"次の更新日: {','.join(done['next']) or 'なし'}・請求 {charged}円）")
+    if done["now"]:
+        notify.push_user("plan_changed", db.get_user(user["id"]),
+                         text=f"プランを {_plan_text(plan, hq)} に変えました。今回の請求 {charged:,}円。"
+                              f"次回から 月{monthly:,}円です。")
+    return dict(done, charged=charged, invoice_id=invoice_id, monthly=monthly)
 
 
 def cancel_subscription(user):
