@@ -1,0 +1,20 @@
+/* 法務ページ（利用規約・プライバシーポリシー・特商法表記）: 読みもの向け */
+.legal{font-size:16px;line-height:1.7;padding-bottom:calc(32px + env(safe-area-inset-bottom));overflow-wrap:anywhere}
+.legal h1{font-size:24px;margin:16px 0 4px}
+.legal h2{font-size:18px;margin:32px 0 8px}
+.legal p,.legal ul,.legal ol{margin:0 0 12px}
+.legal ul,.legal ol{padding-left:1.4em}
+.legal li{margin:4px 0}
+.legal .meta{color:var(--sub);font-size:14px;margin:0 0 16px}
+.docs{display:flex;flex-wrap:wrap;gap:4px 16px;margin:12px 0 0;padding:0;list-style:none;font-size:14px}
+.docs a{display:inline-flex;align-items:center;min-height:44px;font-weight:600}
+.docs a[aria-current=page]{color:var(--fg);text-decoration:none}
+.legal dl{margin:0 0 12px;border-top:1px solid var(--line)}
+.legal dt{font-weight:700;padding:12px 0 2px}
+.legal dd{margin:0;padding:0 0 12px;border-bottom:1px solid var(--line)}
+.legal dd p:last-child,.legal dd ul:last-child{margin-bottom:0}
+.legal .tbl{overflow-x:auto;margin:0 0 12px}
+.legal table{border-collapse:collapse;width:100%;font-size:15px}
+.legal th,.legal td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+.legal th{background:var(--surface);font-weight:700}
+.legal .disclaimer{color:var(--sub);font-size:12px;line-height:1.6;margin:40px 0 0;padding-top:12px;border-top:1px solid var(--line)}

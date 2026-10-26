@@ -40,3 +40,5 @@ label.field{display:block;font-weight:600;margin:0 0 8px}
 .steps li{flex:1;border-top:3px solid var(--line);padding-top:6px}
 .steps li.on{border-color:var(--pri);color:var(--fg);font-weight:700}
 .steps li.done{border-color:var(--pri)}
+.legal-links{display:flex;flex-wrap:wrap;gap:0 16px;margin:24px 0 0;padding:8px 0 calc(24px + env(safe-area-inset-bottom));border-top:1px solid var(--line);font-size:13px}
+.legal-links a{display:inline-flex;align-items:center;min-height:44px;color:var(--sub)}

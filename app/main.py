@@ -1,6 +1,8 @@
 """顔モザイク Web版 試験版（写真1枚モード・動画モード・合言葉／LINE ログイン・プランと上限）。"""
 
 import asyncio
+import base64
+import hashlib
 import hmac
 import json
 import logging
@@ -128,7 +130,7 @@ def _owner_serializer():
 @app.middleware("http")
 async def owner_cookie(request: Request, call_next):
     """初回アクセスで端末ごとの owner_id を発行（署名付き Cookie・1年）。"""
-    if request.url.path == "/stripe/webhook":  # Stripe からの通知にはセッションも Cookie も要らない
+    if request.url.path in ("/stripe/webhook", "/line/webhook"):  # 外部からの通知にはセッションも Cookie も要らない
         return await call_next(request)
     owner, fresh = None, False
     if config.SESSION_SECRET:
@@ -383,6 +385,17 @@ def withdraw_page(request: Request):
 @app.get("/withdrawn")
 def withdrawn_page():
     return page("withdrawn.html")
+
+
+LEGAL_PAGES = ("terms", "privacy", "tokushoho")
+
+
+@app.get("/legal/{name}")
+def legal_page(name: str):
+    """利用規約・プライバシーポリシー・特商法表記（ログイン不要・公開）。"""
+    if name not in LEGAL_PAGES:
+        raise HTTPException(404, "見つかりません")
+    return page(os.path.join("legal", name + ".html"))
 
 
 @app.get("/home")
@@ -1311,6 +1324,43 @@ async def stripe_webhook(request: Request):
         return JSONResponse({"detail": "invalid signature"}, status_code=400)
     typ = await asyncio.to_thread(billing.apply_event, event, withdraw_user)
     log.info("stripe webhook %s %s%s", event.get("id"), event.get("type"), "" if typ else "（重複・処理済み）")
+    return JSONResponse({"ok": True})
+
+
+# ---------------------------------------------------------------- LINE 公式アカウントの Webhook
+
+def _line_events(events):
+    """follow → あいさつ＋アプリのリンク／message(text) → アプリのリンク／unfollow → 通知 OFF。"""
+    for ev in events:
+        typ = ev.get("type")
+        if typ == "follow":
+            notify.reply("follow", ev.get("replyToken"))
+        elif typ == "message" and (ev.get("message") or {}).get("type") == "text":
+            notify.reply("message", ev.get("replyToken"))
+        elif typ == "unfollow":
+            uid = (ev.get("source") or {}).get("userId")
+            u = db.user_by("line_user_id", uid) if uid else None
+            if u:
+                db.update_user(u["id"], notify=0)
+            log.info("line webhook unfollow user=%s", u["id"] if u else "-")
+
+
+@app.post("/line/webhook")
+async def line_webhook(request: Request):
+    """LINE からの通知（署名検証 → 応答）。LINE の再送を防ぐため、署名 NG 以外は常に 200 を返す。"""
+    if not config.LINE_MSG_CHANNEL_SECRET:
+        log.info("line webhook(skip) reason=LINE_MSG_CHANNEL_SECRET未設定")
+        return JSONResponse({"ok": True})
+    body = await request.body()
+    want = base64.b64encode(hmac.new(config.LINE_MSG_CHANNEL_SECRET.encode(), body, hashlib.sha256).digest()).decode()
+    if not hmac.compare_digest(want, request.headers.get("x-line-signature", "")):
+        log.warning("line webhook 署名NG")
+        return JSONResponse({"detail": "invalid signature"}, status_code=400)
+    try:
+        events = json.loads(body).get("events") or []
+        await asyncio.to_thread(_line_events, events)
+    except Exception as e:  # 応答に失敗しても 200（再送させない）
+        log.warning("line webhook 処理失敗: %s", type(e).__name__)
     return JSONResponse({"ok": True})
 
 
