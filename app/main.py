@@ -583,7 +583,9 @@ def result_image(request: Request, job_id: str, dl: int = 0):
 
 # 1分あたりの目安秒（引き継ぎ 4節・いまのVPS・1080p高速モード）。実測が貯まったら中央値に置き換わる
 FALLBACK_PER_MIN = {"prepare": 70, "track": 144, "feature": 98, "export_pixel": 159, "export_blur": 291}
-HQ_FALLBACK_FACTOR = 8  # 高画質（元の解像度・fps）の書き出しは、実測が無い間は 1080p の 8 倍で見積もる
+# 高画質（元の解像度・fps）の書き出しは、実測が無い間は 1080p の何倍で見積もるか。
+# VPS 実測（4K60 HLG 1分・ブロック粗め）: 高画質 1191.7秒 ÷ 1080p 75.3秒 ≒ 15.8
+HQ_FALLBACK_FACTOR = 16
 PREP_STAGES = (("t_prepare_sec", "prepare", "convert"), ("t_track_sec", "track", "track"),
                ("t_feature_sec", "feature", "feature"))
 VIDEO_BUSY = ("queued", "preparing", "queued_export", "exporting")

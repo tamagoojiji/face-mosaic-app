@@ -832,6 +832,13 @@ def export(path, work_dir, tracks_path, keep, blur, style, out_path):
 # ---------------------------------------------------------------- 高画質オプション（元の解像度・元の fps で書き出し）
 
 ANALYSIS_FPS = 30.0  # to_1080 の fps=30。tracks.json のフレーム番号はこの fps 基準
+# 高画質のエンコード・デコード設定（VPS 4コア/8GB の実測で決めた値。DESIGN 2節「画質について」）
+HQ_CRF = "18"
+# 4K60 HLG 1分: medium・既定スレッド 1856秒/ピーク4.05GB → veryfast・下の値 1192秒/ピーク2.99GB（見た目の差なし）
+HQ_PRESET = "veryfast"
+HQ_ENC_THREADS = 3
+HQ_LOOKAHEAD = 10
+HQ_DEC_THREADS = 2
 
 
 def hq_boxes_at(filled_tracks, j, src_fps, sx, sy):
@@ -865,7 +872,10 @@ def render_hq(path, info, vf, filled_tracks, sx, sy, out_path, style):
     fps = info["fps"]
     fsize = w * h * 3
 
-    dec_cmd = [FFMPEG, "-v", "error", *HWACCEL, "-i", path, "-an", "-sn", "-dn"]
+    dec_cmd = [FFMPEG, "-v", "error", *HWACCEL]
+    if HQ_DEC_THREADS:
+        dec_cmd += ["-threads", str(HQ_DEC_THREADS)]
+    dec_cmd += ["-i", path, "-an", "-sn", "-dn"]
     if vf:
         dec_cmd += ["-vf", vf]
     # 1コマ＝1/元fps 秒に揃える（可変フレームレートでもフレーム番号と時刻を対応させるため）
@@ -878,7 +888,12 @@ def render_hq(path, info, vf, filled_tracks, sx, sy, out_path, style):
         enc_cmd += ["-i", path, "-map", "0:v:0", "-map", "1:a:0", "-c:a", "copy"]
     else:
         enc_cmd += ["-map", "0:v:0"]
-    enc_cmd += ["-c:v", "libx264", "-crf", "18", "-preset", "medium", "-tag:v", "avc1", "-pix_fmt", "yuv420p",
+    enc_cmd += ["-c:v", "libx264", "-crf", HQ_CRF, "-preset", HQ_PRESET]
+    if HQ_ENC_THREADS:
+        enc_cmd += ["-threads", str(HQ_ENC_THREADS)]
+    if HQ_LOOKAHEAD is not None:
+        enc_cmd += ["-rc-lookahead", str(HQ_LOOKAHEAD)]
+    enc_cmd += ["-tag:v", "avc1", "-pix_fmt", "yuv420p",
                 "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
                 "-movflags", "+faststart", "-f", "mp4", out_path]
 
@@ -922,7 +937,7 @@ def render_hq(path, info, vf, filled_tracks, sx, sy, out_path, style):
     if rc != 0 or drc not in (0, 255) or i == 0 or not os.path.exists(out_path):
         raise RuntimeError(f"高画質の書き出しに失敗 (dec rc={drc} enc rc={rc}): "
                            f"{(enc_err or dec_err).strip()[-400:]}")
-    return {"frames_written": i, "frames_blurred": blurred, "encoder": "libx264-crf18"}
+    return {"frames_written": i, "frames_blurred": blurred, "encoder": f"libx264-crf{HQ_CRF}-{HQ_PRESET}"}
 
 
 def export_hq(src, v1080, work_dir, tracks_path, keep, blur, style, out_path):
