@@ -237,6 +237,16 @@ def _line_exchange(code, nonce, redirect_uri):
     return v["sub"], v.get("name") or "LINEユーザー"
 
 
+def _notify_registered(u):
+    """登録・再登録の LINE（友だち追加していない人は LINE API がエラー → push 側で warning だけ）。"""
+    if quota.campaign_active():
+        what = f"写真{quota.setting('campaign_images')}枚・1分までの動画{quota.setting('campaign_videos')}本"
+    else:
+        what = f"写真{quota.PLANS['free']['images']}枚まで。動画はプランを選ぶと送れます"
+    notify.push_user("registered", u,
+                     text=f"登録ありがとうございます。{billing._md(u['trial_ends_at'])}まで無料で試せます（{what}）。")
+
+
 def _login_line_user(request, line_user_id, name):
     u = db.user_by("line_user_id", line_user_id)
     if not u:
@@ -244,6 +254,7 @@ def _login_line_user(request, line_user_id, name):
             u = db.create_user(line_user_id=line_user_id, display_name=name,
                                trial_ends_at=time.time() + db.TRIAL_DAYS * 86400)
             discord.usage(f"新規登録: {discord.who(u)}")
+            _notify_registered(u)
         except sqlite3.IntegrityError:
             u = db.user_by("line_user_id", line_user_id)
     elif u["status"] == "withdrawn":  # 退会後の再登録: 初回と同じ流れからやり直す
@@ -251,6 +262,7 @@ def _login_line_user(request, line_user_id, name):
                        agreed_at=None, trial_ends_at=time.time() + db.TRIAL_DAYS * 86400)
         u = db.get_user(u["id"])
         discord.usage(f"新規登録（退会後の再登録）: {discord.who(u)}")
+        _notify_registered(u)
     elif u["status"] != "active":
         return RedirectResponse("/?e=stopped", status_code=303)
     elif name and name != u["display_name"]:

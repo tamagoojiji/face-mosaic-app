@@ -346,6 +346,10 @@ def _on_checkout(s, _withdraw):
                    past_due_since=None, pending_plan=None, pending_hq=None, current_period_end=period_end)
     db.audit(None, "billing.checkout_completed", f"user:{u['id']}", json.dumps({"plan": plan, "hq": hq}))
     discord.usage(f"有料プラン契約: {discord.who(u)} {plan}{'+高画質' if hq else ''}")
+    nxt = (f"次回の更新日は {_md(period_end)}、月{_monthly(plan, hq):,}円です。" if period_end
+           else "次回の更新日は設定画面で確認できます。")
+    notify.push_user("subscribed", db.get_user(u["id"]),
+                     text=f"お申し込みありがとうございます。{_plan_text(plan, hq)}が使えるようになりました。{nxt}")
 
 
 def _on_sub_updated(sub, _withdraw):

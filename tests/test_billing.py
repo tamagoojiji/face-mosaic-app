@@ -75,7 +75,10 @@ def user():
     return db.user_by("line_user_id", "Utest1")
 
 
-def test_flow(client, calls):
+def test_flow(client, calls, monkeypatch):
+    from app.services import notify
+    pushed = []
+    monkeypatch.setattr(notify, "push_user", lambda kind, user, *a, **kw: pushed.append((kind, kw.get("text"))))
     u = db.create_user(line_user_id="Utest1", display_name="テスト", trial_ends_at=time.time() + 86400)
 
     # (a) 署名NG → 400
@@ -93,6 +96,9 @@ def test_flow(client, calls):
     assert v["stripe_subscription_id"] == "sub_1" and v["stripe_customer_id"] == "cus_1"
     assert v["current_period_end"] and v["stripe_price_plan"] == PRICES["video_a"]
     assert quota.blocked(v) is None
+    sub_msgs = [t for k, t in pushed if k == "subscribed"]
+    assert len(sub_msgs) == 1 and sub_msgs[0].startswith("お申し込みありがとうございます。動画Aが使えるようになりました。")
+    assert "月980円です。" in sub_msgs[0]
 
     # (f) 同じ event_id の2回目は何もしない
     db.update_user(u["id"], plan="image")
