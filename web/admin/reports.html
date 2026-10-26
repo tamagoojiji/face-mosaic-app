@@ -15,8 +15,7 @@
   <p class="a-lead">利用者の設定画面「問題を報告する」から届いたもの。行の「開く」で全文と対応メモを編集できます。</p>
   <div class="tabs" role="tablist" aria-label="状態で絞り込む" id="tabs"></div>
   <div class="filters"><div class="fld"><label for="stage">段階で絞り込む</label><select class="a-sel" id="stage"><option value="">すべての段階</option></select></div></div>
-  <p class="msg ok" id="saved" role="status"></p>
-  <p class="msg err" id="err" role="alert" hidden></p>
+  <p class="notice-bar" id="msg" role="status" aria-live="polite" hidden></p>
   <div class="a-box tbl-wrap" id="list"></div>
 </main>
 <script src="/static/common.js"></script>
@@ -35,10 +34,10 @@ function detail(r) {
   const msg = h('p', { class: 'msg', role: 'status' });
   const btn = h('button', { class: 'a-btn pri', type: 'button' }, '対応メモと状態を保存する');
   btn.addEventListener('click', async () => {
-    btn.disabled = true; msg.textContent = '';
+    btn.disabled = true; msg.textContent = ''; notice($('msg'), '');
     try {
       await api('/admin/api/reports/' + r.id, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: sel.value, admin_note: ta.value }) });
-      $('saved').textContent = '通報 #' + r.id + ' を保存しました（' + (sel.value === 'open' ? '未対応のまま' : '対応済みに移しました') + '）';
+      notice($('msg'), '通報 #' + r.id + ' を保存しました（' + (sel.value === 'open' ? '未対応のまま' : '対応済みに移しました') + '）', 'ok');
       openId = sel.value === r.status ? r.id : null;
       load();
     } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
@@ -57,14 +56,13 @@ function detail(r) {
     h('div', { class: 'actions' }, btn, msg)));
 }
 async function load() {
-  $('err').hidden = true;
   try {
     const qs = new URLSearchParams();
     if (cur) qs.set('status', cur);
     if ($('stage').value) qs.set('stage', $('stage').value);
     const d = await api('/admin/api/reports?' + qs);
     if (!stagesLoaded) { d.stages.forEach(s => $('stage').append(h('option', { value: s }, s))); stagesLoaded = true; }
-    fill($('tabs'), GROUPS.map(g => h('button', { type: 'button', role: 'tab', 'aria-selected': String(g[0] === cur), onclick: () => { cur = g[0]; openId = null; $('saved').textContent = ''; load(); } },
+    fill($('tabs'), GROUPS.map(g => h('button', { type: 'button', role: 'tab', 'aria-selected': String(g[0] === cur), onclick: () => { cur = g[0]; openId = null; notice($('msg'), ''); load(); } },
       g[1], h('span', { class: 'n' }, String(g[0] ? d.counts[g[0]] : d.counts.open + d.counts.closed)))));
     if (!d.reports.length) {
       const st = $('stage').value;
@@ -86,9 +84,9 @@ async function load() {
       if (isOpen) tb.append(detail(r));
     });
     fill($('list'), h('table', { class: 'tbl' }, h('thead', {}, h('tr', {}, COLS.map(c => h('th', { class: thClass(c[1]), scope: 'col' }, c[0])))), tb));
-  } catch (e) { showErr($('err'), e); }
+  } catch (e) { notice($('msg'), e.message, 'err'); }
 }
-$('stage').addEventListener('change', () => { openId = null; $('saved').textContent = ''; load(); });
+$('stage').addEventListener('change', () => { openId = null; notice($('msg'), ''); load(); });
 load();
 </script>
 </body></html>

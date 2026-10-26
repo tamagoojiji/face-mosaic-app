@@ -72,7 +72,16 @@ async def lifespan(_app):
 
 
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
-app.mount("/static", StaticFiles(directory=os.path.join(WEB, "static")), name="static")
+class _RevalidatedStatic(StaticFiles):
+    """反映直後に古い CSS/JS が残らないよう、毎回 ETag で確認させる（変わっていなければ 304）。"""
+
+    async def get_response(self, path, scope):
+        res = await super().get_response(path, scope)
+        res.headers["Cache-Control"] = "no-cache"
+        return res
+
+
+app.mount("/static", _RevalidatedStatic(directory=os.path.join(WEB, "static")), name="static")
 
 
 # ---------------------------------------------------------------- 認証
