@@ -273,8 +273,23 @@ def cancel_at_period_end(user):
     notify.push_user("cancel_requested", db.get_user(user["id"]),
                      text=f"解約を受け付けました。{day}までは、いまのプランのまま使えます。{day}に自動で退会となり、"
                           "保存している動画・写真も消えます。返金はありません。"
-                          "取り消すときは、設定の「支払いを管理する」→「プランを更新」から。")
+                          "取り消すときは、設定の「解約を取り消す」から。")
     return {"until": until}
+
+
+def resume(user):
+    """設定の「解約を取り消す」: 期末解約をやめて、これまでどおり更新する。"""
+    if not _api():
+        return _skip("resume", user)
+    stripe.Subscription.modify(user["stripe_subscription_id"], cancel_at_period_end=False)
+    db.update_user(user["id"], sub_status="active", cancel_at_period_end=0)
+    nxt = user.get("current_period_end")
+    db.audit(user["id"], "billing.cancel_resumed", f"user:{user['id']}", json.dumps({"next": nxt}))
+    discord.usage(f"解約を取り消し: {discord.who(user)}")
+    day = _md(nxt) if nxt else "次の更新日"
+    notify.push_user("cancel_resumed", db.get_user(user["id"]),
+                     text=f"解約を取り消しました。これまでどおり {day} に更新されます。")
+    return {"next": nxt}
 
 
 def schedule_cancel(user):

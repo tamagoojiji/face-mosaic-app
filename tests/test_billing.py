@@ -226,6 +226,40 @@ def test_cancel_button(client, up_stripe, monkeypatch):
     assert len(up_stripe) == 1
 
 
+def test_resume_button(client, up_stripe, monkeypatch):
+    import app.main as main_mod
+    u = _sub_user("Ures1")
+    end = time.time() + 20 * 86400
+    db.update_user(u["id"], current_period_end=end, sub_status="canceling", cancel_at_period_end=1)
+    monkeypatch.setattr(main_mod, "require_api", lambda request: db.get_user(u["id"]))
+    r = client.post("/api/billing/resume")
+    assert r.status_code == 200 and r.json() == {"ok": True, "next": end}
+    assert up_stripe[-1] == ("modify", "sub_2", {"cancel_at_period_end": False})
+    v = db.get_user(u["id"])
+    assert v["sub_status"] == "active" and v["cancel_at_period_end"] == 0
+    # active のとき → 400
+    r = client.post("/api/billing/resume")
+    assert r.status_code == 400 and r.json()["detail"] == "解約処理中ではありません"
+    assert len(up_stripe) == 1
+
+
+def test_withdraw_notifies_before_status_change(client, monkeypatch):
+    import app.main as main_mod
+    u = _sub_user("Uwd1")
+    db.update_user(u["id"], sub_status="canceling", cancel_at_period_end=1, current_period_end=time.time(),
+                   notify=1)
+    sent = []
+    monkeypatch.setattr(main_mod.notify, "push_user",
+                        lambda kind, user, *a, **kw: sent.append((kind, db.get_user(user["id"])["status"], kw.get("text"))))
+    main_mod.withdraw_user(db.get_user(u["id"]), "sub_ended", cancel=False)
+    assert sent and sent[0][0] == "withdrawn" and sent[0][1] == "active"
+    assert sent[0][2].startswith("更新日になったため退会となりました。")
+    v = db.get_user(u["id"])
+    assert v["status"] == "withdrawn" and v["sub_status"] is None and v["stripe_subscription_id"] is None
+    assert v["cancel_at_period_end"] == 0 and v["current_period_end"] is None
+    assert v["stripe_customer_id"] == "cus_2"
+
+
 def test_blocked():
     now = time.time()
     base = {"plan": "free", "line_user_id": "U1", "role": "user", "sub_status": None}

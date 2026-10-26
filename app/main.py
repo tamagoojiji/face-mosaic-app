@@ -27,7 +27,7 @@ from worker.engine import video as vengine
 from worker.run import paths as vpaths
 
 from . import config, db
-from .services import billing, discord, monitor, quota, retention
+from .services import billing, discord, monitor, notify, quota, retention
 
 log = logging.getLogger("uvicorn.error")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -248,7 +248,7 @@ def _login_line_user(request, line_user_id, name):
             u = db.user_by("line_user_id", line_user_id)
     elif u["status"] == "withdrawn":  # 退会後の再登録: 初回と同じ流れからやり直す
         db.update_user(u["id"], status="active", display_name=name, plan="free", hq=0, notify=1, ig_asked_at=None,
-                       agreed_at=None)
+                       agreed_at=None, trial_ends_at=time.time() + db.TRIAL_DAYS * 86400)
         u = db.get_user(u["id"])
         discord.usage(f"新規登録（退会後の再登録）: {discord.who(u)}")
     elif u["status"] != "active":
@@ -1030,13 +1030,20 @@ async def api_notify(request: Request):
 
 def withdraw_user(u, reason, note=None, cancel=True):
     """退会処理（本人の退会・購読終了の自動退会で共用）。cancel=False は Stripe 側で終わっているとき。"""
+    # status を変える前に送る（退会後は push_user が skip するため）
+    notify.push_user("withdrawn", u, text=(
+        "更新日になったため退会となりました。" if reason in ("sub_ended", "past_due_expired") else "退会が完了しました。")
+        + "保存していた動画・写真は削除しました。ご利用ありがとうございました。")
     if cancel:
         billing.cancel_subscription(u)
     for j in db.user_jobs(u["id"]):
         shutil.rmtree(job_dir(j["id"]), ignore_errors=True)
     n = db.delete_jobs_of(u["id"])
+    # 契約の値はクリア（stripe_customer_id は Stripe の請求履歴との突合用に残す）
     db.update_user(u["id"], status="withdrawn", instagram_username=None, notify=0, withdraw_reason=reason,
-                   withdraw_note=note or None, withdrawn_at=time.time())
+                   withdraw_note=note or None, withdrawn_at=time.time(),
+                   sub_status=None, cancel_at_period_end=0, current_period_end=None, past_due_since=None,
+                   pending_plan=None, pending_hq=None, stripe_subscription_id=None, stripe_price_plan=None)
     discord.usage(f"退会: #{u['id']} {u['display_name'] or 'ゲスト'}（{config.AUTH_MODE}）\n理由: {WITHDRAW_REASONS[reason]}"
                   + (f"\nひとこと: {note}" if note else ""))
     log.info("withdraw user=%s reason=%s 削除 %d 件", u["id"], reason, n)
@@ -1088,8 +1095,8 @@ async def api_checkout(request: Request):
     return JSONResponse({"url": url}, headers=NO_STORE)
 
 
-def _require_sub(u, msgs=None):
-    if u.get("sub_status") != "active" or not u.get("stripe_subscription_id"):
+def _require_sub(u, msgs=None, want="active"):
+    if u.get("sub_status") != want or not u.get("stripe_subscription_id"):
         msg = (msgs or {"canceling": "解約処理中はプランを変えられません",
                         "past_due": "お支払いの確認ができていません。支払い方法を更新してください"}).get(u.get("sub_status"))
         raise HTTPException(400, msg or "契約がありません。プランを選んで申し込んでください")
@@ -1102,6 +1109,16 @@ async def api_cancel(request: Request):
     _require_sub(u, {"canceling": "すでに解約処理中です", "past_due": "お支払いの確認ができていません"})
     r = await asyncio.to_thread(billing.cancel_at_period_end, u)
     return JSONResponse({"ok": True, "until": (r or {}).get("until")}, headers=NO_STORE)
+
+
+@app.post("/api/billing/resume")
+async def api_resume(request: Request):
+    u = require_api(request)
+    _require_billing()
+    _require_sub(u, {"active": "解約処理中ではありません", "past_due": "お支払いの確認ができていません"},
+                 want="canceling")
+    r = await asyncio.to_thread(billing.resume, u)
+    return JSONResponse({"ok": True, "next": (r or {}).get("next")}, headers=NO_STORE)
 
 
 @app.post("/api/billing/preview")

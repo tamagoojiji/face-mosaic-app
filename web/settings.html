@@ -57,6 +57,7 @@
     <button class="btn btn-sec" type="button" id="pay" disabled>支払いを管理する（準備中）</button>
     <p class="note" id="paynote">カードの変更や解約は、お支払いの受付が始まったらここからできます。</p>
     <button class="btn btn-sec" type="button" id="cancel" hidden>解約する</button>
+    <button class="btn btn-sec" type="button" id="resume" hidden>解約を取り消す</button>
     <p class="ok" id="cancelok" role="status" hidden></p>
     <p class="err" id="payerr" role="alert" hidden></p>
   </section>
@@ -84,12 +85,10 @@ function show(m) {
   if (m.stripe_ready) {
     $('pay').textContent = '支払いを管理する（カード変更・請求履歴）';
     $('pay').disabled = !hasSub || paying;
-    const end = m.current_period_end ? md(m.current_period_end) : '次の更新日';
-    $('paynote').textContent = m.sub_status === 'canceling'
-      ? '解約処理中です（' + end + 'まで使えます）。取り消すときは「支払いを管理する」から「プランを更新」を選んでください。'
-      : hasSub ? 'カードの変更や請求履歴の確認ができます（Stripe の画面が開きます）。' : '有料プランに申し込むと、ここからカードの変更や請求履歴の確認ができます。';
+    $('paynote').textContent = hasSub ? 'カードの変更や請求履歴の確認ができます（Stripe の画面が開きます）。' : '有料プランに申し込むと、ここからカードの変更や請求履歴の確認ができます。';
   }
   $('cancel').hidden = !(m.stripe_ready && m.sub_status === 'active');
+  $('resume').hidden = !(m.stripe_ready && m.sub_status === 'canceling');
   $('hqrow').hidden = !m.hq_available;
   $('hqv').textContent = m.hq ? 'ON（元の解像度と fps で書き出します）' : 'OFF';
   $('ig').value = m.instagram_username || '';
@@ -114,6 +113,19 @@ $('cancel').addEventListener('click', async () => {
     $('cancelok').hidden = false;
   } catch (e) { $('payerr').textContent = e.message; $('payerr').hidden = false; }
   $('cancel').disabled = false;
+});
+$('resume').addEventListener('click', async () => {
+  $('payerr').hidden = $('cancelok').hidden = true;
+  const day = me && me.current_period_end ? md(me.current_period_end) : '次の更新日';
+  if (!confirm('解約を取り消して、' + day + 'から今までどおり更新しますか？')) return;
+  $('resume').disabled = true;
+  try {
+    const r = await api('/api/billing/resume', { method: 'POST' });
+    show(Object.assign({}, me, { sub_status: 'active', current_period_end: r.next || me.current_period_end }));
+    $('cancelok').textContent = '解約を取り消しました';
+    $('cancelok').hidden = false;
+  } catch (e) { $('payerr').textContent = e.message; $('payerr').hidden = false; }
+  $('resume').disabled = false;
 });
 api('/api/me').then(show).catch(e => { $('igerr').textContent = e.message; $('igerr').hidden = false; });
 $('igf').addEventListener('submit', async ev => {
