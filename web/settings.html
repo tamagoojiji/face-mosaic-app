@@ -85,6 +85,7 @@
       <p class="cnt" id="rpn" aria-live="polite">あと500文字</p>
       <label class="lbl" for="rpj">対象の動画・写真（任意）</label>
       <select id="rpj"><option value="">選ばない</option></select>
+      <p class="note" id="rpjnone" hidden>送った動画・写真はまだありません。送ったあとは、ここで選べます。</p>
       <button class="btn btn-sec save" type="submit" id="rps">運営に報告を送る</button>
       <p class="ok" id="rpok" role="status" hidden></p>
       <p class="err" id="rperr" role="alert" hidden></p>
@@ -175,6 +176,7 @@ function rpCount() {
 }
 $('rpb').addEventListener('input', rpCount);
 api('/api/jobs').then(jobs => {
+  if (!jobs.length) { $('rpj').hidden = true; $('rpjnone').hidden = false; }
   jobs.forEach(j => {
     const d = new Date(j.created_at * 1000);
     const what = j.kind === 'video' ? '動画 ' + mmss(j.duration_sec) : '写真';
