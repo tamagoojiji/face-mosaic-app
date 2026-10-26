@@ -18,6 +18,7 @@
 - 元の動画・写真と解析データは完成から24時間、完成品は30日で自動削除（選び直しは元データがある間だけ）。選択を3時間放置したら削除（自動では書き出さない）
 - 自分の作ったものだけ表示（合言葉モードは端末ごと、LINE モードは LINE の利用者ごと）
 - 運営の設定: `docker exec face-mosaic-app python scripts/settings.py list`（リリース記念の ON/OFF と期間）
+- 利用者の操作: `docker exec face-mosaic-app python scripts/users.py list`（set-plan／set-hq＝高画質オプション／set-role）
 
 ## 構成
 
