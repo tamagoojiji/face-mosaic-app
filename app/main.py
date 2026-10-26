@@ -243,8 +243,9 @@ def _notify_registered(u):
         what = f"写真{quota.setting('campaign_images')}枚・1分までの動画{quota.setting('campaign_videos')}本"
     else:
         what = f"写真{quota.PLANS['free']['images']}枚まで。動画はプランを選ぶと送れます"
-    notify.push_user("registered", u,
-                     text=f"登録ありがとうございます。{billing._md(u['trial_ends_at'])}まで無料で試せます（{what}）。")
+    text = f"登録ありがとうございます。{billing._md(u['trial_ends_at'])}まで無料で試せます（{what}）。"
+    # ログインの画面遷移を LINE API の応答で待たせない
+    threading.Thread(target=notify.push_user, args=("registered", u), kwargs={"text": text}, daemon=True).start()
 
 
 def _login_line_user(request, line_user_id, name):
