@@ -58,6 +58,11 @@ const id = jobIdFromPath(), $ = x => document.getElementById(x);
     $('exErr').hidden = false;
   }
   $('sum').textContent = 'モザイクの種類：' + (j.style === 'blur' ? 'すりガラス' : 'ブロック粗め');
+  if (j.hq_export && j.out_width) {
+    const q = document.createElement('span'); q.style.display = 'block';
+    q.textContent = '画質：元の解像度（' + j.out_width + '×' + j.out_height + '・' + Math.round(j.out_fps) + 'fps）';
+    $('sum').append(q);
+  }
   remainLines(j, '元の動画', 'この動画');
   setupSave(src, j);
 })();

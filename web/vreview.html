@@ -33,6 +33,10 @@ h1{margin-top:16px}
 .t.k .cap b{color:var(--keep)}
 .empty{color:var(--sub);font-size:14px;padding:8px 0}
 .repick{margin:16px 0 0}
+.hqbox{display:flex;gap:8px;align-items:flex-start;background:#EEF5FD;border-radius:10px;padding:10px 12px;margin:-4px 0 16px;font-size:14px;line-height:1.5}
+.hqbox::before{content:"";flex:none;width:16px;height:16px;margin-top:3px;border-radius:4px;background:var(--pri) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E") center/12px no-repeat}
+.hqbox b{display:block}
+.hqbox span{color:var(--sub);font-size:13px}
 #toast{position:fixed;left:16px;right:16px;z-index:11;text-align:center;background:#14284A;color:#fff;font-size:14px;border-radius:10px;padding:10px 12px;
   opacity:0;transition:opacity .2s;pointer-events:none}
 #toast.show{opacity:1}
@@ -57,6 +61,7 @@ h1{margin-top:16px}
     <label><input type="radio" name="st" value="pixel" checked><span class="m">ブロック粗め</span><span class="d">マス目で強く隠す</span></label>
     <label><input type="radio" name="st" value="blur"><span class="m">すりガラス</span><span class="d">ぼかして隠す。約2.5分長くかかります</span></label>
   </fieldset>
+  <p class="hqbox" id="hq" hidden><span><b>高画質で書き出す</b><span id="hqd"></span></span></p>
   <div class="tabs" role="tablist" aria-label="モザイクの予定">
     <button type="button" role="tab" id="tb" aria-controls="pb" aria-selected="true">モザイクをかける予定<span class="n" id="nb">0件</span></button>
     <button type="button" role="tab" id="tk" aria-controls="pk" aria-selected="false" tabindex="-1">かけない予定<span class="n" id="nk">0件</span></button>
@@ -135,6 +140,12 @@ new ResizeObserver(fit).observe($('ft'));
   ITEMS = [...j.review.blur, ...j.review.keep];
   KEEP = new Set(ITEMS.filter(it => j.keep.includes(it.id)).map(it => it.id));
   document.querySelector('input[name=st][value=' + (j.style === 'blur' ? 'blur' : 'pixel') + ']').checked = true;
+  if (j.hq_est_sec) {  // 高画質オプションの人だけ（元動画が残っている間）
+    const upd = () => { const st = document.querySelector('input[name=st]:checked').value;
+      $('hqd').textContent = '元の解像度・fps のまま。書き出しは約' + Math.max(1, Math.round(j.hq_est_sec[st] / 60)) + '分'; };
+    document.querySelectorAll('input[name=st]').forEach(r => r.addEventListener('change', upd));
+    upd(); $('hq').hidden = false;
+  }
   render(); fit();
 })();
 

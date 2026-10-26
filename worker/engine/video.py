@@ -14,6 +14,7 @@
 import argparse
 import bisect
 import json
+import math
 import os
 import shutil
 import statistics
@@ -687,7 +688,11 @@ def apply_overrides(tracks, ov):
     return forced
 
 
-def build_frame_boxes(tracks, n_frames, inv_scale, detect_every):
+def filled_track_boxes(tracks, n_frames, detect_every):
+    """blur のトラックごとに、1080p 版（30fps）のフレーム番号 → 枠（解析サイズの座標）を埋めたもの。
+
+    隙間の線形補間・途切れた後の保持（HOLD_FRAMES）・keep の顔の上に来た補間枠の除外は build_frame_boxes と同じ。
+    戻り値は [(トラック, {フレーム: 枠})]（トラックの順・フレームの順は build_frame_boxes と同じ）。"""
     keep_at = {}
     for t in tracks:
         if t.get("action") == "keep":
@@ -699,7 +704,7 @@ def build_frame_boxes(tracks, n_frames, inv_scale, detect_every):
         return any(k["x"] <= cx <= k["x"] + k["w"] and k["y"] <= cy <= k["y"] + k["h"]
                    for k in keep_at.get(f, ()))
 
-    per_frame = {}
+    out = []
     for t in tracks:
         if t.get("action") != "blur":
             continue
@@ -719,9 +724,14 @@ def build_frame_boxes(tracks, n_frames, inv_scale, detect_every):
         for k in range(1, HOLD_FRAMES + 1):
             if last + k < n_frames:
                 filled[last + k] = t["boxes"][last]
+        out.append((t, {f: b for f, b in filled.items() if f in t["boxes"] or not on_keep(f, b)}))
+    return out
+
+
+def build_frame_boxes(tracks, n_frames, inv_scale, detect_every):
+    per_frame = {}
+    for _t, filled in filled_track_boxes(tracks, n_frames, detect_every):
         for f, b in filled.items():
-            if f not in t["boxes"] and on_keep(f, b):
-                continue
             box = {"x": int(round(b["x"] * inv_scale)), "y": int(round(b["y"] * inv_scale)),
                    "w": max(2, int(round(b["w"] * inv_scale))),
                    "h": max(2, int(round(b["h"] * inv_scale)))}
@@ -812,6 +822,123 @@ def export(path, work_dir, tracks_path, keep, blur, style, out_path):
     tmp = os.path.join(os.path.dirname(out_path), "out.tmp.mp4")
     try:
         r = render(path, info, vf, per_frame, tmp, pick_encoder(), "blur" if style == "blur" else "pixel")
+        os.replace(tmp, out_path)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    return r
+
+
+# ---------------------------------------------------------------- 高画質オプション（元の解像度・元の fps で書き出し）
+
+ANALYSIS_FPS = 30.0  # to_1080 の fps=30。tracks.json のフレーム番号はこの fps 基準
+
+
+def hq_boxes_at(filled_tracks, j, src_fps, sx, sy):
+    """元動画のフレーム j の枠（元の解像度の座標）。
+
+    時刻 j/元fps を 1080p 版のフレーム位置 f=時刻×30 に直し、前後の解析フレーム f0・f0+1 の枠を時刻で線形補間する。
+    片側しか無いとき（トラックの端）はある方の枠をそのまま使う（途切れる端は最後の枠を保持）。"""
+    f = j * ANALYSIS_FPS / src_fps
+    f0 = int(math.floor(f + 1e-6))
+    a = f - f0
+    boxes = []
+    for _t, filled in filled_tracks:
+        b0 = filled.get(f0)
+        b1 = filled.get(f0 + 1) if a > 1e-6 else None
+        if b0 is not None and b1 is not None:
+            b = {c: b0[c] + (b1[c] - b0[c]) * a for c in "xywh"}
+        elif b0 is not None:
+            b = b0
+        elif b1 is not None:
+            b = b1
+        else:
+            continue
+        boxes.append({"x": int(round(b["x"] * sx)), "y": int(round(b["y"] * sy)),
+                      "w": max(2, int(round(b["w"] * sx))), "h": max(2, int(round(b["h"] * sy)))})
+    return boxes
+
+
+def render_hq(path, info, vf, filled_tracks, sx, sy, out_path, style):
+    """元動画をデコード（自動回転・HDR は hdr_sdr と同じ LUT で SDR 化・元の fps のまま）→ 1コマずつモザイク → libx264。"""
+    w, h = info["out_width"], info["out_height"]
+    fps = info["fps"]
+    fsize = w * h * 3
+
+    dec_cmd = [FFMPEG, "-v", "error", *HWACCEL, "-i", path, "-an", "-sn", "-dn"]
+    if vf:
+        dec_cmd += ["-vf", vf]
+    # 1コマ＝1/元fps 秒に揃える（可変フレームレートでもフレーム番号と時刻を対応させるため）
+    dec_cmd += ["-fps_mode", "cfr", "-r", info["fps_str"], "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+
+    enc_cmd = [FFMPEG, "-v", "error", "-y",
+               "-f", "rawvideo", "-pix_fmt", "rgb24", "-video_size", f"{w}x{h}",
+               "-framerate", info["fps_str"], "-i", "-"]
+    if info["has_audio"]:
+        enc_cmd += ["-i", path, "-map", "0:v:0", "-map", "1:a:0", "-c:a", "copy"]
+    else:
+        enc_cmd += ["-map", "0:v:0"]
+    enc_cmd += ["-c:v", "libx264", "-crf", "18", "-preset", "medium", "-tag:v", "avc1", "-pix_fmt", "yuv420p",
+                "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
+                "-movflags", "+faststart", "-f", "mp4", out_path]
+
+    dec = subprocess.Popen(dec_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=fsize)
+    enc = subprocess.Popen(enc_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=fsize)
+
+    total = int(round(info["duration"] * fps))  # CFR で出るコマ数（可変fpsの nb_frames より多い）
+    mark, i, blurred = 0, 0, 0
+    try:
+        while True:
+            buf = dec.stdout.read(fsize)
+            if len(buf) < fsize:
+                break
+            boxes = hq_boxes_at(filled_tracks, i, fps, sx, sy)
+            if boxes:
+                arr = np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 3).copy()
+                for box in boxes:
+                    mosaic_face(arr, box, 0, style)
+                enc.stdin.write(arr.tobytes())
+                blurred += 1
+            else:
+                enc.stdin.write(buf)
+            i += 1
+            if total and i * 10 // max(total, 1) > mark:
+                mark = i * 10 // max(total, 1)
+                print(f"  高画質の書き出し {mark * 10}%  ({i}/{total}f)", flush=True)
+    except BrokenPipeError:
+        pass
+    finally:
+        for p in (dec.stdout, enc.stdin):
+            try:
+                p.close()
+            except OSError:
+                pass
+        dec_err = dec.stderr.read().decode("utf-8", "replace")
+        enc_err = enc.stderr.read().decode("utf-8", "replace")
+        dec.stderr.close()
+        enc.stderr.close()
+        drc = dec.wait()
+        rc = enc.wait()
+    if rc != 0 or drc not in (0, 255) or i == 0 or not os.path.exists(out_path):
+        raise RuntimeError(f"高画質の書き出しに失敗 (dec rc={drc} enc rc={rc}): "
+                           f"{(enc_err or dec_err).strip()[-400:]}")
+    return {"frames_written": i, "frames_blurred": blurred, "encoder": "libx264-crf18"}
+
+
+def export_hq(src, v1080, work_dir, tracks_path, keep, blur, style, out_path):
+    """高画質オプションの書き出し。解析（tracks.json・keep/blur）は 1080p 版のまま、元動画のフレームに当てる。"""
+    info_src, vf_src, _ = prepare(src, work_dir)
+    info1080 = probe(v1080)
+    tracks, dw, dh, seen = load_tracks(tracks_path)
+    classify_tracks_global(tracks, min(dw, dh), "background", FACE_KEEP_RATIO, FACE_MIN_FRAC)
+    apply_overrides(tracks, {"keep": sorted(keep), "blur": sorted(blur)})
+    filled = filled_track_boxes(tracks, seen, EXPORT_DETECT_EVERY)
+    # 解析サイズ → 1080p 版（export と同じ倍率）→ 元の解像度（縦横それぞれ・自動回転後の寸法）
+    sx = info1080["out_width"] / float(dw) * (info_src["out_width"] / float(info1080["out_width"]))
+    sy = info1080["out_height"] / float(dh) * (info_src["out_height"] / float(info1080["out_height"]))
+    tmp = os.path.join(os.path.dirname(out_path), "out.tmp.mp4")
+    try:
+        r = render_hq(src, info_src, vf_src, filled, sx, sy, tmp, "blur" if style == "blur" else "pixel")
         os.replace(tmp, out_path)
     finally:
         if os.path.exists(tmp):

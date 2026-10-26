@@ -123,18 +123,28 @@ def do_export(j):
     keep = set(json.loads(j["keep"] or "[]"))
     blur = set(json.loads(j["blur"] or "[]"))
     style = "blur" if j["mosaic_style"] == "blur" else "pixel"
-    r = video.export(p["v1080"], p["dir"], p["tracks"], keep, blur, style, p["out"])
+    # 高画質オプション: 確認画面で決めた hq_export=1 かつ元動画が残っていれば、元の解像度・fps で書き出す
+    hq = bool(j.get("hq_export")) and os.path.exists(p["src"])
+    if hq:
+        r = video.export_hq(p["src"], p["v1080"], p["dir"], p["tracks"], keep, blur, style, p["out"])
+    else:
+        r = video.export(p["v1080"], p["dir"], p["tracks"], keep, blur, style, p["out"])
     sec = round(time.time() - t0, 1)
     now = time.time()
-    db.update_job(jid, status="done", out_path=p["out"], t_export_sec=sec, expires_at=None,
+    o = video.probe(p["out"])
+    db.update_job(jid, status="done", out_path=p["out"], t_export_sec=sec, expires_at=None, hq_export=1 if hq else 0,
+                  out_width=o["out_width"], out_height=o["out_height"], out_fps=round(o["fps"], 3),
                   src_expires_at=j["src_expires_at"] or now + config.SOURCE_RETENTION_HOURS * 3600,
                   out_expires_at=now + config.OUTPUT_RETENTION_DAYS * 86400)
-    # 完成後に要らないもの: 元動画・特徴。選び直し（確認画面から書き出し直す）のために 1080p 版・追跡結果・切り抜きは残す
-    _rm(p["src"])
+    # 完成後に要らないもの: 特徴。選び直し（確認画面から書き出し直す）のために 1080p 版・追跡結果・切り抜きは残す。
+    # 元動画は 1080p で書き出したときは消す。高画質で書き出したときは選び直しを高画質でできるよう期限（24時間）まで残す
     _rm(p["feats"])
-    db.update_job(jid, src_path=None)
-    log.info("export %s %s %.1fs  keep %d blur %d  コマ %d（モザイクあり %d）%s", jid, style, sec, len(keep),
-             len(blur), r["frames_written"], r["frames_blurred"], r["encoder"])
+    if not hq:
+        _rm(p["src"])
+        db.update_job(jid, src_path=None)
+    log.info("export %s %s %s %.1fs  keep %d blur %d  コマ %d（モザイクあり %d）%s  %dx%d %.2ffps", jid, style,
+             "高画質" if hq else "1080p", sec, len(keep), len(blur), r["frames_written"], r["frames_blurred"],
+             r["encoder"], o["out_width"], o["out_height"], o["fps"])
     notify.push("done", db.get_job(jid))
 
 

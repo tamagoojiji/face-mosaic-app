@@ -18,9 +18,9 @@ PLANS = {
 }
 PLAN_ORDER = ("free", "image", "video_a", "video_b")
 PAID = ("image", "video_a", "video_b")
-# 高画質オプション（月＋500円・動画A/Bだけ）。元解像度での書き出しは Phase 6。それまでは hq=1 でも 1080p で書き出す
+# 高画質オプション（月＋500円・動画A/Bだけ）。解析は 1080p・30fps のまま、書き出しだけ元の解像度・fps（HDR は SDR に変換）
 HQ_OPTION = {"label": "高画質オプション", "price": 500, "plans": ("video_a", "video_b"),
-             "quality": "元の解像度と fps で書き出し", "note": "当面は 1080p・30fps で書き出し"}
+             "quality": "元の解像度と fps で書き出し", "note": "HDR は通常の色（SDR）に変換して書き出し"}
 SETTING_DEFAULTS = {"campaign_on": "0", "campaign_from": "", "campaign_to": "",
                     "campaign_images": "10", "campaign_videos": "3"}
 

@@ -88,6 +88,10 @@ ADD_COLUMNS = {
     "idle_notified": "INTEGER",    # 放置の再通知（④）を送った
     "queued_at": "REAL",           # 動画: 受け取り完了（解析の順番待ちに入った）
     "prep_started_at": "REAL",     # 動画: 解析を始めた
+    "hq_export": "INTEGER",        # 動画: 高画質（元の解像度・fps）で書き出す／書き出した 1、1080p は 0
+    "out_width": "INTEGER",        # 動画: 完成品の幅・高さ・fps（ffprobe の実測）
+    "out_height": "INTEGER",
+    "out_fps": "REAL",
 }
 QUEUED = ("queued", "queued_export")
 PASSCODE_PLAN = "video_b"  # 試験版の合言葉利用者は動画B相当（試験中だけ・DESIGN 7節）
@@ -258,7 +262,7 @@ def reset_running():
 def done_video_stats(limit=30):
     with connect() as con:
         rows = con.execute(
-            "SELECT duration_sec, mosaic_style, t_prepare_sec, t_track_sec, t_feature_sec, t_export_sec FROM jobs "
+            "SELECT duration_sec, mosaic_style, hq_export, t_prepare_sec, t_track_sec, t_feature_sec, t_export_sec FROM jobs "
             "WHERE kind='video' AND t_prepare_sec IS NOT NULL AND duration_sec>0 ORDER BY created_at DESC LIMIT ?",
             (limit,)).fetchall()
     return [dict(r) for r in rows]

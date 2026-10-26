@@ -46,7 +46,7 @@
   <ul class="plans" id="list"></ul>
   <section class="opt" id="opt" aria-labelledby="optl" hidden>
     <label class="sw"><span class="lb" id="optl">高画質オプション ＋500円/月（動画A・B）</span><span class="st" id="optst">準備中</span><input type="checkbox" id="hq" disabled><span class="track" aria-hidden="true"></span></label>
-    <p class="d">元の解像度と fps で書き出し。当面は 1080p・30fps で書き出し</p>
+    <p class="d">元の解像度と fps で書き出し（HDR は通常の色に変換）</p>
     <p class="pr" id="optpr"></p>
     <p class="note" id="optnow"></p>
   </section>
@@ -89,7 +89,7 @@ const len = s => s % 60 === 0 ? (s / 60) + '分' : mmss(s);
   const o = d.hq_option;
   $('hq').checked = me.hq;
   $('optpr').textContent = o.plans.map(x => x.label + '＋高画質 月' + x.price.toLocaleString('ja-JP') + '円').join('／');
-  $('optnow').textContent = me.hq ? 'いまは高画質オプションが ON です（当面は1080pで書き出し）。申し込みの受付は準備中です。' : '申し込みの受付は準備中です。';
+  $('optnow').textContent = me.hq ? 'いまは高画質オプションが ON です（元の解像度と fps で書き出します）。申し込みの受付は準備中です。' : '申し込みの受付は準備中です。';
   $('opt').hidden = false;
 })();
 function quotaLine(me) {
