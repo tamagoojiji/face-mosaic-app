@@ -23,6 +23,7 @@
 .sw .st{font-size:13px;color:var(--sub);font-weight:600}
 .leave{display:inline-flex;align-items:center;min-height:44px;margin:24px 0 32px;color:var(--sub);font-size:14px}
 .out{margin:24px 0 0;color:var(--fg);border-color:var(--line)}
+.addoa{display:flex;align-items:center;min-height:44px;font-weight:600}
 [hidden]{display:none !important}
 @media (prefers-reduced-motion:reduce){.sw .track,.sw .track::after{transition:none}}
 </style>
@@ -103,6 +104,13 @@ function show(m) {
   $('ig').value = m.instagram_username || '';
   $('nt').checked = m.notify; $('nst').textContent = m.notify ? 'オン' : 'オフ';
   if (m.auth_mode !== 'line') $('nnote').textContent = '合言葉で使っている間は LINE 通知は届きません。お知らせはホームの一覧に出ます。';
+  else if (m.line_friend === 0) {
+    const a = document.createElement('a');
+    a.href = m.line_add_url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = '公式アカウントを追加する';
+    a.className = 'addoa';
+    $('nnote').replaceChildren('公式アカウントが友だちではないため、通知は届きません。', a);
+    if (m.notify) $('nst').textContent = 'オン（届きません）';
+  }
 }
 $('pay').addEventListener('click', async () => {
   $('payerr').hidden = true; paying = true; $('pay').disabled = true;

@@ -127,6 +127,7 @@ ADD_USER_COLUMNS = {
     "stripe_price_plan": "TEXT",                           # いまのプランの価格ID
     "pending_plan": "TEXT",                                # 次の更新日から変わるプラン（下位変更）
     "pending_hq": "INTEGER",                               # 次の更新日から変わる高画質（外す）
+    "line_friend": "INTEGER",                              # 公式アカウントの友だち（NULL=未確認・0/1）
 }
 TRIAL_DAYS = 7
 QUEUED = ("queued", "queued_export")

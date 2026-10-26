@@ -33,4 +33,5 @@
 ## Messaging API チャネル（2026-10-25 本人が LINE Official Account Manager で作成）
 - Channel ID: 2012194665
 - ベーシックID: @606cuvoe
+- 友だち追加リンク: https://line.me/R/ti/p/@606cuvoe
 - Webhook URL 登録済み・「Webhookの利用」はオフ（受け口は未実装）

@@ -162,6 +162,7 @@ UI原則：`~/agents/ui-principles.md`（型）＋`~/agents/ui-ai-design-rules.m
 ### 動線フロー（2026-10-24 整理・LINE確定）
 入口はLINE公式アカウント。アプリ本体はSafari/Chrome（LINE内ブラウザは大きい動画の送信が切れやすいので、LINEから開くリンクは `openExternalBrowser=1` を付けて外部ブラウザで開く）。利用者が待つ場面は必ず「閉じてよい＋LINEで呼び戻す」にして、画面を開いたまま待たせない。
 公式アカウントの Webhook 受け口 `POST /line/webhook`（署名検証）: 友だち追加（follow）→ あいさつ＋アプリのリンクを reply／メッセージ（text）→ アプリのリンクだけを reply（会話はしない）／ブロック（unfollow）→ その利用者の LINE 通知を OFF（`users.notify=0`）。
+LINE ログイン時に友だち状態を取得（`GET /friendship/v1/status` → `users.line_friend`。follow/unfollow でも更新）→ 未追加・ブロック中はホームに「公式アカウントを追加する」の案内（`bot_prompt` の案内は同意画面が出る初回だけのため）。
 
 **A. 初回（1回だけ・約2分）**
 ```
@@ -280,6 +281,7 @@ audit_log    id, actor_id, action, target, detail, created_at                   
 | ADMIN_LINE_USER_IDS | 使わない（運営の判定は `users.role=admin` が正・③b の /admin もこれを見る） | 初回ログイン後に `scripts/users.py set-role <id> admin` で付与 |
 | LINE_LOGIN_CHANNEL_ID / LINE_LOGIN_CHANNEL_SECRET | LINEログイン | LINE Developers > 新規チャネル（LINEログイン） |
 | LINE_MSG_CHANNEL_ACCESS_TOKEN / LINE_MSG_CHANNEL_SECRET | 通知・あいさつ（空なら送らずに notify(skip) をログに出す） | LINE Developers > Messaging APIチャネル |
+| LINE_OA_BASIC_ID | 公式アカウントのベーシックID（ホーム・設定の友だち追加リンク。既定 `@606cuvoe`） | LINE Official Account Manager |
 | STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET | 決済 | Stripe ダッシュボード |
 | STRIPE_PRICE_IMAGE / VIDEO_A / VIDEO_B | 価格ID | Stripe 商品作成後 |
 | DISCORD_WEBHOOK_ALERTS / REPORTS / USAGE | 通知3チャンネル（空なら送らずに discord(skip) をログに出す） | Discord「たまご管理」サーバー（`/discord-channel-create`） |

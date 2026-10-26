@@ -37,6 +37,10 @@
 .stop{border:1.5px solid var(--warn-tag);border-radius:var(--radius);padding:12px 16px 16px;margin:0}
 .stop h2{margin:0 0 4px;font-size:17px}
 .stop p{margin:0 0 12px;font-size:14px}
+.friend{background:var(--surface);border-radius:var(--radius);padding:16px;margin:24px 0 0}
+.friend h2{margin:0 0 4px;font-size:17px}
+.friend p{margin:0 0 12px;font-size:14px;color:var(--sub)}
+.friend .later{display:block;margin:4px auto 0;min-height:44px;padding:0 16px;border:0;background:none;font:inherit;font-size:14px;font-weight:600;color:var(--sub);text-decoration:underline;cursor:pointer}
 [hidden]{display:none !important}
 </style>
 </head><body>
@@ -56,6 +60,12 @@
     <a class="btn btn-pri" id="sendv" href="/upload?type=video">動画を送る</a>
     <a class="btn btn-pri" id="send" href="/upload?type=photo">写真を送る</a>
   </div>
+  <section class="friend" role="region" aria-labelledby="frh" id="friend" hidden>
+    <h2 id="frh">完成の通知を LINE で受け取る</h2>
+    <p>公式アカウントを友だち追加（ブロック中なら解除）すると、できあがりの連絡が LINE に届きます。追加しなくてもアプリは使えます</p>
+    <a class="btn btn-sec" id="fradd" href="#" target="_blank" rel="noopener">公式アカウントを追加する</a>
+    <button class="later" type="button" id="frlater">あとで</button>
+  </section>
   <section class="quota" aria-labelledby="qh" id="quota" hidden>
     <div class="qh"><b id="qh">今月の残り <span class="trial" id="qtrial" hidden></span></b><span class="pl" id="qpl"></span></div>
     <div class="qgrid">
@@ -99,9 +109,23 @@ function showBlocked(m) {
   }
   $('stop').hidden = false;
 }
+// 公式アカウントが友だちでない（未追加・ブロック中）ときの案内。「あとで」はこのセッション中だけ隠す
+function showFriend(m) {
+  const box = document.getElementById('friend');
+  let later = false;
+  try { later = sessionStorage.getItem('fm_friend_later') === '1'; } catch (e) { }
+  if (m.auth_mode !== 'line' || m.line_friend !== 0 || later) return;
+  document.getElementById('fradd').href = m.line_add_url;
+  document.getElementById('frlater').addEventListener('click', () => {
+    try { sessionStorage.setItem('fm_friend_later', '1'); } catch (e) { }
+    box.hidden = true;
+  });
+  box.hidden = false;
+}
 // 今月の残り（分・枚）
 api('/api/me').then(m => {
   const r = m.remaining, $ = id => document.getElementById(id);
+  showFriend(m);
   if (m.blocked) { showBlocked(m); return; }
   if (m.trial_days_left !== null) { $('qtrial').textContent = 'お試し あと' + m.trial_days_left + '日'; $('qtrial').hidden = false; }
   $('qpl').textContent = m.plan_label + 'プラン';

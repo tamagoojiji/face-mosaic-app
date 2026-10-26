@@ -229,14 +229,28 @@ def _form_post(url, fields):
         return json.load(r)
 
 
+LINE_FRIENDSHIP_URL = "https://api.line.me/friendship/v1/status"
+
+
+def fetch_friend_flag(access_token):
+    """公式アカウントと友だちか（True/False）。取れないとき（通信・ボット未リンクなど）は None。"""
+    req = urllib.request.Request(LINE_FRIENDSHIP_URL, headers={"Authorization": "Bearer " + access_token})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return bool(json.load(r)["friendFlag"])
+    except Exception as e:
+        log.warning("LINE 友だち状態の取得に失敗: %s", type(e).__name__)
+        return None
+
+
 def _line_exchange(code, nonce, redirect_uri):
-    """認可コード → ID トークン → 検証。返すのは userId と表示名だけ（アクセストークンは保存しない）。"""
+    """認可コード → ID トークン → 検証 → 友だち状態。返すのは userId・表示名・友だちか（アクセストークンは保存しない）。"""
     tok = _form_post(LINE_TOKEN_URL, {"grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri,
                                       "client_id": config.LINE_LOGIN_CHANNEL_ID,
                                       "client_secret": config.LINE_LOGIN_CHANNEL_SECRET})
     v = _form_post(LINE_VERIFY_URL, {"id_token": tok["id_token"], "client_id": config.LINE_LOGIN_CHANNEL_ID,
                                      "nonce": nonce})
-    return v["sub"], v.get("name") or "LINEユーザー"
+    return v["sub"], v.get("name") or "LINEユーザー", fetch_friend_flag(tok["access_token"])
 
 
 def _notify_registered(u):
@@ -264,7 +278,7 @@ def reactivate_user(u, name):
     return u
 
 
-def _login_line_user(request, line_user_id, name):
+def _login_line_user(request, line_user_id, name, friend=None):
     u = db.user_by("line_user_id", line_user_id)
     if not u:
         try:
@@ -280,6 +294,8 @@ def _login_line_user(request, line_user_id, name):
         return RedirectResponse("/?e=stopped", status_code=303)
     elif name and name != u["display_name"]:
         db.update_user(u["id"], display_name=name)
+    if friend is not None:  # 公式アカウントの友だち状態（未追加・ブロック中ならホームに案内を出す）
+        db.update_user(u["id"], line_friend=1 if friend else 0)
     res = RedirectResponse("/home", status_code=303)
     _set_session(request, res, {"uid": u["id"]})
     log.info("login line user=%s", u["id"])
@@ -305,7 +321,8 @@ def line_start(request: Request):
 
 
 @app.get("/auth/line/callback")
-async def line_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+async def line_callback(request: Request, code: str = "", state: str = "", error: str = "",
+                        friendship_status_changed: str = ""):
     _require_line(mock=False)
     try:
         st = _state_serializer().loads(request.cookies.get(STATE_COOKIE, ""), max_age=600)
@@ -314,7 +331,7 @@ async def line_callback(request: Request, code: str = "", state: str = "", error
     if error or not code or not st or not hmac.compare_digest(str(st.get("s", "")), state):
         return RedirectResponse("/?e=line", status_code=303)
     try:
-        sub, name = await asyncio.to_thread(_line_exchange, code, st["n"], _redirect_uri(request))
+        sub, name, friend = await asyncio.to_thread(_line_exchange, code, st["n"], _redirect_uri(request))
     except Exception as e:
         detail = ""
         if isinstance(e, urllib.error.HTTPError):  # LINE の応答本文（error/error_description のみ・秘密値は含まない）
@@ -324,7 +341,9 @@ async def line_callback(request: Request, code: str = "", state: str = "", error
                 pass
         log.warning("LINE ログイン失敗: %s%s", type(e).__name__, detail)
         return RedirectResponse("/?e=line", status_code=303)
-    res = _login_line_user(request, sub, name)
+    if friend is None and friendship_status_changed == "true":  # ログインの画面で友だち追加した
+        friend = True
+    res = _login_line_user(request, sub, name, friend)
     res.delete_cookie(STATE_COOKIE, path="/auth/line")
     return res
 
@@ -1020,7 +1039,8 @@ def _me(u):
             "trial_days_left": max(0, -(-int(trial - now) // 86400)) if trial else None,
             "trial_expired": blocked == "trial_expired", "current_period_end": u.get("current_period_end"),
             "cancel_at_period_end": bool(u.get("cancel_at_period_end")), "pending_plan": u.get("pending_plan"),
-            "pending_hq": u.get("pending_hq"), "stripe_ready": billing.ready(), "blocked": blocked}
+            "pending_hq": u.get("pending_hq"), "stripe_ready": billing.ready(), "blocked": blocked,
+            "line_friend": u.get("line_friend"), "line_add_url": "https://line.me/R/ti/p/" + config.LINE_OA_BASIC_ID}
 
 
 @app.get("/api/me")
@@ -1350,15 +1370,21 @@ def _line_events(events):
     for ev in events:
         typ = ev.get("type")
         if typ == "follow":
+            _line_friend(ev, 1)
             notify.reply("follow", ev.get("replyToken"))
         elif typ == "message" and (ev.get("message") or {}).get("type") == "text":
             notify.reply("message", ev.get("replyToken"))
         elif typ == "unfollow":
-            uid = (ev.get("source") or {}).get("userId")
-            u = db.user_by("line_user_id", uid) if uid else None
-            if u:
-                db.update_user(u["id"], notify=0)
-            log.info("line webhook unfollow user=%s", u["id"] if u else "-")
+            _line_friend(ev, 0)
+
+
+def _line_friend(ev, on):
+    """follow → 友だち・通知 ON／unfollow（ブロック）→ 友だちでない・通知 OFF。"""
+    uid = (ev.get("source") or {}).get("userId")
+    u = db.user_by("line_user_id", uid) if uid else None
+    if u:
+        db.update_user(u["id"], line_friend=on, notify=on)
+    log.info("line webhook %s user=%s", ev.get("type"), u["id"] if u else "-")
 
 
 @app.post("/line/webhook")

@@ -102,10 +102,66 @@ def test_webhook_follow_reply(monkeypatch):
     assert text.endswith("https://example.test/?openExternalBrowser=1")
 
 
+def test_webhook_follow_friend_on(monkeypatch):
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: FakeResp())
+    u = db.create_user(line_user_id="Ufollow2", display_name="追加", notify=0, line_friend=0)
+    c = TestClient(main.app)
+    assert post(c, [{"type": "follow", "replyToken": "rt-2", "source": {"type": "user", "userId": "Ufollow2"}}]).status_code == 200
+    got = db.get_user(u["id"])
+    assert got["line_friend"] == 1 and got["notify"] == 1
+
+
 def test_webhook_unfollow_notify_off(monkeypatch):
     monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: pytest.fail("unfollow では送らない"))
     u = db.create_user(line_user_id="Uunfollow1", display_name="ブロック", notify=1)
     c = TestClient(main.app)
     r = post(c, [{"type": "unfollow", "source": {"type": "user", "userId": "Uunfollow1"}}])
     assert r.status_code == 200
-    assert db.get_user(u["id"])["notify"] == 0
+    got = db.get_user(u["id"])
+    assert got["notify"] == 0 and got["line_friend"] == 0
+
+
+class JsonResp(FakeResp):
+    def __init__(self, data):
+        self.data = json.dumps(data).encode()
+
+    def read(self, *a):
+        return self.data
+
+
+def test_fetch_friend_flag(monkeypatch):
+    seen = []
+
+    def fake(req, timeout=None):
+        seen.append(req)
+        return JsonResp({"friendFlag": False})
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake)
+    assert main.fetch_friend_flag("at-1") is False
+    assert seen[0].full_url == "https://api.line.me/friendship/v1/status"
+    assert seen[0].get_header("Authorization") == "Bearer at-1"
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: JsonResp({"friendFlag": True}))
+    assert main.fetch_friend_flag("at-1") is True
+
+    def boom(*a, **k):
+        raise OSError("network")
+
+    monkeypatch.setattr(urllib.request, "urlopen", boom)
+    assert main.fetch_friend_flag("at-1") is None
+
+
+def test_login_saves_friend(monkeypatch):
+    """ログインで友だち状態を保存（False → 0、取得失敗 None → NULL のまま）。"""
+    from starlette.requests import Request as SReq
+    req = SReq({"type": "http", "method": "GET", "path": "/", "headers": [], "scheme": "http", "server": ("t", 80),
+                "query_string": b""})
+    monkeypatch.setattr(main, "_notify_registered", lambda u: None)
+    main._login_line_user(req, "Ufriend0", "未追加", False)
+    assert db.user_by("line_user_id", "Ufriend0")["line_friend"] == 0
+    main._login_line_user(req, "Ufriend9", "不明", None)
+    assert db.user_by("line_user_id", "Ufriend9")["line_friend"] is None
+    c = TestClient(main.app)
+    c.cookies.set(config.COOKIE_NAME, main._serializer().dumps({"uid": db.user_by("line_user_id", "Ufriend0")["id"]}))
+    monkeypatch.setattr(config, "AUTH_MODE", "line")
+    me = c.get("/api/me").json()
+    assert me["line_friend"] == 0 and me["line_add_url"] == "https://line.me/R/ti/p/@606cuvoe"
