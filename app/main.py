@@ -1089,7 +1089,26 @@ async def api_withdraw(request: Request):
 
 # ---------------------------------------------------------------- 問題の報告（通報）
 
-REPORT_CATEGORIES = {"bug": "不具合", "abuse": "不審な利用・権利の問題", "other": "その他"}
+# 問題の報告（アンケート形式）: コード → (段階, 表示)。並び順は画面の並び
+REPORT_CATEGORIES = {
+    "up_fail": ("送る", "動画・写真を送れない（途中で止まる・エラーが出る）"),
+    "up_missing": ("送る", "送ったのに一覧に出ない"),
+    "pick_slow": ("顔を選ぶ", "選択画面がなかなか出ない"),
+    "pick_nomatch": ("顔を選ぶ", "残したい人の顔が出てこない（タップできない）"),
+    "pick_false": ("顔を選ぶ", "顔ではないものが顔として出る"),
+    "out_uncovered": ("仕上がり", "顔が隠れていない場面がある"),
+    "out_wrong": ("仕上がり", "残したい人にモザイクがかかった"),
+    "out_rotate": ("仕上がり", "向きがおかしい（横になる など）"),
+    "out_quality": ("仕上がり", "画質が悪い・音が出ない"),
+    "out_style": ("仕上がり", "モザイクの見た目（粗さ・種類）を変えたい"),
+    "save_fail": ("保存・通知", "完成した動画・写真を保存できない"),
+    "notify": ("保存・通知", "LINE の通知が来ない・多い"),
+    "login": ("ログイン・契約", "ログインできない"),
+    "plan_display": ("ログイン・契約", "プラン・残り回数の表示がおかしい"),
+    "billing": ("ログイン・契約", "支払い・請求について"),
+    "other": ("その他", "その他（内容を書いてください）"),
+}
+REPORT_STAGES = tuple(dict.fromkeys(s for s, _ in REPORT_CATEGORIES.values()))
 REPORT_MAX = 500
 
 
@@ -1108,11 +1127,11 @@ async def api_report(request: Request):
     b = await _json_body(request)
     cat = b.get("category")
     if cat not in REPORT_CATEGORIES:
-        raise HTTPException(400, "報告の種類を1つ選んでください")
-    body = str(b.get("body") or "").strip()
-    if not body:
-        raise HTTPException(400, "報告の内容を書いてください")
-    if len(body) > REPORT_MAX:
+        raise HTTPException(400, "あてはまるものを1つ選んでください")
+    body = str(b.get("body") or "").strip() or None
+    if cat == "other" and not body:
+        raise HTTPException(400, "その他を選んだときは内容を書いてください")
+    if body and len(body) > REPORT_MAX:
         raise HTTPException(400, f"報告の内容は{REPORT_MAX}文字までです")
     jid = b.get("job_id") or None
     j = None
@@ -1122,8 +1141,9 @@ async def api_report(request: Request):
             raise HTTPException(400, "対象の動画・写真が見つかりません。選び直してください")
     rid = db.add_report(u["id"], cat, body, j["id"] if j else None)
     target = f"{job_label(j)}（job={j['id']}）" if j else "なし"
-    discord.report(f"#{rid} 通報者: {discord.who(u)}\n種類: {REPORT_CATEGORIES[cat]}\n対象: {target}\n"
-                   f"内容: {body[:200]}")
+    stage, label = REPORT_CATEGORIES[cat]
+    discord.report(f"#{rid} {stage} › {label}\n通報者: {discord.who(u)}\n対象: {target}\n"
+                   f"内容: {body[:200] if body else '（なし）'}")
     log.info("report #%s user=%s category=%s", rid, u["id"], cat)
     return JSONResponse({"id": rid}, status_code=201, headers=NO_STORE)
 

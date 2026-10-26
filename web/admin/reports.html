@@ -14,6 +14,7 @@
   <h1>通報</h1>
   <p class="a-lead">利用者の設定画面「問題を報告する」から届いたもの。行の「開く」で全文と対応メモを編集できます。</p>
   <div class="tabs" role="tablist" aria-label="状態で絞り込む" id="tabs"></div>
+  <div class="filters"><div class="fld"><label for="stage">段階で絞り込む</label><select class="a-sel" id="stage"><option value="">すべての段階</option></select></div></div>
   <p class="msg ok" id="saved" role="status"></p>
   <p class="msg err" id="err" role="alert" hidden></p>
   <div class="a-box tbl-wrap" id="list"></div>
@@ -22,9 +23,10 @@
 <script src="/static/admin.js"></script>
 <script>
 const GROUPS = [['open', '未対応'], ['closed', '対応済み'], ['', 'すべて']];
-let cur = 'open', openId = null;
-const COLS = [['日時', 'nw'], ['通報者'], ['種類', 'nw'], ['対象', 'nw'], ['内容'], ['状態', 'nw'], ['', 'nw']];
-function short(s) { return s.length > 60 ? s.slice(0, 60) + '…' : s; }
+let cur = 'open', openId = null, stagesLoaded = false;
+const COLS = [['日時', 'nw'], ['通報者'], ['段階', 'nw'], ['種類'], ['対象', 'nw'], ['内容'], ['状態', 'nw'], ['', 'nw']];
+const NOBODY = () => h('span', { class: 'sub' }, '（内容なし）');
+function short(s) { return !s ? NOBODY() : s.length > 60 ? s.slice(0, 60) + '…' : s; }
 function detail(r) {
   const ta = h('textarea', { class: 'a-ta', id: 'note' + r.id, maxlength: '2000', placeholder: '例: 本人に確認済み。再現せず様子見' });
   ta.value = r.admin_note || '';
@@ -43,7 +45,7 @@ function detail(r) {
     btn.disabled = false;
   });
   return h('tr', { class: 'detail-row' }, h('td', { colspan: String(COLS.length) },
-    h('p', { class: 'body' }, r.body),
+    h('p', { class: 'body' }, r.body || NOBODY()),
     h('p', { class: 'hint', style: 'margin:0 0 12px' }, '通報者 ' + (r.instagram_username ? '@' + r.instagram_username + '・' : '') + '#' + r.user_id + (r.job_id ? '・対象ジョブ ' + r.job_id : '') + '・最終更新 ' + dt(r.updated_at)),
     h('div', { class: 'form-grid' },
       h('div', { class: 'fld' }, h('label', { for: 'note' + r.id }, '対応メモ（運営だけが見ます）'), ta),
@@ -53,12 +55,19 @@ function detail(r) {
 async function load() {
   $('err').hidden = true;
   try {
-    const d = await api('/admin/api/reports' + (cur ? '?status=' + cur : ''));
+    const qs = new URLSearchParams();
+    if (cur) qs.set('status', cur);
+    if ($('stage').value) qs.set('stage', $('stage').value);
+    const d = await api('/admin/api/reports?' + qs);
+    if (!stagesLoaded) { d.stages.forEach(s => $('stage').append(h('option', { value: s }, s))); stagesLoaded = true; }
     fill($('tabs'), GROUPS.map(g => h('button', { type: 'button', role: 'tab', 'aria-selected': String(g[0] === cur), onclick: () => { cur = g[0]; openId = null; $('saved').textContent = ''; load(); } },
       g[1], h('span', { class: 'n' }, String(g[0] ? d.counts[g[0]] : d.counts.open + d.counts.closed)))));
     if (!d.reports.length) {
-      fill($('list'), empty(cur === 'open' ? '未対応の通報はありません' : '通報はありません',
-        cur === 'open' ? h('button', { class: 'a-btn ter', type: 'button', onclick: () => { cur = ''; load(); } }, '対応済みも含めてすべて表示する') : '届くと #mosaic-reports にも通知されます'));
+      const st = $('stage').value;
+      fill($('list'), st
+        ? empty('「' + st + '」の通報はありません', h('button', { class: 'a-btn ter', type: 'button', onclick: () => { $('stage').value = ''; load(); } }, 'すべての段階を表示する'))
+        : empty(cur === 'open' ? '未対応の通報はありません' : '通報はありません',
+          cur === 'open' ? h('button', { class: 'a-btn ter', type: 'button', onclick: () => { cur = ''; load(); } }, '対応済みも含めてすべて表示する') : '届くと #mosaic-reports にも通知されます'));
       return;
     }
     const tb = h('tbody');
@@ -68,13 +77,14 @@ async function load() {
       tgl.addEventListener('click', () => { openId = isOpen ? null : r.id; load(); });
       tb.append(h('tr', {}, [dt(r.created_at),
         h('a', { href: '/admin/users/' + r.user_id }, '#' + r.user_id + ' ' + (r.user_name || '')),
-        r.category_label, r.job_label || '—', short(r.body),
+        r.stage, r.category_label, r.job_label || '—', short(r.body),
         badge(r.status === 'open' ? '未対応' : '対応済み', r.status === 'open' ? 'warn' : 'ok'), tgl].map((c, j) => h('td', { class: COLS[j][1] || null }, c))));
       if (isOpen) tb.append(detail(r));
     });
     fill($('list'), h('table', { class: 'tbl' }, h('thead', {}, h('tr', {}, COLS.map(c => h('th', { class: thClass(c[1]), scope: 'col' }, c[0])))), tb));
   } catch (e) { showErr($('err'), e); }
 }
+$('stage').addEventListener('change', () => { openId = null; $('saved').textContent = ''; load(); });
 load();
 </script>
 </body></html>

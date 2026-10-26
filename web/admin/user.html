@@ -84,7 +84,7 @@ function render(d) {
     : empty('まだ動画・写真を送っていません', '送るとここに工程ごとの時間と一緒に並びます'));
   fill($('reports'), d.reports.length ? table(
     [['日時', 'nw'], ['種類', 'nw'], ['対象', 'nw'], ['内容'], ['状態', 'nw']],
-    d.reports.map(r => [dt(r.created_at), r.category_label, r.job_label || '—', r.body, badge(r.status === 'open' ? '未対応' : '対応済み', r.status === 'open' ? 'warn' : 'ok')]))
+    d.reports.map(r => [dt(r.created_at), r.stage + ' › ' + r.category_label, r.job_label || '—', r.body || h('span', { class: 'sub' }, '（内容なし）'), badge(r.status === 'open' ? '未対応' : '対応済み', r.status === 'open' ? 'warn' : 'ok')]))
     : empty('通報はありません', '設定画面の「問題を報告する」から届いた分がここに並びます'));
   fill($('audit'), d.audit.length ? table(
     [['日時', 'nw'], ['操作した人', 'nw'], ['操作', 'nw'], ['内容']],

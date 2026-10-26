@@ -59,19 +59,33 @@ def test_post_report(monkeypatch):
     monkeypatch.setattr(discord, "send", lambda ch, text, wait=False: sent.append((ch, text)))
     c, u = login("dev-rep1")
     db.insert_job("jobREP000001", kind="video", status="done", user_id=u["id"], duration_sec=83.0)
-    r = c.post("/api/reports", json={"category": "abuse", "body": "  知らない人に使われています  ", "job_id": "jobREP000001"})
+    r = c.post("/api/reports", json={"category": "out_uncovered", "body": "  0:42 で顔が見えます  ", "job_id": "jobREP000001"})
     assert r.status_code == 201
     rep = db.get_report(r.json()["id"])
-    assert rep["user_id"] == u["id"] and rep["category"] == "abuse" and rep["body"] == "知らない人に使われています"
+    assert rep["user_id"] == u["id"] and rep["category"] == "out_uncovered" and rep["body"] == "0:42 で顔が見えます"
     assert rep["job_id"] == "jobREP000001" and rep["status"] == "open"
-    assert sent and sent[-1][0] == "reports" and "動画 1分23秒" in sent[-1][1] and "不審な利用" in sent[-1][1]
-    assert c.post("/api/reports", json={"category": "bug", "body": "   "}).status_code == 400
-    assert c.post("/api/reports", json={"category": "nope", "body": "x"}).status_code == 400
-    assert c.post("/api/reports", json={"category": "bug", "body": "x" * 501}).status_code == 400
+    assert sent and sent[-1][0] == "reports" and "動画 1分23秒" in sent[-1][1]
+    assert "仕上がり › 顔が隠れていない場面がある" in sent[-1][1]
+    # 内容は任意（空は None）。「その他」だけ必須
+    r = c.post("/api/reports", json={"category": "out_uncovered", "body": "   "})
+    assert r.status_code == 201 and db.get_report(r.json()["id"])["body"] is None
+    r = c.post("/api/reports", json={"category": "other", "body": ""})
+    assert r.status_code == 400 and "その他" in r.json()["detail"]
+    assert c.post("/api/reports", json={"category": "other", "body": "そのほか"}).status_code == 201
+    assert c.post("/api/reports", json={"category": "bug", "body": "x"}).status_code == 400  # 旧コード・未知のコード
+    assert c.post("/api/reports", json={"body": "x"}).status_code == 400
+    assert c.post("/api/reports", json={"category": "login", "body": "x" * 501}).status_code == 400
     # 他の人のジョブは選べない
     other = db.create_user(device_id="dev-rep2", display_name="他人")
     db.insert_job("jobREP000002", kind="image", status="done", user_id=other["id"])
-    assert c.post("/api/reports", json={"category": "bug", "body": "x", "job_id": "jobREP000002"}).status_code == 400
+    assert c.post("/api/reports", json={"category": "login", "body": "x", "job_id": "jobREP000002"}).status_code == 400
+    # 管理画面: 段階と種類は日本語、段階で絞り込める
+    a, _ = login("dev-admin-rep", role="admin")
+    d = a.get("/admin/api/reports?stage=仕上がり").json()
+    assert d["reports"] and all(x["stage"] == "仕上がり" for x in d["reports"])
+    assert d["reports"][-1]["category_label"] == "顔が隠れていない場面がある"
+    assert d["stages"][0] == "送る" and len(d["stages"]) == 6
+    assert a.get("/admin/api/reports?stage=nope").status_code == 400
 
 
 def _audit_count():

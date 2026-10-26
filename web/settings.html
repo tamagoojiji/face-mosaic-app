@@ -24,7 +24,9 @@
 .leave{display:inline-flex;align-items:center;min-height:44px;margin:24px 0 32px;color:var(--sub);font-size:14px}
 .rp fieldset{border:0;margin:0;padding:0}
 .rp legend,.rp .lbl{display:block;font-weight:600;font-size:15px;margin:12px 0 8px;padding:0}
-.rp .opt{display:flex;align-items:center;gap:12px;min-height:48px;padding:0 14px;border:1.5px solid var(--line);border-radius:var(--radius);margin:0 0 8px;cursor:pointer;font-weight:600}
+.rp .grp{margin:8px 0 0}
+.rp .grp legend{font-size:14px;color:var(--sub);margin:12px 0 6px}
+.rp .opt{display:flex;align-items:center;gap:12px;min-height:48px;padding:10px 14px;line-height:1.45;border:1.5px solid var(--line);border-radius:var(--radius);margin:0 0 8px;cursor:pointer;font-weight:600}
 .rp .opt input{width:20px;height:20px;margin:0;accent-color:var(--pri);flex:none}
 .rp .opt:has(input:checked){border-color:var(--pri);background:#F0F6FF}
 .rp textarea{width:100%;min-height:120px;border:1.5px solid var(--line);border-radius:var(--radius);padding:12px 14px;font:inherit;font-size:16px;color:var(--fg);background:#fff;resize:vertical;line-height:1.6}
@@ -73,15 +75,38 @@
   </section>
   <section class="sec rp" aria-labelledby="rph">
     <h2 id="rph">問題を報告する</h2>
-    <p class="note" style="margin:0">不具合や、あなたの写っている動画が勝手に使われているなど、気になることを運営に知らせられます。</p>
+    <p class="note" style="margin:0">うまくいかなかったところに近いものを1つ選んで、運営に知らせてください。</p>
     <form id="rpf" novalidate>
-      <fieldset><legend>報告の種類</legend>
-        <label class="opt"><input type="radio" name="rpc" value="bug" checked>不具合</label>
-        <label class="opt"><input type="radio" name="rpc" value="abuse">不審な利用・権利の問題</label>
-        <label class="opt"><input type="radio" name="rpc" value="other">その他</label>
+      <fieldset class="grp"><legend>送る</legend>
+        <label class="opt"><input type="radio" name="rpc" value="up_fail">動画・写真を送れない（途中で止まる・エラーが出る）</label>
+        <label class="opt"><input type="radio" name="rpc" value="up_missing">送ったのに一覧に出ない</label>
       </fieldset>
-      <label class="lbl" for="rpb">内容</label>
-      <textarea id="rpb" maxlength="500" placeholder="例: 書き出した動画の途中でモザイクが外れる場面がありました（0:42あたり）"></textarea>
+      <fieldset class="grp"><legend>顔を選ぶ</legend>
+        <label class="opt"><input type="radio" name="rpc" value="pick_slow">選択画面がなかなか出ない</label>
+        <label class="opt"><input type="radio" name="rpc" value="pick_nomatch">残したい人の顔が出てこない（タップできない）</label>
+        <label class="opt"><input type="radio" name="rpc" value="pick_false">顔ではないものが顔として出る</label>
+      </fieldset>
+      <fieldset class="grp"><legend>仕上がり</legend>
+        <label class="opt"><input type="radio" name="rpc" value="out_uncovered">顔が隠れていない場面がある</label>
+        <label class="opt"><input type="radio" name="rpc" value="out_wrong">残したい人にモザイクがかかった</label>
+        <label class="opt"><input type="radio" name="rpc" value="out_rotate">向きがおかしい（横になる など）</label>
+        <label class="opt"><input type="radio" name="rpc" value="out_quality">画質が悪い・音が出ない</label>
+        <label class="opt"><input type="radio" name="rpc" value="out_style">モザイクの見た目（粗さ・種類）を変えたい</label>
+      </fieldset>
+      <fieldset class="grp"><legend>保存・通知</legend>
+        <label class="opt"><input type="radio" name="rpc" value="save_fail">完成した動画・写真を保存できない</label>
+        <label class="opt"><input type="radio" name="rpc" value="notify">LINE の通知が来ない・多い</label>
+      </fieldset>
+      <fieldset class="grp"><legend>ログイン・契約</legend>
+        <label class="opt"><input type="radio" name="rpc" value="login">ログインできない</label>
+        <label class="opt"><input type="radio" name="rpc" value="plan_display">プラン・残り回数の表示がおかしい</label>
+        <label class="opt"><input type="radio" name="rpc" value="billing">支払い・請求について</label>
+      </fieldset>
+      <fieldset class="grp"><legend>その他</legend>
+        <label class="opt"><input type="radio" name="rpc" value="other">その他（内容を書いてください）</label>
+      </fieldset>
+      <label class="lbl" for="rpb">内容（任意・その他を選んだときは必須）</label>
+      <textarea id="rpb" maxlength="500" placeholder="例: 0:42 あたりで右の人の顔が一瞬見えます"></textarea>
       <p class="cnt" id="rpn" aria-live="polite">あと500文字</p>
       <label class="lbl" for="rpj">対象の動画・写真（任意）</label>
       <select id="rpj"><option value="">選ばない</option></select>
@@ -190,13 +215,14 @@ api('/api/jobs').then(jobs => {
 $('rpf').addEventListener('submit', async ev => {
   ev.preventDefault();
   $('rpok').hidden = $('rperr').hidden = true;
-  const body = $('rpb').value.trim();
-  if (!body) { $('rperr').textContent = '報告の内容を書いてください'; $('rperr').hidden = false; $('rpb').focus(); return; }
+  const body = $('rpb').value.trim(), picked = document.querySelector('input[name=rpc]:checked');
+  if (!picked) { $('rperr').textContent = 'あてはまるものを選んでください'; $('rperr').hidden = false; document.querySelector('input[name=rpc]').focus(); return; }
+  if (picked.value === 'other' && !body) { $('rperr').textContent = '内容を書いてください'; $('rperr').hidden = false; $('rpb').focus(); return; }
   $('rps').disabled = true;
   try {
     await api('/api/reports', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      category: document.querySelector('input[name=rpc]:checked').value, body, job_id: $('rpj').value || null }) });
-    $('rpb').value = ''; $('rpj').value = ''; rpCount();
+      category: picked.value, body, job_id: $('rpj').value || null }) });
+    $('rpb').value = ''; $('rpj').value = ''; picked.checked = false; rpCount();
     $('rpok').textContent = '報告を受け付けました。運営が確認します'; $('rpok').hidden = false;
   } catch (e) { $('rperr').textContent = e.message; $('rperr').hidden = false; }
   $('rps').disabled = false;

@@ -80,8 +80,8 @@ CREATE TABLE IF NOT EXISTS reports (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER,
   job_id TEXT,                     -- 任意: 対象の動画・写真
-  category TEXT NOT NULL,          -- bug | abuse | other
-  body TEXT NOT NULL,
+  category TEXT NOT NULL,          -- main.REPORT_CATEGORIES の16コード
+  body TEXT,                       -- 任意（「その他」のときだけ必須）
   status TEXT NOT NULL DEFAULT 'open',   -- open | closed
   admin_note TEXT,
   created_at REAL,
@@ -159,6 +159,13 @@ def init():
                     "AND role!='admin' AND trial_ends_at IS NULL AND created_at IS NOT NULL", (TRIAL_DAYS * 86400,))
         # 旧プラン「動画B 高画質」→ 動画B＋高画質オプション
         con.execute("UPDATE users SET plan='video_b', hq=1 WHERE plan='video_b_hq'")
+        # reports.body を任意に（初版は NOT NULL で作っていた）→ 作り直す
+        if any(r["name"] == "body" and r["notnull"] for r in con.execute("PRAGMA table_info(reports)")):
+            con.execute("ALTER TABLE reports RENAME TO reports_old")
+            con.executescript(SCHEMA)
+            con.execute("INSERT INTO reports SELECT id, user_id, job_id, category, body, status, admin_note, created_at, "
+                        "updated_at FROM reports_old")
+            con.execute("DROP TABLE reports_old")
         con.execute("CREATE INDEX IF NOT EXISTS jobs_owner ON jobs(owner, created_at)")
         con.execute("CREATE INDEX IF NOT EXISTS jobs_user ON jobs(user_id, created_at)")
         now = time.time()

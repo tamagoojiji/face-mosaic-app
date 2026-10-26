@@ -326,24 +326,33 @@ def _report_row(r, users, jobs):
     return {"id": r["id"], "user_id": r["user_id"], "user_name": u.get("display_name"),
             "instagram_username": u.get("instagram_username"), "job_id": r["job_id"],
             "job_label": core.job_label(j) if r["job_id"] else None, "category": r["category"],
-            "category_label": core.REPORT_CATEGORIES.get(r["category"], r["category"]), "body": r["body"],
+            "stage": core.REPORT_CATEGORIES.get(r["category"], ("（旧分類）", ""))[0],
+            "category_label": core.REPORT_CATEGORIES.get(r["category"], ("", r["category"]))[1], "body": r["body"],
             "status": r["status"], "admin_note": r["admin_note"], "created_at": r["created_at"],
             "updated_at": r["updated_at"]}
 
 
 @router.get("/api/reports")
-def api_reports(request: Request, status: str = ""):
+def api_reports(request: Request, status: str = "", stage: str = ""):
     require_admin(request, api=True)
-    if status and status not in ("open", "closed"):
+    if status and status not in ("open", "closed") or stage and stage not in core.REPORT_STAGES:
         raise HTTPException(400, "絞り込みを選び直してください")
-    rows = _rows("SELECT * FROM reports" + (" WHERE status=?" if status else "") + " ORDER BY created_at DESC LIMIT 300",
-                 (status,) if status else ())
+    sql, args = "SELECT * FROM reports WHERE 1=1", []
+    if status:
+        sql += " AND status=?"
+        args.append(status)
+    if stage:
+        codes = [k for k, (s, _l) in core.REPORT_CATEGORIES.items() if s == stage]
+        sql += f" AND category IN ({','.join('?' * len(codes))})"
+        args += codes
+    rows = _rows(sql + " ORDER BY created_at DESC LIMIT 300", args)
     users = _users_by_id([r["user_id"] for r in rows])
     jids = [r["job_id"] for r in rows if r["job_id"]]
     jobs = {j["id"]: j for j in _rows(f"SELECT * FROM jobs WHERE id IN ({','.join('?' * len(jids))})", jids)} \
         if jids else {}
     return _ok({"reports": [_report_row(r, users, jobs) for r in rows],
-                "counts": {s: _count("SELECT COUNT(*) FROM reports WHERE status=?", (s,)) for s in ("open", "closed")}})
+                "counts": {s: _count("SELECT COUNT(*) FROM reports WHERE status=?", (s,)) for s in ("open", "closed")},
+                "stages": list(core.REPORT_STAGES)})
 
 
 @router.post("/api/reports/{rid}")
