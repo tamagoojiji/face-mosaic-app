@@ -27,6 +27,14 @@ function table(cols, rows, rowAttrs) {
 function empty(title, ...rest) { return h('div', { class: 'empty' }, h('strong', {}, title), rest); }
 function fill(el, ...kids) { el.replaceChildren(...kids.flat(Infinity).filter(k => k != null && k !== false)); }
 function showErr(el, e) { el.textContent = e.message; el.hidden = false; }
+// 1つの通知領域に最新の1件だけ出す。成功（ok）は数秒で消え、エラー（err）は次の操作まで残す。空文字で消す
+let noticeTimer = 0;
+function notice(el, text, kind) {
+  clearTimeout(noticeTimer);
+  el.className = 'notice-bar' + (kind ? ' ' + kind : '');
+  el.textContent = text || ''; el.hidden = !text;
+  if (text && kind === 'ok') noticeTimer = setTimeout(() => { el.textContent = ''; el.hidden = true; }, 4000);
+}
 // 動画の状態（運営向けの日本語）
 const JOB_STATUS = {
   uploading: ['送信中', 'run'], queued: ['解析待ち', 'warn'], preparing: ['解析中', 'run'], awaiting_pick: ['選択待ち', ''],

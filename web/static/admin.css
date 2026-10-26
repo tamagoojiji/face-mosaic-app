@@ -25,7 +25,8 @@ body{font-size:14px;line-height:1.6;min-height:100vh}
 .tile.bad{border-color:var(--warn-tag)}
 .tile.bad .v{color:var(--warn-tag)}
 a.tile{display:block;text-decoration:none;color:inherit}
-a.tile:hover{border-color:var(--pri)}
+a.tile:hover{border-color:var(--pri);background:var(--pri-soft)}
+.tile .go{color:var(--pri);font-size:13px;font-weight:700;margin-top:6px}
 /* 表 */
 .tbl-wrap{overflow-x:auto}
 table.tbl{width:100%;border-collapse:collapse;font-size:14px}
@@ -37,7 +38,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .tbl .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
 .tbl tr.link{cursor:pointer}
 .tbl tr.link:hover td{background:#F7F9FC}
-.tbl .err-t{color:var(--warn-tag);max-width:280px}
+.tbl .err-t{color:var(--warn-tag);min-width:200px;max-width:320px}
 .tbl .sub{color:var(--sub);font-size:12px}
 .empty{padding:32px 20px;text-align:center;color:var(--sub)}
 .empty strong{display:block;color:var(--fg);font-size:15px;margin-bottom:4px}
@@ -85,6 +86,10 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .msg{font-weight:600;margin:0}
 .msg.ok{color:var(--keep)}
 .msg.err{color:var(--warn-tag)}
+/* 1つの通知領域（最新だけ・成功は数秒で消える／エラーは次の操作まで） */
+.notice-bar{margin:0 0 var(--s3);padding:10px var(--s4);border-radius:8px;font-weight:600;background:var(--surface);color:var(--fg)}
+.notice-bar.ok{background:var(--keep-soft);color:var(--keep-ink)}
+.notice-bar.err{background:var(--warn-soft);color:var(--warn-tag)}
 .actions{display:flex;align-items:center;gap:16px;margin-top:20px}
 .sw2{display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-weight:600;min-height:40px;position:relative}
 .sw2 input{position:absolute;opacity:0;width:1px;height:1px}

@@ -30,7 +30,8 @@
 function tile(k, v, unit, s, bad, href) {
   return h(href ? 'a' : 'div', { class: 'tile' + (bad ? ' bad' : ''), href: href || null },
     h('div', { class: 'k' }, k), h('div', { class: 'v' }, String(v), unit ? h('small', {}, unit) : null),
-    s ? h('div', { class: 's' }, s) : null);
+    s ? h('div', { class: 's' }, s) : null,
+    href ? h('div', { class: 'go' }, '一覧を見る ›') : null);  // 押せるタイルだけ行き先を書く（表示だけのタイルと見分ける）
 }
 function ago(s) {
   if (s == null) return ['—', ''];

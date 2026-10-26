@@ -14,8 +14,7 @@
   <h1>ジョブ</h1>
   <p class="a-lead">新しい順に最大300件。失敗したジョブは、もう一度処理するか削除できます。</p>
   <div class="tabs" role="tablist" aria-label="状態で絞り込む" id="tabs"></div>
-  <p class="msg" id="msg" role="status"></p>
-  <p class="msg err" id="err" role="alert" hidden></p>
+  <p class="notice-bar" id="msg" role="status" aria-live="polite" hidden></p>
   <div class="a-box tbl-wrap" id="list"></div>
 </main>
 <script src="/static/common.js"></script>
@@ -24,22 +23,20 @@
 const GROUPS = [['', 'すべて'], ['queued', '待ち'], ['running', '処理中'], ['waiting', '選択・確認待ち'], ['failed', '失敗'], ['done', '完成'], ['deleted', '削除済み']];
 let cur = new URLSearchParams(location.search).get('status') || '';
 if (!GROUPS.some(g => g[0] === cur)) cur = '';
-function note(text, ok) { $('msg').className = 'msg' + (ok ? ' ok' : ''); $('msg').textContent = text; }
 async function act(j, kind) {
-  $('err').hidden = true;
+  notice($('msg'), '');  // 次の操作を始めたら前の知らせ（エラーも）を消す
   if (kind === 'delete' && !confirm('このジョブ（' + j.label + '・' + j.id.slice(0, 8) + '）のファイルと記録を削除します。元に戻せません。削除しますか？')) return;
   try {
     const r = await api('/admin/api/jobs/' + j.id + '/' + kind, { method: 'POST' });
-    note(kind === 'retry' ? 'もう一度処理する列に戻しました（' + (r.status === 'queued_export' ? '書き出し' : '解析') + 'から）' : 'ジョブを削除しました', true);
+    notice($('msg'), kind === 'retry' ? 'もう一度処理する列に戻しました（' + (r.status === 'queued_export' ? '書き出し' : '解析') + 'から）' : 'ジョブを削除しました', 'ok');
     load();
-  } catch (e) { showErr($('err'), e); }
+  } catch (e) { notice($('msg'), e.message, 'err'); }
 }
 async function load() {
-  $('err').hidden = true;
   try {
     const d = await api('/admin/api/jobs' + (cur ? '?status=' + cur : ''));
     fill($('tabs'), GROUPS.map(g => h('button', { type: 'button', role: 'tab', 'aria-selected': String(g[0] === cur), onclick: () => {
-      cur = g[0]; note(''); history.replaceState(null, '', '/admin/jobs' + (cur ? '?status=' + cur : '')); load();
+      cur = g[0]; notice($('msg'), ''); history.replaceState(null, '', '/admin/jobs' + (cur ? '?status=' + cur : '')); load();
     } }, g[1], h('span', { class: 'n' }, String(g[0] ? d.counts[g[0]] : d.total)))));
     if (!d.jobs.length) {
       const label = GROUPS.find(g => g[0] === cur)[1];
@@ -51,12 +48,12 @@ async function load() {
     fill($('list'), table(
       [['ID', 'mono'], ['種類', 'nw'], ['利用者'], ['状態', 'nw'], ['工程ごとの秒'], ['失敗理由', 'err-t'], ['作成日時', 'nw'], ['操作', 'nw']],
       d.jobs.map(j => [j.id.slice(0, 8), j.label + (j.hq_export ? '（高画質）' : ''),
-        j.user_id ? h('a', { href: '/admin/users/' + j.user_id }, '#' + j.user_id + ' ' + (j.user_name || '')) : '—',
+        j.user_id ? h('a', { class: 'nw', href: '/admin/users/' + j.user_id }, '#' + j.user_id + ' ' + (j.user_name || '')) : '—',
         jobBadge(j.status), stageText(j), errText(j.error), dt(j.created_at),
         j.status === 'failed' ? h('div', { class: 'row-actions' },
           j.kind === 'video' ? h('button', { class: 'a-btn sec sm', type: 'button', onclick: () => act(j, 'retry') }, 'もう一度処理する') : null,
           h('button', { class: 'a-btn danger sm', type: 'button', onclick: () => act(j, 'delete') }, 'このジョブを削除する')) : ''])));
-  } catch (e) { showErr($('err'), e); }
+  } catch (e) { notice($('msg'), e.message, 'err'); }
 }
 load();
 </script>
