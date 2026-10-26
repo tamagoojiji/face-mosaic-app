@@ -22,11 +22,47 @@ PAID = ("image", "video_a", "video_b")
 HQ_OPTION = {"label": "高画質オプション", "price": 500, "plans": ("video_a", "video_b"),
              "quality": "元の解像度と fps で書き出し", "note": "HDR は通常の色（SDR）に変換して書き出し"}
 SETTING_DEFAULTS = {"campaign_on": "0", "campaign_from": "", "campaign_to": "",
-                    "campaign_images": "10", "campaign_videos": "3"}
+                    "campaign_images": "10", "campaign_videos": "3",
+                    # 運営の上書き（管理画面の設定）。既定は環境変数（config）の値
+                    "source_retention_hours": f"{config.SOURCE_RETENTION_HOURS:g}",
+                    "output_retention_days": f"{config.OUTPUT_RETENTION_DAYS:g}",
+                    "idle_warn_hours": f"{config.IDLE_WARN_HOURS:g}",
+                    "idle_delete_hours": f"{config.IDLE_DELETE_HOURS:g}",
+                    "mosaic_default": "block"}  # block（ブロック粗め）| glass（すりガラス）
 
 
 def setting(key):
     return db.get_setting(key, SETTING_DEFAULTS.get(key))
+
+
+def setting_num(key):
+    try:
+        return float(setting(key))
+    except (TypeError, ValueError):
+        return float(SETTING_DEFAULTS[key])
+
+
+def source_hours():
+    """元動画・元画像・解析データを消すまでの時間。"""
+    return setting_num("source_retention_hours")
+
+
+def output_days():
+    """完成品の保存日数。"""
+    return setting_num("output_retention_days")
+
+
+def idle_warn_hours():
+    return setting_num("idle_warn_hours")
+
+
+def idle_delete_hours():
+    return setting_num("idle_delete_hours")
+
+
+def default_style():
+    """新しいジョブのモザイクの種類（jobs.mosaic_style の値: pixel | blur）。"""
+    return "blur" if setting("mosaic_default") == "glass" else "pixel"
 
 
 def month_of(ts=None):

@@ -1,0 +1,75 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>利用者｜顔モザイク 運営</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/admin.css">
+</head><body>
+<header class="a-top">
+  <a class="brand" href="/admin">顔モザイク 運営</a>
+  <nav aria-label="管理メニュー"><a href="/admin">ダッシュボード</a><a href="/admin/users" aria-current="page">利用者</a><a href="/admin/jobs">ジョブ</a><a href="/admin/reports">通報</a><a href="/admin/settings">設定</a></nav>
+  <a class="out" href="/home">利用者画面へ</a>
+</header>
+<main class="a-main">
+  <h1>利用者</h1>
+  <p class="a-lead" id="lead">行を押すと詳細（プランの変更・履歴）を開きます。</p>
+  <form class="filters" id="f">
+    <div class="fld"><label for="q">表示名・Instagram名で探す</label><input class="a-in" id="q" type="search" placeholder="例: tamago_parktips" autocomplete="off"></div>
+    <div class="fld"><label for="plan">プラン</label><select class="a-sel" id="plan"><option value="">すべて</option></select></div>
+    <div class="fld"><label for="status">状態</label><select class="a-sel" id="status"><option value="">すべて</option><option value="active">active（利用中）</option><option value="stopped">stopped（停止）</option><option value="withdrawn">withdrawn（退会）</option></select></div>
+    <button class="a-btn sec" type="submit">この条件で探す</button>
+  </form>
+  <p class="msg err" id="err" role="alert" hidden></p>
+  <div class="a-box tbl-wrap" id="list"></div>
+</main>
+<script src="/static/common.js"></script>
+<script src="/static/admin.js"></script>
+<script>
+const ST = { active: 'ok', stopped: 'bad', withdrawn: '' };
+const CT = { active: ['契約中', 'ok'], canceling: ['解約処理中', 'warn'], past_due: ['お支払い未確認', 'bad'], free: ['無料', ''] };
+const KEYS = ['q', 'plan', 'status'];
+const init = new URLSearchParams(location.search);
+KEYS.forEach(k => { if (init.get(k)) $(k).value = init.get(k); });
+let plansLoaded = false;
+async function load() {
+  $('err').hidden = true;
+  const qs = new URLSearchParams();
+  KEYS.forEach(k => qs.set(k, $(k).value));
+  try {
+    const d = await api('/admin/api/users?' + qs);
+    if (!plansLoaded) {
+      d.plans.forEach(p => $('plan').append(h('option', { value: p.key }, p.label)));
+      if (init.get('plan')) $('plan').value = init.get('plan');
+      plansLoaded = true;
+    }
+    const filtered = KEYS.some(k => $(k).value);
+    $('lead').textContent = d.users.length + ' 人' + (filtered ? '（絞り込み中）' : '') + '。今月（' + d.month + '）の使用量つき。行を押すと詳細（プランの変更・履歴）を開きます。';
+    if (!d.users.length) {
+      fill($('list'), empty('条件に合う利用者はいません', filtered
+        ? h('button', { class: 'a-btn ter', type: 'button', onclick: () => { KEYS.forEach(k => $(k).value = ''); history.replaceState(null, '', '/admin/users'); load(); } }, '条件を外してすべて表示する')
+        : 'LINE でログインした人がここに並びます'));
+      return;
+    }
+    fill($('list'), table(
+      [['ID', 'num'], ['表示名'], ['Instagram名'], ['ログイン', 'nw'], ['プラン', 'nw'], ['契約', 'nw'], ['今月の動画', 'num'], ['今月の写真', 'num'], ['状態', 'nw'], ['登録日', 'nw']],
+      d.users.map(u => {
+        const c = CT[u.contract] || [u.contract, u.contract === 'お試し終了' ? 'bad' : 'warn'];
+        return [String(u.id),
+          [h('a', { href: '/admin/users/' + u.id }, u.display_name || 'ゲスト'), u.role === 'admin' ? h('span', { class: 'sub' }, '（運営）') : null],
+          u.instagram_username ? '@' + u.instagram_username : h('span', { class: 'sub' }, '—'),
+          u.login, u.plan_label + (u.hq ? '＋高画質' : ''), badge(c[0], c[1]),
+          mmss(u.usage_video_sec), u.usage_images + ' 枚', badge(u.status, ST[u.status]), day(u.created_at)];
+      }),
+      i => ({ class: 'link', onclick: ev => { if (ev.target.tagName !== 'A') location.href = '/admin/users/' + d.users[i].id; } })));
+  } catch (e) { showErr($('err'), e); }
+}
+$('f').addEventListener('submit', ev => {
+  ev.preventDefault();
+  const qs = new URLSearchParams();
+  KEYS.forEach(k => { if ($(k).value) qs.set(k, $(k).value); });
+  history.replaceState(null, '', '/admin/users' + (qs.toString() ? '?' + qs : ''));
+  load();
+});
+load();
+</script>
+</body></html>

@@ -76,6 +76,17 @@ CREATE TABLE IF NOT EXISTS audit_log (
   detail TEXT,
   created_at REAL
 );
+CREATE TABLE IF NOT EXISTS reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER,
+  job_id TEXT,                     -- 任意: 対象の動画・写真
+  category TEXT NOT NULL,          -- bug | abuse | other
+  body TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',   -- open | closed
+  admin_note TEXT,
+  created_at REAL,
+  updated_at REAL
+);
 CREATE TABLE IF NOT EXISTS billing_events (
   event_id TEXT PRIMARY KEY,       -- Stripe の event.id（Webhook の重複処理よけ）
   type TEXT,
@@ -378,6 +389,29 @@ def add_billing_event(event_id, typ):
     with connect() as con:
         con.execute("INSERT OR IGNORE INTO billing_events (event_id, type, created_at) VALUES (?,?,?)",
                     (event_id, typ, time.time()))
+
+
+# ---------------------------------------------------------------- 通報
+
+def add_report(user_id, category, body, job_id=None):
+    now = time.time()
+    with connect() as con:
+        cur = con.execute("INSERT INTO reports (user_id, job_id, category, body, created_at, updated_at) "
+                          "VALUES (?,?,?,?,?,?)", (user_id, job_id, category, body, now, now))
+        return cur.lastrowid
+
+
+def get_report(report_id):
+    with connect() as con:
+        r = con.execute("SELECT * FROM reports WHERE id=?", (report_id,)).fetchone()
+    return dict(r) if r else None
+
+
+def update_report(report_id, **cols):
+    cols["updated_at"] = time.time()
+    sets = ",".join(f"{k}=?" for k in cols)
+    with connect() as con:
+        con.execute(f"UPDATE reports SET {sets} WHERE id=?", [*cols.values(), report_id])
 
 
 # ---------------------------------------------------------------- 設定（key/value）

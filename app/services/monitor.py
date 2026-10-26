@@ -43,21 +43,29 @@ def check_disk(now=None):
         discord.alert(f"ディスクの空きが {free * 100:.0f}% です（{du.free / 1e9:.1f}GB / {du.total / 1e9:.0f}GB）")
 
 
-def daily_summary_text(day):
+def daily_stats(day):
+    """その日に作られたジョブの処理数・失敗・解析の待ち時間の中央値（日次サマリと管理画面で共用）。"""
     t0 = time.mktime(day.timetuple())
     t1 = t0 + 86400
     jobs = [j for j in db.jobs_created_between(t0, t1) if j["status"] != "uploading"]
     vids = [j for j in jobs if j["kind"] == "video"]
     imgs = [j for j in jobs if j["kind"] == "image"]
     done = lambda js: sum(1 for j in js if j["t_export_sec"] is not None)
-    failed = sum(1 for j in jobs if j["status"] == "failed")
     waits = [j["prep_started_at"] - j["queued_at"] for j in vids if j["queued_at"] and j["prep_started_at"]]
-    wait = f"{statistics.median(waits) / 60:.1f}分（{len(waits)}本）" if waits else "—（解析した動画なし）"
+    return {"videos": len(vids), "videos_done": done(vids), "images": len(imgs), "images_done": done(imgs),
+            "failed": sum(1 for j in jobs if j["status"] == "failed"),
+            "wait_median_sec": statistics.median(waits) if waits else None, "wait_count": len(waits),
+            "new_users": db.count_users_created_between(t0, t1)}
+
+
+def daily_summary_text(day):
+    s = daily_stats(day)
+    wait = f"{s['wait_median_sec'] / 60:.1f}分（{s['wait_count']}本）" if s["wait_count"] else "—（解析した動画なし）"
     return (f"日次サマリ {day.isoformat()}\n"
-            f"処理数: 動画 {len(vids)} 本（完成 {done(vids)}）・写真 {len(imgs)} 枚（完成 {done(imgs)}）\n"
-            f"失敗: {failed} 件\n"
+            f"処理数: 動画 {s['videos']} 本（完成 {s['videos_done']}）・写真 {s['images']} 枚（完成 {s['images_done']}）\n"
+            f"失敗: {s['failed']} 件\n"
             f"解析の待ち時間の中央値: {wait}\n"
-            f"新規登録: {db.count_users_created_between(t0, t1)} 人")
+            f"新規登録: {s['new_users']} 人")
 
 
 def daily_summary(now=None, force=False):

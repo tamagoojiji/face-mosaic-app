@@ -9,6 +9,7 @@ import logging
 import urllib.request
 
 from .. import config, db
+from . import quota
 
 log = logging.getLogger("uvicorn.error")
 PUSH_URL = "https://api.line.me/v2/bot/message/push"
@@ -33,11 +34,11 @@ def message(kind, job, reason=None, text=None, link=None):
     if kind == "ready":
         return "選択の準備ができました。残したい顔をタップしてください。" + _link(f"/pick/{jid}")
     if kind == "done":
-        return f"できました。{config.OUTPUT_RETENTION_DAYS:g}日間はいつでも保存できます。" + _link(f"/done/{jid}")
+        return f"できました。{quota.output_days():g}日間はいつでも保存できます。" + _link(f"/done/{jid}")
     if kind == "idle":
         page = "pick" if job["status"] == "awaiting_pick" else "review"
-        left = config.IDLE_DELETE_HOURS - config.IDLE_WARN_HOURS
-        return f"まだ選択が残っています。あと{left}時間で動画を削除します。" + _link(f"/{page}/{jid}")
+        left = quota.idle_delete_hours() - quota.idle_warn_hours()
+        return f"まだ選択が残っています。あと{left:g}時間で動画を削除します。" + _link(f"/{page}/{jid}")
     if kind == "failed":
         refunded = "消費した分数は戻しました。" if job.get("_refunded") else ""
         return f"処理できませんでした（{reason or '理由不明'}）。{refunded}" + _link("/home")

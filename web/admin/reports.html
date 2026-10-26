@@ -1,0 +1,80 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>通報｜顔モザイク 運営</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/admin.css">
+</head><body>
+<header class="a-top">
+  <a class="brand" href="/admin">顔モザイク 運営</a>
+  <nav aria-label="管理メニュー"><a href="/admin">ダッシュボード</a><a href="/admin/users">利用者</a><a href="/admin/jobs">ジョブ</a><a href="/admin/reports" aria-current="page">通報</a><a href="/admin/settings">設定</a></nav>
+  <a class="out" href="/home">利用者画面へ</a>
+</header>
+<main class="a-main">
+  <h1>通報</h1>
+  <p class="a-lead">利用者の設定画面「問題を報告する」から届いたもの。行の「開く」で全文と対応メモを編集できます。</p>
+  <div class="tabs" role="tablist" aria-label="状態で絞り込む" id="tabs"></div>
+  <p class="msg ok" id="saved" role="status"></p>
+  <p class="msg err" id="err" role="alert" hidden></p>
+  <div class="a-box tbl-wrap" id="list"></div>
+</main>
+<script src="/static/common.js"></script>
+<script src="/static/admin.js"></script>
+<script>
+const GROUPS = [['open', '未対応'], ['closed', '対応済み'], ['', 'すべて']];
+let cur = 'open', openId = null;
+const COLS = [['日時', 'nw'], ['通報者'], ['種類', 'nw'], ['対象', 'nw'], ['内容'], ['状態', 'nw'], ['', 'nw']];
+function short(s) { return s.length > 60 ? s.slice(0, 60) + '…' : s; }
+function detail(r) {
+  const ta = h('textarea', { class: 'a-ta', id: 'note' + r.id, maxlength: '2000', placeholder: '例: 本人に確認済み。再現せず様子見' });
+  ta.value = r.admin_note || '';
+  const sel = h('select', { class: 'a-sel', id: 'st' + r.id }, h('option', { value: 'open' }, 'open（未対応）'), h('option', { value: 'closed' }, 'closed（対応済み）'));
+  sel.value = r.status;
+  const msg = h('p', { class: 'msg', role: 'status' });
+  const btn = h('button', { class: 'a-btn pri', type: 'button' }, '対応メモと状態を保存する');
+  btn.addEventListener('click', async () => {
+    btn.disabled = true; msg.textContent = '';
+    try {
+      await api('/admin/api/reports/' + r.id, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: sel.value, admin_note: ta.value }) });
+      $('saved').textContent = '通報 #' + r.id + ' を保存しました（' + (sel.value === 'open' ? '未対応のまま' : '対応済みに移しました') + '）';
+      openId = sel.value === r.status ? r.id : null;
+      load();
+    } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
+    btn.disabled = false;
+  });
+  return h('tr', { class: 'detail-row' }, h('td', { colspan: String(COLS.length) },
+    h('p', { class: 'body' }, r.body),
+    h('p', { class: 'hint', style: 'margin:0 0 12px' }, '通報者 ' + (r.instagram_username ? '@' + r.instagram_username + '・' : '') + '#' + r.user_id + (r.job_id ? '・対象ジョブ ' + r.job_id : '') + '・最終更新 ' + dt(r.updated_at)),
+    h('div', { class: 'form-grid' },
+      h('div', { class: 'fld' }, h('label', { for: 'note' + r.id }, '対応メモ（運営だけが見ます）'), ta),
+      h('div', { class: 'fld' }, h('label', { for: 'st' + r.id }, '状態'), sel)),
+    h('div', { class: 'actions' }, btn, msg)));
+}
+async function load() {
+  $('err').hidden = true;
+  try {
+    const d = await api('/admin/api/reports' + (cur ? '?status=' + cur : ''));
+    fill($('tabs'), GROUPS.map(g => h('button', { type: 'button', role: 'tab', 'aria-selected': String(g[0] === cur), onclick: () => { cur = g[0]; openId = null; $('saved').textContent = ''; load(); } },
+      g[1], h('span', { class: 'n' }, String(g[0] ? d.counts[g[0]] : d.counts.open + d.counts.closed)))));
+    if (!d.reports.length) {
+      fill($('list'), empty(cur === 'open' ? '未対応の通報はありません' : '通報はありません',
+        cur === 'open' ? h('button', { class: 'a-btn ter', type: 'button', onclick: () => { cur = ''; load(); } }, '対応済みも含めてすべて表示する') : '届くと #mosaic-reports にも通知されます'));
+      return;
+    }
+    const tb = h('tbody');
+    d.reports.forEach(r => {
+      const isOpen = openId === r.id;
+      const tgl = h('button', { class: 'a-btn ter sm', type: 'button', 'aria-expanded': String(isOpen) }, isOpen ? '閉じる' : '開く');
+      tgl.addEventListener('click', () => { openId = isOpen ? null : r.id; load(); });
+      tb.append(h('tr', {}, [dt(r.created_at),
+        h('a', { href: '/admin/users/' + r.user_id }, '#' + r.user_id + ' ' + (r.user_name || '')),
+        r.category_label, r.job_label || '—', short(r.body),
+        badge(r.status === 'open' ? '未対応' : '対応済み', r.status === 'open' ? 'warn' : 'ok'), tgl].map((c, j) => h('td', { class: COLS[j][1] || null }, c))));
+      if (isOpen) tb.append(detail(r));
+    });
+    fill($('list'), h('table', { class: 'tbl' }, h('thead', {}, h('tr', {}, COLS.map(c => h('th', { class: thClass(c[1]), scope: 'col' }, c[0])))), tb));
+  } catch (e) { showErr($('err'), e); }
+}
+load();
+</script>
+</body></html>

@@ -1,0 +1,72 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>ダッシュボード｜顔モザイク 運営</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/admin.css">
+</head><body>
+<header class="a-top">
+  <a class="brand" href="/admin">顔モザイク 運営</a>
+  <nav aria-label="管理メニュー"><a href="/admin" aria-current="page">ダッシュボード</a><a href="/admin/users">利用者</a><a href="/admin/jobs">ジョブ</a><a href="/admin/reports">通報</a><a href="/admin/settings">設定</a></nav>
+  <a class="out" href="/home">利用者画面へ</a>
+</header>
+<main class="a-main">
+  <h1>ダッシュボード</h1>
+  <p class="a-lead" id="at">読み込み中…</p>
+  <p class="msg err" id="err" role="alert" hidden></p>
+  <h2 style="margin-top:8px">処理の状況</h2>
+  <div class="tiles" id="t1"></div>
+  <h2>サーバー</h2>
+  <div class="tiles" id="t2"></div>
+  <h2>利用者と通報</h2>
+  <div class="tiles" id="t3"></div>
+  <h2>直近の失敗ジョブ</h2>
+  <div class="a-box tbl-wrap" id="failed"></div>
+</main>
+<script src="/static/common.js"></script>
+<script src="/static/admin.js"></script>
+<script>
+// 数値タイル（href があれば一覧へのリンク）
+function tile(k, v, unit, s, bad, href) {
+  return h(href ? 'a' : 'div', { class: 'tile' + (bad ? ' bad' : ''), href: href || null },
+    h('div', { class: 'k' }, k), h('div', { class: 'v' }, String(v), unit ? h('small', {}, unit) : null),
+    s ? h('div', { class: 's' }, s) : null);
+}
+function ago(s) {
+  if (s == null) return ['—', ''];
+  if (s < 120) return [Math.round(s), '秒前'];
+  if (s < 7200) return [Math.round(s / 60), '分前'];
+  return [Math.round(s / 3600), '時間前'];
+}
+api('/admin/api/dashboard').then(d => {
+  $('at').textContent = new Date().toLocaleString('ja-JP') + ' 時点（開き直すと更新）';
+  const t = d.today, dk = d.disk, u = d.users, hb = ago(d.heartbeat_age);
+  const stale = d.heartbeat_age == null || d.heartbeat_age > d.heartbeat_stale;
+  fill($('t1'),
+    tile('処理中', d.running, '件', '解析・書き出し（動画）'),
+    tile('待ち', d.queued, '件', '解析・書き出しの順番待ち', false, '/admin/jobs?status=queued'),
+    tile('今日の処理数', t.videos + t.images, '件', '動画 ' + t.videos + ' 本（完成 ' + t.videos_done + '）・写真 ' + t.images + ' 枚（完成 ' + t.images_done + '）'),
+    tile('今日の失敗', t.failed, '件', '今日受け付けた分のうち', t.failed > 0, '/admin/jobs?status=failed'));
+  fill($('t2'),
+    tile('ディスクの空き', Math.round(dk.free_ratio * 100), '%', dk.free_gb.toFixed(1) + 'GB / ' + Math.round(dk.total_gb) + 'GB', dk.free_ratio < dk.alert_ratio),
+    tile('worker の最後の心拍', hb[0], hb[1], stale ? (d.heartbeat_age == null ? '心拍の記録がありません' : Math.round(d.heartbeat_stale / 60) + '分以上止まっています') : '動いています', stale),
+    tile('解析の待ち時間（中央値）', t.wait_median_sec == null ? '—' : (t.wait_median_sec / 60).toFixed(1), t.wait_median_sec == null ? '' : '分',
+      t.wait_count ? '今日解析した動画 ' + t.wait_count + ' 本' : '今日解析した動画はまだありません'));
+  fill($('t3'),
+    tile('利用者（利用中）', u.active, '人', '今日の新規登録 ' + t.new_users + ' 人', false, '/admin/users?status=active'),
+    tile('有料プラン', u.paid, '人', 'うち解約処理中 ' + u.canceling + ' 人'),
+    tile('お支払い未確認', u.past_due, '人', '決済失敗の猶予中', u.past_due > 0),
+    tile('未対応の通報', d.open_reports, '件', '', d.open_reports > 0, '/admin/reports'));
+  if (!d.failed_jobs.length) {
+    fill($('failed'), empty('失敗したジョブはありません', '失敗すると #mosaic-alerts にも通知が届きます'));
+    return;
+  }
+  fill($('failed'),
+    table([['日時', 'nw'], ['種類', 'nw'], ['利用者'], ['失敗理由', 'err-t'], ['ID', 'mono']],
+      d.failed_jobs.map(j => [dt(j.updated_at), j.label,
+        j.user_id ? h('a', { href: '/admin/users/' + j.user_id }, '#' + j.user_id + ' ' + (j.user_name || '')) : '—',
+        errText(j.error), j.id.slice(0, 8)])),
+    h('div', { class: 'a-pad' }, h('a', { href: '/admin/jobs?status=failed' }, '失敗したジョブをすべて見る')));
+}).catch(e => { showErr($('err'), e); $('at').textContent = ''; });
+</script>
+</body></html>

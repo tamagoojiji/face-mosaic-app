@@ -57,7 +57,7 @@ def cleanup_expired(now=None):
 def notify_idle(now=None):
     """選択・確認が IDLE_WARN_HOURS 放置されたら ④ を1回だけ送る。"""
     now = now or time.time()
-    left = (config.IDLE_DELETE_HOURS - config.IDLE_WARN_HOURS) * 3600
+    left = (quota.idle_delete_hours() - quota.idle_warn_hours()) * 3600
     for j in db.idle_jobs(now + left):
         db.update_job(j["id"], idle_notified=1)
         notify.push("idle", j)

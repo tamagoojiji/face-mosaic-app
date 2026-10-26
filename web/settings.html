@@ -22,6 +22,16 @@
 .sw .lb{flex:1}
 .sw .st{font-size:13px;color:var(--sub);font-weight:600}
 .leave{display:inline-flex;align-items:center;min-height:44px;margin:24px 0 32px;color:var(--sub);font-size:14px}
+.rp fieldset{border:0;margin:0;padding:0}
+.rp legend,.rp .lbl{display:block;font-weight:600;font-size:15px;margin:12px 0 8px;padding:0}
+.rp .opt{display:flex;align-items:center;gap:12px;min-height:48px;padding:0 14px;border:1.5px solid var(--line);border-radius:var(--radius);margin:0 0 8px;cursor:pointer;font-weight:600}
+.rp .opt input{width:20px;height:20px;margin:0;accent-color:var(--pri);flex:none}
+.rp .opt:has(input:checked){border-color:var(--pri);background:#F0F6FF}
+.rp textarea{width:100%;min-height:120px;border:1.5px solid var(--line);border-radius:var(--radius);padding:12px 14px;font:inherit;font-size:16px;color:var(--fg);background:#fff;resize:vertical;line-height:1.6}
+.rp select{width:100%;height:48px;border:1.5px solid var(--line);border-radius:var(--radius);padding:0 12px;font:inherit;font-size:16px;color:var(--fg);background:#fff}
+.rp textarea:focus-visible,.rp select:focus-visible{outline:3px solid rgba(4,108,220,.45);outline-offset:2px}
+.rp .cnt{text-align:right;font-size:13px;color:var(--sub);margin:4px 0 0}
+.rp .cnt.over{color:var(--warn-tag);font-weight:600}
 [hidden]{display:none !important}
 @media (prefers-reduced-motion:reduce){.sw .track,.sw .track::after{transition:none}}
 </style>
@@ -60,6 +70,25 @@
     <button class="btn btn-sec" type="button" id="resume" hidden>解約を取り消す</button>
     <p class="ok" id="cancelok" role="status" hidden></p>
     <p class="err" id="payerr" role="alert" hidden></p>
+  </section>
+  <section class="sec rp" aria-labelledby="rph">
+    <h2 id="rph">問題を報告する</h2>
+    <p class="note" style="margin:0">不具合や、あなたの写っている動画が勝手に使われているなど、気になることを運営に知らせられます。</p>
+    <form id="rpf" novalidate>
+      <fieldset><legend>報告の種類</legend>
+        <label class="opt"><input type="radio" name="rpc" value="bug" checked>不具合</label>
+        <label class="opt"><input type="radio" name="rpc" value="abuse">不審な利用・権利の問題</label>
+        <label class="opt"><input type="radio" name="rpc" value="other">その他</label>
+      </fieldset>
+      <label class="lbl" for="rpb">内容</label>
+      <textarea id="rpb" maxlength="500" placeholder="例: 書き出した動画の途中でモザイクが外れる場面がありました（0:42あたり）"></textarea>
+      <p class="cnt" id="rpn" aria-live="polite">あと500文字</p>
+      <label class="lbl" for="rpj">対象の動画・写真（任意）</label>
+      <select id="rpj"><option value="">選ばない</option></select>
+      <button class="btn btn-sec save" type="submit" id="rps">運営に報告を送る</button>
+      <p class="ok" id="rpok" role="status" hidden></p>
+      <p class="err" id="rperr" role="alert" hidden></p>
+    </form>
   </section>
   <a class="leave" href="/withdraw" id="leave">退会する</a>
 </main>
@@ -136,6 +165,39 @@ $('igf').addEventListener('submit', async ev => {
     show(m); $('igok').textContent = m.instagram_username ? '保存しました' : '登録を消しました'; $('igok').hidden = false;
   } catch (e) { $('igerr').textContent = e.message; $('igerr').hidden = false; }
   $('igs').disabled = false;
+});
+// 問題を報告する
+const RP_MAX = 500;
+function rpCount() {
+  const left = RP_MAX - $('rpb').value.length;
+  $('rpn').textContent = left >= 0 ? 'あと' + left + '文字' : (-left) + '文字多すぎます';
+  $('rpn').classList.toggle('over', left < 0);
+}
+$('rpb').addEventListener('input', rpCount);
+api('/api/jobs').then(jobs => {
+  jobs.forEach(j => {
+    const d = new Date(j.created_at * 1000);
+    const what = j.kind === 'video' ? '動画 ' + mmss(j.duration_sec) : '写真';
+    const st = j.kind === 'video' ? (VIDEO_STATUS[j.status] || ['', ''])[0] : ({ done: '完成', deleted: '削除済み' }[j.status] || '');
+    const o = document.createElement('option');
+    o.value = j.id;
+    o.textContent = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ' ' + what + (st ? '（' + st + '）' : '');
+    $('rpj').append(o);
+  });
+}).catch(() => {});
+$('rpf').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  $('rpok').hidden = $('rperr').hidden = true;
+  const body = $('rpb').value.trim();
+  if (!body) { $('rperr').textContent = '報告の内容を書いてください'; $('rperr').hidden = false; $('rpb').focus(); return; }
+  $('rps').disabled = true;
+  try {
+    await api('/api/reports', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      category: document.querySelector('input[name=rpc]:checked').value, body, job_id: $('rpj').value || null }) });
+    $('rpb').value = ''; $('rpj').value = ''; rpCount();
+    $('rpok').textContent = '報告を受け付けました。運営が確認します'; $('rpok').hidden = false;
+  } catch (e) { $('rperr').textContent = e.message; $('rperr').hidden = false; }
+  $('rps').disabled = false;
 });
 $('nt').addEventListener('change', async () => {
   $('nerr').hidden = true;

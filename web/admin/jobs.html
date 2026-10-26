@@ -1,0 +1,63 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>ジョブ｜顔モザイク 運営</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/admin.css">
+</head><body>
+<header class="a-top">
+  <a class="brand" href="/admin">顔モザイク 運営</a>
+  <nav aria-label="管理メニュー"><a href="/admin">ダッシュボード</a><a href="/admin/users">利用者</a><a href="/admin/jobs" aria-current="page">ジョブ</a><a href="/admin/reports">通報</a><a href="/admin/settings">設定</a></nav>
+  <a class="out" href="/home">利用者画面へ</a>
+</header>
+<main class="a-main">
+  <h1>ジョブ</h1>
+  <p class="a-lead">新しい順に最大300件。失敗したジョブは、もう一度処理するか削除できます。</p>
+  <div class="tabs" role="tablist" aria-label="状態で絞り込む" id="tabs"></div>
+  <p class="msg" id="msg" role="status"></p>
+  <p class="msg err" id="err" role="alert" hidden></p>
+  <div class="a-box tbl-wrap" id="list"></div>
+</main>
+<script src="/static/common.js"></script>
+<script src="/static/admin.js"></script>
+<script>
+const GROUPS = [['', 'すべて'], ['queued', '待ち'], ['running', '処理中'], ['waiting', '選択・確認待ち'], ['failed', '失敗'], ['done', '完成'], ['deleted', '削除済み']];
+let cur = new URLSearchParams(location.search).get('status') || '';
+if (!GROUPS.some(g => g[0] === cur)) cur = '';
+function note(text, ok) { $('msg').className = 'msg' + (ok ? ' ok' : ''); $('msg').textContent = text; }
+async function act(j, kind) {
+  $('err').hidden = true;
+  if (kind === 'delete' && !confirm('このジョブ（' + j.label + '・' + j.id.slice(0, 8) + '）のファイルと記録を削除します。元に戻せません。削除しますか？')) return;
+  try {
+    const r = await api('/admin/api/jobs/' + j.id + '/' + kind, { method: 'POST' });
+    note(kind === 'retry' ? 'もう一度処理する列に戻しました（' + (r.status === 'queued_export' ? '書き出し' : '解析') + 'から）' : 'ジョブを削除しました', true);
+    load();
+  } catch (e) { showErr($('err'), e); }
+}
+async function load() {
+  $('err').hidden = true;
+  try {
+    const d = await api('/admin/api/jobs' + (cur ? '?status=' + cur : ''));
+    fill($('tabs'), GROUPS.map(g => h('button', { type: 'button', role: 'tab', 'aria-selected': String(g[0] === cur), onclick: () => {
+      cur = g[0]; note(''); history.replaceState(null, '', '/admin/jobs' + (cur ? '?status=' + cur : '')); load();
+    } }, g[1], h('span', { class: 'n' }, String(g[0] ? d.counts[g[0]] : d.total)))));
+    if (!d.jobs.length) {
+      const label = GROUPS.find(g => g[0] === cur)[1];
+      fill($('list'), empty(cur ? '「' + label + '」のジョブはありません' : 'ジョブはまだありません',
+        cur ? h('button', { class: 'a-btn ter', type: 'button', onclick: () => { cur = ''; history.replaceState(null, '', '/admin/jobs'); load(); } }, 'すべてのジョブを表示する')
+          : '利用者が動画・写真を送るとここに並びます'));
+      return;
+    }
+    fill($('list'), table(
+      [['ID', 'mono'], ['種類', 'nw'], ['利用者'], ['状態', 'nw'], ['工程ごとの秒'], ['失敗理由', 'err-t'], ['作成日時', 'nw'], ['操作', 'nw']],
+      d.jobs.map(j => [j.id.slice(0, 8), j.label + (j.hq_export ? '（高画質）' : ''),
+        j.user_id ? h('a', { href: '/admin/users/' + j.user_id }, '#' + j.user_id + ' ' + (j.user_name || '')) : '—',
+        jobBadge(j.status), stageText(j), errText(j.error), dt(j.created_at),
+        j.status === 'failed' ? h('div', { class: 'row-actions' },
+          j.kind === 'video' ? h('button', { class: 'a-btn sec sm', type: 'button', onclick: () => act(j, 'retry') }, 'もう一度処理する') : null,
+          h('button', { class: 'a-btn danger sm', type: 'button', onclick: () => act(j, 'delete') }, 'このジョブを削除する')) : ''])));
+  } catch (e) { showErr($('err'), e); }
+}
+load();
+</script>
+</body></html>

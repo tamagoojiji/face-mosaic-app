@@ -543,8 +543,8 @@ def upload_photo(request: Request, file: UploadFile = File(...)):
     if r["warn"]:
         log.warning("detect: %s", r["warn"])
     db.insert_job(job_id, kind="image", status="awaiting_pick", src_path=src, bytes=size, user_id=u["id"],
-                  width=r["width"], height=r["height"], mosaic_style="pixel",
-                  expires_at=time.time() + config.SOURCE_RETENTION_HOURS * 3600)
+                  width=r["width"], height=r["height"], mosaic_style=quota.default_style(),
+                  expires_at=time.time() + quota.source_hours() * 3600)
     quota.count_image(u["id"])
     log.info("photo %s %dx%d 候補 %d 件 %.2fs", job_id, r["width"], r["height"],
              len(r["faces"]), r["sec"])
@@ -594,8 +594,8 @@ async def export_job(request: Request, job_id: str):
     db.update_job(job_id, status="done", out_path=out, mosaic_style=style,
                   keep=json.dumps(r["keep"]), blur=json.dumps(r["blur"]),
                   t_export_sec=r["sec"], error=None, expires_at=None,
-                  src_expires_at=j["src_expires_at"] or now + config.SOURCE_RETENTION_HOURS * 3600,
-                  out_expires_at=now + config.OUTPUT_RETENTION_DAYS * 86400)
+                  src_expires_at=j["src_expires_at"] or now + quota.source_hours() * 3600,
+                  out_expires_at=now + quota.output_days() * 86400)
     log.info("export %s %s モザイク %d・かけない %d %.2fs", job_id, style, len(r["blur"]),
              len(r["keep"]), r["sec"])
     return JSONResponse(_public(db.get_job(job_id)), headers=NO_STORE)
@@ -701,7 +701,7 @@ def _public_video(j, detail=False):
          "has_out": st != "deleted" and bool(j["out_path"] and os.path.exists(j["out_path"])),
          "has_thumb": st != "deleted" and os.path.exists(os.path.join(p["shots"], "shot0.jpg")),
          "idle_warn": st in ("awaiting_pick", "awaiting_review") and j["expires_at"] is not None
-         and j["expires_at"] - now <= (config.IDLE_DELETE_HOURS - config.IDLE_WARN_HOURS) * 3600,
+         and j["expires_at"] - now <= (quota.idle_delete_hours() - quota.idle_warn_hours()) * 3600,
          "hq_export": bool(j.get("hq_export")), "out_width": j.get("out_width"), "out_height": j.get("out_height"),
          "out_fps": j.get("out_fps")}
     d.update(_keep_fields(j, st, now, os.path.exists(p["v1080"])))
@@ -783,7 +783,7 @@ async def create_upload(request: Request):
     job_id = secrets.token_urlsafe(9)
     os.makedirs(os.path.join(job_dir(job_id), "parts"), exist_ok=True)
     db.insert_job(job_id, kind="video", status="uploading", bytes=size, duration_sec=dur or None,
-                  user_id=u["id"], mosaic_style="pixel",
+                  user_id=u["id"], mosaic_style=quota.default_style(),
                   expires_at=time.time() + config.UPLOAD_KEEP_HOURS * 3600)
     log.info("upload 開始 %s %.1fMB %.1fs", job_id, size / 1048576, dur)
     return JSONResponse(_upload_info(db.get_job(job_id)), headers=NO_STORE)
@@ -902,7 +902,7 @@ async def video_picks(request: Request, job_id: str):
     with open(os.path.join(p["dir"], "review.json"), "w", encoding="utf-8") as f:
         json.dump(rv, f)
     db.update_job(job_id, status="awaiting_review", picks=json.dumps(picks), keep=json.dumps(sorted(keep)),
-                  blur=json.dumps(sorted(blur)), expires_at=time.time() + config.IDLE_DELETE_HOURS * 3600,
+                  blur=json.dumps(sorted(blur)), expires_at=time.time() + quota.idle_delete_hours() * 3600,
                   idle_notified=0)
     log.info("picks %s 選択 %d → keep %d blur %d（確認に出す モザイク %d・かけない %d）", job_id, len(picks),
              len(keep), len(blur), len(lists["blur"]), len(lists["keep"]))
@@ -993,8 +993,8 @@ def _me(u):
                        "video_count_month": lim["video_count_month"]},
             "usage": {"images": st["usage"]["image_count"], "videos": st["usage"]["video_count"],
                       "video_sec": st["usage"]["video_seconds_used"]},
-            "remaining": st["remaining"], "source_hours": config.SOURCE_RETENTION_HOURS,
-            "output_days": config.OUTPUT_RETENTION_DAYS,
+            "remaining": st["remaining"], "source_hours": quota.source_hours(),
+            "output_days": quota.output_days(),
             "sub_status": u.get("sub_status"), "trial_ends_at": trial,
             "trial_days_left": max(0, -(-int(trial - now) // 86400)) if trial else None,
             "trial_expired": blocked == "trial_expired", "current_period_end": u.get("current_period_end"),
@@ -1085,6 +1085,47 @@ async def api_withdraw(request: Request):
     res.delete_cookie(config.COOKIE_NAME, path="/")
     res.delete_cookie(config.OWNER_COOKIE, path="/")
     return res
+
+
+# ---------------------------------------------------------------- 問題の報告（通報）
+
+REPORT_CATEGORIES = {"bug": "不具合", "abuse": "不審な利用・権利の問題", "other": "その他"}
+REPORT_MAX = 500
+
+
+def job_label(j):
+    """通報・管理画面での対象ジョブの表し方（種類と長さ）。"""
+    if not j:
+        return "（削除済み）"
+    if j["kind"] == "video":
+        return "動画 " + (quota.fmt_sec(j["duration_sec"]) if j.get("duration_sec") else "長さ不明")
+    return "写真"
+
+
+@app.post("/api/reports")
+async def api_report(request: Request):
+    u = require_api(request)
+    b = await _json_body(request)
+    cat = b.get("category")
+    if cat not in REPORT_CATEGORIES:
+        raise HTTPException(400, "報告の種類を1つ選んでください")
+    body = str(b.get("body") or "").strip()
+    if not body:
+        raise HTTPException(400, "報告の内容を書いてください")
+    if len(body) > REPORT_MAX:
+        raise HTTPException(400, f"報告の内容は{REPORT_MAX}文字までです")
+    jid = b.get("job_id") or None
+    j = None
+    if jid is not None:
+        j = db.get_job(str(jid)) if JOB_ID_RE.match(str(jid)) else None
+        if not j or j["user_id"] != u["id"]:
+            raise HTTPException(400, "対象の動画・写真が見つかりません。選び直してください")
+    rid = db.add_report(u["id"], cat, body, j["id"] if j else None)
+    target = f"{job_label(j)}（job={j['id']}）" if j else "なし"
+    discord.report(f"#{rid} 通報者: {discord.who(u)}\n種類: {REPORT_CATEGORIES[cat]}\n対象: {target}\n"
+                   f"内容: {body[:200]}")
+    log.info("report #%s user=%s category=%s", rid, u["id"], cat)
+    return JSONResponse({"id": rid}, status_code=201, headers=NO_STORE)
 
 
 # ---------------------------------------------------------------- お支払い（Stripe）
@@ -1200,3 +1241,10 @@ async def stripe_webhook(request: Request):
     typ = await asyncio.to_thread(billing.apply_event, event, withdraw_user)
     log.info("stripe webhook %s %s%s", event.get("id"), event.get("type"), "" if typ else "（重複・処理済み）")
     return JSONResponse({"ok": True})
+
+
+# ---------------------------------------------------------------- 運営の管理画面（/admin）
+
+from .admin import router as admin_router  # noqa: E402  （admin は main の関数を使うので最後に読む）
+
+app.include_router(admin_router)

@@ -1,0 +1,113 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>設定｜顔モザイク 運営</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/admin.css">
+<style>
+.a-in.n{width:120px}
+.a-in.d{width:180px}
+.unit{display:flex;align-items:center;gap:8px}
+.radios{display:flex;gap:20px;min-height:40px;align-items:center}
+.radios label{display:inline-flex;align-items:center;gap:6px;font-weight:600;cursor:pointer}
+.radios input{width:18px;height:18px;accent-color:var(--pri)}
+fieldset{border:0;margin:0;padding:0}
+legend{font-size:13px;font-weight:600;padding:0;margin-bottom:4px}
+</style>
+</head><body>
+<header class="a-top">
+  <a class="brand" href="/admin">顔モザイク 運営</a>
+  <nav aria-label="管理メニュー"><a href="/admin">ダッシュボード</a><a href="/admin/users">利用者</a><a href="/admin/jobs">ジョブ</a><a href="/admin/reports">通報</a><a href="/admin/settings" aria-current="page">設定</a></nav>
+  <a class="out" href="/home">利用者画面へ</a>
+</header>
+<main class="a-main">
+  <h1>設定</h1>
+  <p class="a-lead">保存するとすぐに効きます（保存期間は、これから完成・受け付けるものから）。各項目の下に、いまの値と既定値を出しています。</p>
+  <p class="msg err" id="err" role="alert" hidden></p>
+  <form id="f" novalidate>
+    <section class="a-box a-pad">
+      <h2 style="margin-top:0">リリース記念（無料プランの上限を一時的に増やす）</h2>
+      <div class="form-grid">
+        <div class="fld"><span>リリース記念</span>
+          <label class="sw2"><input type="checkbox" id="campaign_on"><span class="track" aria-hidden="true"></span><span id="campaign_on_s">OFF</span></label>
+          <span class="hint" data-k="campaign_on"></span></div>
+        <div class="fld"><span>期間（空なら制限なし・終了日を含む）</span>
+          <div class="unit"><input class="a-in d" type="date" id="campaign_from" aria-label="開始日"><span>〜</span><input class="a-in d" type="date" id="campaign_to" aria-label="終了日"></div>
+          <span class="hint" data-k="campaign_from"></span></div>
+        <div class="fld"><label for="campaign_images">記念中の写真</label>
+          <div class="unit"><input class="a-in n" type="number" min="0" step="1" id="campaign_images"><span>枚／月</span></div>
+          <span class="hint" data-k="campaign_images"></span></div>
+        <div class="fld"><label for="campaign_videos">記念中の1分動画</label>
+          <div class="unit"><input class="a-in n" type="number" min="0" step="1" id="campaign_videos"><span>本／月</span></div>
+          <span class="hint" data-k="campaign_videos"></span></div>
+      </div>
+    </section>
+    <section class="a-box a-pad" style="margin-top:16px">
+      <h2 style="margin-top:0">保存期間と放置</h2>
+      <div class="form-grid">
+        <div class="fld"><label for="source_retention_hours">元動画・元画像・解析データを消すまで</label>
+          <div class="unit"><input class="a-in n" type="number" min="1" step="1" id="source_retention_hours"><span>時間</span></div>
+          <span class="hint" data-k="source_retention_hours"></span></div>
+        <div class="fld"><label for="output_retention_days">完成品の保存</label>
+          <div class="unit"><input class="a-in n" type="number" min="1" step="1" id="output_retention_days"><span>日</span></div>
+          <span class="hint" data-k="output_retention_days"></span></div>
+        <div class="fld"><label for="idle_warn_hours">選択・確認の放置で再通知するまで</label>
+          <div class="unit"><input class="a-in n" type="number" min="0.5" step="0.5" id="idle_warn_hours"><span>時間</span></div>
+          <span class="hint" data-k="idle_warn_hours"></span></div>
+        <div class="fld"><label for="idle_delete_hours">放置で元動画・解析結果を削除するまで</label>
+          <div class="unit"><input class="a-in n" type="number" min="1" step="0.5" id="idle_delete_hours"><span>時間</span></div>
+          <span class="hint" data-k="idle_delete_hours"></span></div>
+      </div>
+    </section>
+    <section class="a-box a-pad" style="margin-top:16px">
+      <h2 style="margin-top:0">モザイクの標準</h2>
+      <fieldset><legend>新しく送られた動画・写真で最初に選ばれている種類</legend>
+        <div class="radios"><label><input type="radio" name="mosaic_default" value="block">ブロック粗め</label><label><input type="radio" name="mosaic_default" value="glass">すりガラス</label></div>
+      </fieldset>
+      <span class="hint" data-k="mosaic_default"></span>
+    </section>
+    <div class="actions"><button class="a-btn pri" type="submit" id="save">設定を保存する</button><p class="msg" id="msg" role="status"></p></div>
+  </form>
+</main>
+<script src="/static/common.js"></script>
+<script src="/static/admin.js"></script>
+<script>
+const UNIT = { campaign_images: ' 枚', campaign_videos: ' 本', source_retention_hours: ' 時間', output_retention_days: ' 日', idle_warn_hours: ' 時間', idle_delete_hours: ' 時間' };
+const SHOW = { campaign_on: v => v === '1' ? 'ON' : 'OFF', mosaic_default: v => v === 'glass' ? 'すりガラス' : 'ブロック粗め', campaign_from: v => v || '指定なし' };
+const fmt = (k, v) => (SHOW[k] ? SHOW[k](v) : v + (UNIT[k] || ''));
+function render(d) {
+  const s = d.settings;
+  $('campaign_on').checked = s.campaign_on.value === '1';
+  $('campaign_on_s').textContent = $('campaign_on').checked ? 'ON' : 'OFF';
+  ['campaign_from', 'campaign_to', 'campaign_images', 'campaign_videos', 'source_retention_hours', 'output_retention_days', 'idle_warn_hours', 'idle_delete_hours']
+    .forEach(k => $(k).value = s[k].value);
+  document.querySelector('input[name=mosaic_default][value=' + (s.mosaic_default.value === 'glass' ? 'glass' : 'block') + ']').checked = true;
+  document.querySelectorAll('.hint[data-k]').forEach(el => {
+    const k = el.dataset.k, it = s[k];
+    let t = it.overridden ? 'いま ' + fmt(k, it.value) + '（上書き中・既定は ' + fmt(k, it.default) + '）' : 'いま ' + fmt(k, it.value) + '（既定）';
+    if (k === 'campaign_from') {
+      const to = s.campaign_to;
+      t = 'いま ' + (it.value || '指定なし') + ' 〜 ' + (to.value || '指定なし') + ((it.overridden || to.overridden) ? '（上書き中）' : '（既定）');
+    }
+    if (k === 'campaign_on') t += d.campaign_active ? '。今日は記念期間中です' : '。今日は記念期間ではありません';
+    el.textContent = t;
+  });
+}
+$('campaign_on').addEventListener('change', () => { $('campaign_on_s').textContent = $('campaign_on').checked ? 'ON' : 'OFF'; });
+$('f').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  $('msg').textContent = ''; $('save').disabled = true;
+  const body = { campaign_on: $('campaign_on').checked ? '1' : '0', mosaic_default: document.querySelector('input[name=mosaic_default]:checked').value };
+  ['campaign_from', 'campaign_to', 'campaign_images', 'campaign_videos', 'source_retention_hours', 'output_retention_days', 'idle_warn_hours', 'idle_delete_hours']
+    .forEach(k => body[k] = $(k).value);
+  try {
+    const d = await api('/admin/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    render(d);
+    $('msg').className = 'msg ok';
+    $('msg').textContent = d.changed.length ? '保存しました（' + d.changed.length + ' 項目・記録に残しました）' : '変更はありませんでした';
+  } catch (e) { $('msg').className = 'msg err'; $('msg').textContent = e.message; }
+  $('save').disabled = false;
+});
+api('/admin/api/settings').then(render).catch(e => showErr($('err'), e));
+</script>
+</body></html>

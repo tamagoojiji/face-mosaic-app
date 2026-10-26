@@ -58,7 +58,7 @@ def fail_prepare(job_id, msg, exc):
         _rm(p[k])
     _rm(p["v1080"] + ".part.mp4")
     db.update_job(job_id, status="failed", error=msg, src_path=None, out_path=None,
-                  expires_at=time.time() + config.SOURCE_RETENTION_HOURS * 3600)
+                  expires_at=time.time() + quota.source_hours() * 3600)
     _failed(job_id, "解析", msg, exc)
 
 
@@ -80,7 +80,7 @@ def fail_export(job_id, exc):
     else:
         msg = "書き出しに失敗しました。お手数ですが、もう一度送ってください"
         db.update_job(job_id, status="failed", out_path=None, error=msg,
-                      expires_at=time.time() + config.SOURCE_RETENTION_HOURS * 3600)
+                      expires_at=time.time() + quota.source_hours() * 3600)
         _failed(job_id, "書き出し", msg, exc)
 
 
@@ -108,7 +108,7 @@ def do_prepare(j):
     with open(p["shots_json"], "w", encoding="utf-8") as f:
         json.dump(items, f)
     t4 = time.time()
-    db.update_job(jid, status="awaiting_pick", expires_at=time.time() + config.IDLE_DELETE_HOURS * 3600,
+    db.update_job(jid, status="awaiting_pick", expires_at=time.time() + quota.idle_delete_hours() * 3600,
                   idle_notified=0)
     notify.push("ready", db.get_job(jid))
     log.info("prepare %s %.0fs  %dx%d %.2ffps hdr=%s  変換 %.1fs 追跡 %.1fs 特徴 %.1fs 場面写真・切り抜き %.1fs  "
@@ -134,8 +134,8 @@ def do_export(j):
     o = video.probe(p["out"])
     db.update_job(jid, status="done", out_path=p["out"], t_export_sec=sec, expires_at=None, hq_export=1 if hq else 0,
                   out_width=o["out_width"], out_height=o["out_height"], out_fps=round(o["fps"], 3),
-                  src_expires_at=j["src_expires_at"] or now + config.SOURCE_RETENTION_HOURS * 3600,
-                  out_expires_at=now + config.OUTPUT_RETENTION_DAYS * 86400)
+                  src_expires_at=j["src_expires_at"] or now + quota.source_hours() * 3600,
+                  out_expires_at=now + quota.output_days() * 86400)
     # 完成後に要らないもの: 特徴。選び直し（確認画面から書き出し直す）のために 1080p 版・追跡結果・切り抜きは残す。
     # 元動画は 1080p で書き出したときは消す。高画質で書き出したときは選び直しを高画質でできるよう期限（24時間）まで残す
     _rm(p["feats"])
