@@ -8,6 +8,7 @@ RUN pip install -r requirements.txt
 COPY app ./app
 COPY worker ./worker
 COPY web ./web
+COPY docs/manual ./docs/manual
 COPY models ./models
 COPY scripts ./scripts
 ENV DATA_DIR=/data

@@ -1,0 +1,309 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>くわしい説明書｜らくちんモザイク</title>
+<style>
+:root{--bg:#FBFCFD;--paper:#FDFEFF;--surface:#F1F4F8;--line:#D5DCE6;--fg:#14284A;--sub:#4A5872;--pri:#0E62BC;--pri-soft:#EAF1FA;--warn-tag:#B5431A;--warn-soft:#FCEFE8;color-scheme:light}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg)}
+body{font:16px/1.7 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;-webkit-text-size-adjust:100%}
+a{color:var(--pri)}
+.wrap{max-width:720px;margin:0 auto;padding:0 16px 48px}
+header{padding:24px 0 8px}
+.kicker{margin:0;font-size:14px;font-weight:700;color:var(--pri)}
+h1{font-size:24px;line-height:1.4;margin:4px 0 8px}
+.lead{margin:0;color:var(--sub)}
+nav.toc{background:var(--surface);border-radius:12px;padding:12px 16px;margin:16px 0 0}
+nav.toc b{display:block;margin-bottom:4px}
+nav.toc ol{margin:0;padding-left:1.4em;columns:2;column-gap:24px;font-size:15px}
+nav.toc a{display:inline-block;min-height:32px;line-height:32px;text-decoration:none}
+section.ch{margin-top:40px;padding-top:8px;border-top:1px solid var(--line)}
+section.ch h2{font-size:21px;line-height:1.45;margin:8px 0 12px}
+h3{font-size:17px;margin:20px 0 6px}
+p{margin:0 0 10px}
+ul,ol{margin:0 0 10px;padding-left:1.3em}
+li{margin:2px 0}
+.hint{color:var(--sub);font-size:15px}
+.warn{color:var(--warn-tag);font-weight:700}
+.box{background:var(--warn-soft);border-radius:12px;padding:10px 14px;margin:12px 0}
+.figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:12px 0}
+figure{margin:0}
+figure img{display:block;width:100%;max-width:300px;height:auto;margin:0 auto;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+figcaption{font-size:13px;color:var(--sub);text-align:center;margin-top:4px}
+table{width:100%;border-collapse:collapse;margin:8px 0 12px;font-size:15px}
+th,td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left;vertical-align:top}
+th{background:var(--surface);font-weight:700}
+td.num{text-align:right;white-space:nowrap}
+.tbl{overflow-x:auto}
+dl.faq dt{font-weight:700;margin-top:14px}
+dl.faq dd{margin:4px 0 0}
+footer{margin-top:40px;font-size:14px;color:var(--sub)}
+@page{size:A4 portrait;margin:12mm}
+@media print{
+  body{font-size:10pt;line-height:1.55;background:#fff}
+  .wrap{max-width:none;padding:0}
+  nav.toc a{min-height:0;line-height:1.5}
+  section.ch{margin-top:6mm;padding-top:2mm}
+  section.ch h2{break-after:avoid}
+  .figs{break-inside:avoid}
+  section.ch h2{font-size:15pt}
+  h3{font-size:11.5pt;break-after:avoid}
+  .figs{grid-template-columns:repeat(4,1fr);gap:4mm}
+  figure{break-inside:avoid}
+  figure img{max-height:70mm;width:auto;max-width:100%}
+  table{font-size:9.5pt}
+}
+</style>
+</head><body>
+<main class="wrap">
+  <header>
+    <p class="kicker">らくちんモザイク（アプリ内の表示は「顔モザイク」）</p>
+    <h1>くわしい説明書</h1>
+    <p class="lead">すべての機能の使い方です。まず1本仕上げたい方は<a href="quick.html">かんたん使い方</a>から。</p>
+    <nav class="toc" aria-label="目次"><b>もくじ</b>
+      <ol>
+        <li><a href="#start">はじめに・登録</a></li>
+        <li><a href="#home">ホームの見方</a></li>
+        <li><a href="#video">動画にモザイクをかける</a></li>
+        <li><a href="#photo">写真にモザイクをかける</a></li>
+        <li><a href="#tips">顔を選ぶコツ</a></li>
+        <li><a href="#keep">保存と保存期限</a></li>
+        <li><a href="#plan">お試しとプラン</a></li>
+        <li><a href="#change">プランの変更と高画質</a></li>
+        <li><a href="#cancel">解約・取り消し・退会</a></li>
+        <li><a href="#pay">お支払いがうまくいかないとき</a></li>
+        <li><a href="#line">LINE のお知らせ</a></li>
+        <li><a href="#settings">設定でできること</a></li>
+        <li><a href="#report">問題を報告する</a></li>
+        <li><a href="#faq">よくある質問</a></li>
+      </ol>
+    </nav>
+  </header>
+
+  <section class="ch" id="start">
+    <h2>1. はじめに・登録</h2>
+    <p>パレードやショーの動画・写真に映った観客の顔を、自動でモザイクにするアプリです。残したい人（ダンサーなど）の顔だけをタップすると、ほかの顔がモザイクになります。</p>
+    <h3>使えるもの</h3>
+    <ul>
+      <li>iPhone の Safari、Android の Chrome（インストールはいりません）</li>
+      <li>LINE のアカウント（ログインに使います）</li>
+    </ul>
+    <p class="hint">LINE の中のブラウザでは大きな動画の送信が途切れやすいので、Safari か Chrome で開いてください。</p>
+    <h3>登録の流れ</h3>
+    <ol>
+      <li>「LINEでログインする」→ LINE の画面で「許可する」</li>
+      <li>公式アカウントの友だち追加を聞かれたら追加すると、完成などのお知らせが LINE に届きます（追加しなくても使えます）</li>
+      <li>Instagram のユーザー名を入れる（任意。「あとで」で飛ばせます）</li>
+      <li>利用規約とプライバシーポリシーを確認し、チェックを入れて「同意してはじめる」</li>
+    </ol>
+    <div class="figs">
+      <figure><img src="img/01-login.png" alt="ログイン画面" loading="lazy"><figcaption>ログイン</figcaption></figure>
+      <figure><img src="img/02-instagram.png" alt="Instagram のユーザー名の入力画面" loading="lazy"><figcaption>Instagram 名（任意）</figcaption></figure>
+      <figure><img src="img/03-agree.png" alt="規約の同意画面" loading="lazy"><figcaption>同意</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="ch" id="home">
+    <h2>2. ホームの見方</h2>
+    <ul>
+      <li><b>動画を送る・写真を送る</b>: ここから始めます</li>
+      <li><b>今月の残り</b>: 今月あと何分（何本）・何枚送れるか。お試し中は残りの日数、有料プランは次の更新日も出ます</li>
+      <li><b>最近の動画と写真</b>: 送ったものの一覧。「選択中」「完成」などの状態と、消えるまでの時間が出ます。タップで続きから開けます</li>
+    </ul>
+    <div class="figs">
+      <figure><img src="img/04-home-start.png" alt="ホーム画面（はじめて）" loading="lazy"><figcaption>はじめて開いたとき</figcaption></figure>
+      <figure><img src="img/17-home-list.png" alt="ホームの一覧（サムネイルはぼかしています）" loading="lazy"><figcaption>送ったものの一覧</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="ch" id="video">
+    <h2>3. 動画にモザイクをかける</h2>
+    <p class="hint">動画は有料プラン（動画A・動画B）で送れます。リリース記念の期間中は、お試しでも1分までの動画を送れます。</p>
+    <h3>① 送る</h3>
+    <p>「動画を送る」→「動画を選ぶ」で1本選ぶと送信が始まります。1本1GBまで、長さの上限はプランで決まります（動画Aは1分、動画Bは3分まで）。送信中は画面を開いたままにしてください。途中で切れても、同じ動画を選び直すと続きから送れます。</p>
+    <h3>② 顔を探すのを待つ</h3>
+    <p>届いた動画から顔を探します。順番待ちがあると、前に何件あるかと目安の時間が出ます。<b>この間は画面を閉じても大丈夫です。</b>終わると LINE でお知らせします。</p>
+    <h3>③ 残したい人の顔を選ぶ</h3>
+    <p>場面ごとの写真に、見つけた顔の枠が出ます。モザイクをかけたくない人の枠をタップすると緑になります。観客の顔は何もしなくてもモザイクになります。左右にスクロールすると別の場面、「拡大する」で大きく見られます。</p>
+    <h3>④ 確認する</h3>
+    <p>「モザイクをかける予定」「かけない予定」の2つの列を見比べます。違うものは顔をタップすると反対の列に移ります。モザイクの種類（ブロック粗め／すりガラス）もここで選びます。すりガラスは書き出しに少し長く時間がかかります。</p>
+    <h3>⑤ 書き出して保存する</h3>
+    <p>「この内容で書き出す」を押すと書き出しが始まります。閉じて待てます。できたら再生して確かめ、「動画に保存する」を押してください。</p>
+    <div class="figs">
+      <figure><img src="img/05-send-video.png" alt="動画を送る画面" loading="lazy"><figcaption>送る</figcaption></figure>
+      <figure><img src="img/07-sending.png" alt="送信中の画面" loading="lazy"><figcaption>送信中</figcaption></figure>
+      <figure><img src="img/09-analyzing.png" alt="顔を探している画面" loading="lazy"><figcaption>顔を探す</figcaption></figure>
+      <figure><img src="img/10-pick-video.png" alt="顔を選ぶ画面（顔はぼかしています）" loading="lazy"><figcaption>顔を選ぶ（タップ前）</figcaption></figure>
+      <figure><img src="img/11-pick-tapped.png" alt="主役の枠が緑になった画面（顔はぼかしています）" loading="lazy"><figcaption>タップすると緑</figcaption></figure>
+      <figure><img src="img/12-pick-zoom.png" alt="拡大表示（顔はぼかしています）" loading="lazy"><figcaption>拡大する</figcaption></figure>
+      <figure><img src="img/13-review-mosaic.png" alt="確認画面・モザイクをかける予定の列（顔はぼかしています）" loading="lazy"><figcaption>確認（かける予定）</figcaption></figure>
+      <figure><img src="img/14-review-keep.png" alt="確認画面・かけない予定の列（顔はぼかしています）" loading="lazy"><figcaption>確認（かけない予定）</figcaption></figure>
+      <figure><img src="img/15-exporting.png" alt="書き出し中の画面" loading="lazy"><figcaption>書き出し中</figcaption></figure>
+      <figure><img src="img/16-done-video.png" alt="完成画面（顔はぼかしています）" loading="lazy"><figcaption>完成・保存</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="ch" id="photo">
+    <h2>4. 写真にモザイクをかける</h2>
+    <ol>
+      <li>ホームの「写真を送る」→ 写真を1枚選ぶ</li>
+      <li>数秒で顔に枠が出ます。残したい人の枠をタップ（緑になります。オレンジの枠はモザイクがかかります）</li>
+      <li>小さい顔が見つからないときは「自信の低い枠も表示」をオンにすると、候補が増えます</li>
+      <li>モザイクの種類を選んで「この内容で書き出す」</li>
+      <li>「写真に保存する」（または「ファイルに保存する」）</li>
+    </ol>
+    <div class="figs">
+      <figure><img src="img/18-send-photo.png" alt="写真を送る画面" loading="lazy"><figcaption>送る</figcaption></figure>
+      <figure><img src="img/19-photo-pick.png" alt="写真の顔を選ぶ画面（顔はぼかしています）" loading="lazy"><figcaption>顔の枠</figcaption></figure>
+      <figure><img src="img/20-photo-pick-tapped.png" alt="主役を選んだ状態（顔はぼかしています）" loading="lazy"><figcaption>主役を選ぶ</figcaption></figure>
+      <figure><img src="img/22-photo-done.png" alt="写真の完成画面（顔はぼかしています）" loading="lazy"><figcaption>完成・保存</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="ch" id="tips">
+    <h2>5. 顔を選ぶコツ</h2>
+    <ul>
+      <li>同じ人は場面が変わっても同じ人として扱います。1つの場面でタップすれば、ほかの場面でも残ります</li>
+      <li>ダンサーと同じ衣装の人が近くにいると、まとめて残ることがあります。確認画面の「かけない予定」に観客が混じっていたら、タップしてモザイク側へ移してください</li>
+      <li>横顔・帽子・逆光の顔は見つけにくいことがあります。<span class="warn">自動で見つけられない顔もあるので、投稿する前に完成品を必ず自分の目で確かめてください。</span></li>
+      <li>選ばずに進むと、見つけた顔すべてにモザイクがかかります</li>
+    </ul>
+  </section>
+
+  <section class="ch" id="keep">
+    <h2>6. 保存と保存期限</h2>
+    <div class="tbl"><table>
+      <tr><th>もの</th><th>消えるまで</th></tr>
+      <tr><td>元の動画・写真と、顔を探した結果</td><td>完成から24時間（その間は選び直せます）</td></tr>
+      <tr><td>完成した動画・写真</td><td>30日（ホームの一覧から何度でも保存し直せます）</td></tr>
+      <tr><td>顔を選ぶ・確認の画面のまま</td><td>1時間で LINE にお知らせ、3時間で元の動画ごと削除</td></tr>
+      <tr><td>送信の途中で止めたもの</td><td>24時間</td></tr>
+    </table></div>
+    <p class="hint">消えたあとは戻せません。必要なものは早めにスマホに保存してください。</p>
+  </section>
+
+  <section class="ch" id="plan">
+    <h2>7. お試しとプラン</h2>
+    <h3>お試し（無料）</h3>
+    <p>登録から7日間、写真を5枚まで送れます（動画はなし）。リリース記念の期間中は、写真10枚と1分までの動画3本に増えます。8日目からは、プランを選ぶまで新しい送信と書き出しはできません（完成したものは保存期限まで保存できます）。お試しは LINE アカウントごとに1回だけです。</p>
+    <h3>月額プラン</h3>
+    <div class="tbl"><table>
+      <tr><th>プラン</th><th>月額</th><th>動画（1か月）</th><th>1本の長さ</th><th>写真（1か月）</th></tr>
+      <tr><td>画像のみ</td><td class="num">500円</td><td>なし</td><td>−</td><td>100枚</td></tr>
+      <tr><td>動画A</td><td class="num">980円</td><td>10分</td><td>1分</td><td>100枚</td></tr>
+      <tr><td>動画B</td><td class="num">1,480円</td><td>90分</td><td>3分</td><td>無制限</td></tr>
+      <tr><td>高画質オプション</td><td class="num">＋500円</td><td colspan="3">動画A・Bに付けられます</td></tr>
+    </table></div>
+    <p>ふだんの書き出しは 1080p・30fps です。高画質オプションを付けると、元の解像度と fps（4K・60fps など）のまま書き出します（HDR の動画は通常の色に変換します）。スマホで見るだけなら差はほとんど分かりません。</p>
+    <h3>申し込み</h3>
+    <p>ホームの「プランを比較する」→ プランを選ぶ → カード情報を入れて支払うと、すぐ使えるようになります。お支払いはクレジットカード（Stripe）です。カード番号はこのアプリには保存されません。</p>
+    <div class="figs">
+      <figure><img src="img/23-plans.png" alt="プラン比較画面" loading="lazy"><figcaption>プランを比較する</figcaption></figure>
+      <figure><img src="img/24-plans-more.png" alt="プラン比較画面の続きと高画質オプション" loading="lazy"><figcaption>高画質オプション</figcaption></figure>
+      <figure><img src="img/33-trial-ended.png" alt="お試し期間が終わったときのホーム" loading="lazy"><figcaption>お試しが終わったとき</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="ch" id="change">
+    <h2>8. プランの変更と高画質</h2>
+    <ul>
+      <li><b>上のプランへ・高画質オプションを付ける</b>: すぐに切り替わります。残りの日数分の差額を、登録しているカードにその場で請求します。押す前に請求額が表示されます</li>
+      <li><b>下のプランへ・高画質オプションを外す</b>: 次の更新日から変わります（請求はありません）。それまでは今のプランのまま使えます</li>
+    </ul>
+    <p>契約は1か月ごとで、契約した日と同じ日に毎月自動で更新されます。返金はありません（日割りもありません）。</p>
+  </section>
+
+  <section class="ch" id="cancel">
+    <h2>9. 解約・取り消し・退会</h2>
+    <h3>解約（期間の終わりまで使う）</h3>
+    <p>設定の「解約する」を押します。解約しても<b>次の更新日まではそのまま使えます</b>。更新日になると自動で退会となり、保存している動画・写真も消えます。返金はありません。解約したあと、無料のお試しには戻れません。</p>
+    <h3>解約の取り消し</h3>
+    <p>更新日までなら、設定の「解約を取り消す」で元に戻せます。これまでどおり更新されます。</p>
+    <h3>退会（すぐにやめる）</h3>
+    <p>設定のいちばん下の「退会する」→ 理由を選ぶ → 退会。すぐに退会となり、有料プランの残り期間も終わります（返金はありません）。動画・写真・Instagram のユーザー名はその場で消えます。</p>
+    <div class="figs">
+      <figure><img src="img/26-settings-pay.png" alt="設定画面のお支払いの欄" loading="lazy"><figcaption>お支払い・解約</figcaption></figure>
+      <figure><img src="img/27-settings-canceling.png" alt="解約処理中の設定画面" loading="lazy"><figcaption>解約処理中</figcaption></figure>
+      <figure><img src="img/31-withdraw.png" alt="退会画面" loading="lazy"><figcaption>退会</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="ch" id="pay">
+    <h2>10. お支払いがうまくいかないとき</h2>
+    <p>カードの期限切れなどで月額のお支払いができなかったときは、LINE でお知らせします。その間は新しい送信と書き出しが止まります（完成したものは保存できます）。設定の「支払いを管理する」からカード情報を更新すると、元どおり使えます。7日たってもお支払いが確認できないときは、次の更新日に自動で退会となります。</p>
+    <div class="figs">
+      <figure><img src="img/34-pastdue.png" alt="お支払いが確認できないときのホーム" loading="lazy"><figcaption>お支払いが確認できないとき</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="ch" id="line">
+    <h2>11. LINE のお知らせ</h2>
+    <p>公式アカウントを友だち追加していると、次のときに LINE でお知らせが届きます。</p>
+    <ul>
+      <li>顔を選べるようになったとき・完成したとき・処理できなかったとき</li>
+      <li>選ぶ途中のまま1時間たったとき（あと2時間で削除）</li>
+      <li>登録・申し込み・プランの変更・解約・解約の取り消し・退会・お支払いの失敗</li>
+    </ul>
+    <p>友だちになっていないとホームに「完成の通知を LINE で受け取る」が出ます。「公式アカウントを追加する」から追加（ブロック中なら解除）してください。お知らせは設定でオフにもできます。届かなくても、同じ内容はホームの一覧に出ます。</p>
+    <div class="figs">
+      <figure><img src="img/32-home-friend.png" alt="友だち追加の案内が出たホーム" loading="lazy"><figcaption>友だち追加の案内</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="ch" id="settings">
+    <h2>12. 設定でできること</h2>
+    <ul>
+      <li>プランと契約の状態の確認、プランを比較する</li>
+      <li>Instagram のユーザー名の登録・変更（任意）</li>
+      <li>LINE のお知らせのオン・オフ</li>
+      <li>支払いを管理する（カードの変更・請求の履歴）、解約する・解約を取り消す</li>
+      <li>問題を報告する、使い方の説明書、ログアウト、退会する</li>
+    </ul>
+    <div class="figs">
+      <figure><img src="img/25-settings.png" alt="設定画面の上部" loading="lazy"><figcaption>設定（上）</figcaption></figure>
+      <figure><img src="img/28-settings-bottom.png" alt="設定画面の下部" loading="lazy"><figcaption>設定（下）</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="ch" id="report">
+    <h2>13. 問題を報告する</h2>
+    <p>うまくいかなかったときは、設定の「問題を報告する」から運営に知らせてください。</p>
+    <ol>
+      <li>うまくいかなかったところに近いものを1つ選ぶ（送る・顔を選ぶ・仕上がり・保存と通知・ログインと契約・その他）</li>
+      <li>内容を書く（任意。「その他」を選んだときだけ必要です）</li>
+      <li>対象の動画・写真を選ぶ（任意）</li>
+      <li>スクリーンショットを付ける（任意・3枚まで・1枚10MBまで）</li>
+      <li>「運営に報告を送る」</li>
+    </ol>
+    <div class="figs">
+      <figure><img src="img/29-report.png" alt="問題を報告する画面" loading="lazy"><figcaption>報告の種類を選ぶ</figcaption></figure>
+      <figure><img src="img/30-report-send.png" alt="スクリーンショットを付けて送る画面" loading="lazy"><figcaption>スクショを付けて送る</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="ch" id="faq">
+    <h2>14. よくある質問</h2>
+    <dl class="faq">
+      <dt>動画や写真は誰かに見られますか？</dt>
+      <dd>顔の検出はこのアプリのサーバーの中だけで行い、外部の AI サービスには送りません。元の動画・写真は完成から24時間で消えます。</dd>
+      <dt>縦の動画は縦のまま仕上がりますか？</dt>
+      <dd>はい。撮ったときの向きのまま書き出します。</dd>
+      <dt>音は残りますか？</dt>
+      <dd>残ります。モザイクをかけるのは映像だけです。</dd>
+      <dt>送信が途中で止まりました。</dt>
+      <dd>Wi-Fi の良い場所で、同じ動画をもう一度選ぶと続きから送れます。LINE の中のブラウザではなく Safari か Chrome で開いてください。</dd>
+      <dt>今月の分を使い切りました。</dt>
+      <dd>翌月の1日に戻ります。すぐに使いたいときは上のプランに変更できます（差額をその場で請求します）。</dd>
+      <dt>処理できなかったときの分数はどうなりますか？</dt>
+      <dd>処理できなかった動画の分数は今月の残りに戻します。</dd>
+      <dt>ログアウトするには？</dt>
+      <dd>設定の「ログアウト」。次に開くときは LINE で入り直します。</dd>
+      <dt>問い合わせ先は？</dt>
+      <dd>アプリ内の「問題を報告する」か、tamagoojiji@gmail.com へ。</dd>
+    </dl>
+    <p class="hint">規約: <a href="/legal/terms">利用規約</a>・<a href="/legal/privacy">プライバシーポリシー</a>・<a href="/legal/tokushoho">特定商取引法に基づく表記</a></p>
+  </section>
+
+  <footer>らくちんモザイク 運営：Tetraris ／ 画面の写真の顔は、説明のためにぼかしています。</footer>
+</main>
+</body></html>

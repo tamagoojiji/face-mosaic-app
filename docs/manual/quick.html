@@ -1,0 +1,140 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>かんたん使い方｜らくちんモザイク</title>
+<style>
+:root{--bg:#FBFCFD;--paper:#FDFEFF;--surface:#F1F4F8;--line:#D5DCE6;--fg:#14284A;--sub:#4A5872;--pri:#0E62BC;--pri-soft:#EAF1FA;--warn-tag:#B5431A;--warn-soft:#FCEFE8;color-scheme:light}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg)}
+body{font:16px/1.7 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;-webkit-text-size-adjust:100%}
+a{color:var(--pri)}
+.wrap{max-width:720px;margin:0 auto;padding:0 16px 48px}
+header{padding:24px 0 8px}
+.kicker{margin:0;font-size:14px;font-weight:700;color:var(--pri)}
+h1{font-size:24px;line-height:1.4;margin:4px 0 8px}
+.lead{margin:0;color:var(--sub)}
+.toguide{display:inline-flex;align-items:center;min-height:44px;font-weight:700}
+.before{background:var(--surface);border-radius:12px;padding:12px 16px;margin:16px 0 0;font-size:15px}
+.before b{display:block;margin-bottom:2px}
+.before ul{margin:0;padding-left:1.2em}
+ol.steps{list-style:none;margin:24px 0 0;padding:0;display:grid;gap:32px}
+.step{display:grid;gap:12px}
+.step h2{display:flex;gap:10px;align-items:baseline;font-size:19px;line-height:1.45;margin:0}
+.step h2 .n{flex:none;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--pri);color:#FBFCFD;font-size:16px;transform:translateY(-2px)}
+.step p{margin:0}
+.step .hint{color:var(--sub);font-size:15px}
+figure{margin:0}
+figure img{display:block;width:min(100%,300px);height:auto;margin:0 auto;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+.notes{margin:40px 0 0;border-top:1px solid var(--line);padding-top:8px}
+.notes h2{font-size:18px;margin:16px 0 4px}
+.notes p,.notes ul{margin:0 0 8px}
+.notes ul{padding-left:1.2em}
+.warn{color:var(--warn-tag);font-weight:700}
+footer{margin-top:32px;font-size:14px;color:var(--sub)}
+@media (min-width:640px){
+  .step{grid-template-columns:1fr 260px;align-items:start;column-gap:24px}
+  .step figure{grid-column:2;grid-row:1 / span 3}
+  .step figure img{width:100%}
+}
+@page{size:A4 portrait;margin:12mm}
+@media print{
+  body{font-size:10.5pt;line-height:1.55;background:#fff}
+  .wrap{max-width:none;padding:0}
+  header{padding:0 0 2mm}
+  h1{font-size:17pt;margin:1mm 0 2mm}
+  .before{margin-top:3mm;padding:2.5mm 4mm;font-size:9.5pt}
+  ol.steps{display:flex;flex-wrap:wrap;gap:4mm 5mm;margin-top:4mm}
+  .step{display:flex;flex-direction:column;gap:1.5mm;break-inside:avoid;page-break-inside:avoid;width:calc((100% - 15mm) / 4)}
+  .step h2{font-size:11pt;gap:2mm}
+  .step h2 .n{width:6.5mm;height:6.5mm;font-size:10pt}
+  .step p{font-size:9.5pt}
+  .step .hint{font-size:8.5pt}
+  figure img{width:auto;max-width:100%;max-height:72mm;border-radius:2mm}
+  .notes{break-before:avoid;margin-top:6mm;columns:2;column-gap:8mm}
+  .notes h2{font-size:11pt;margin:0 0 1mm;break-after:avoid}
+  .notes p,.notes ul{font-size:9.5pt}
+  .notes section{break-inside:avoid;margin-bottom:3mm}
+  .toguide{min-height:0}
+}
+</style>
+</head><body>
+<main class="wrap">
+  <header>
+    <p class="kicker">らくちんモザイク（アプリ内の表示は「顔モザイク」）</p>
+    <h1>かんたん使い方 ― 1本仕上げるまで</h1>
+    <p class="lead">送って、タップして、投稿へ。はじめての方が動画を1本仕上げるまでの流れです。全部の機能は<a class="toguide" href="guide.html">くわしい説明書</a>にあります。</p>
+    <div class="before"><b>はじめる前に</b>
+      <ul>
+        <li>iPhone の Safari か、Android の Chrome で開きます（LINE の中のブラウザでは大きな動画の送信が切れやすいため）</li>
+        <li>LINE のアカウントが必要です</li>
+        <li>無料のお試し（登録から7日間）で送れるのは<b>写真5枚まで</b>です。動画は有料プラン（動画A・動画B）で送れます。写真の流れも下とほぼ同じです</li>
+      </ul>
+    </div>
+  </header>
+
+  <ol class="steps">
+    <li class="step">
+      <h2><span class="n">1</span>LINE でログインする</h2>
+      <p>「LINEでログインする」を押します。LINE の画面で、このアプリに名前などを伝えてよいかを聞かれるので「許可する」を押してください。</p>
+      <figure><img src="img/01-login.png" alt="ログイン画面。LINEでログインするボタン" width="780" height="763"></figure>
+    </li>
+    <li class="step">
+      <h2><span class="n">2</span>規約を確認して同意する</h2>
+      <p>Instagram のユーザー名を聞かれます（入れなくても使えます）。次に約束ごとを読み、チェックを入れて「同意してはじめる」。</p>
+      <figure><img src="img/03-agree.png" alt="利用規約とプライバシーポリシーの確認画面。同意のチェックが入っている" width="780" height="1339"></figure>
+    </li>
+    <li class="step">
+      <h2><span class="n">3</span>ホームで「動画を送る」</h2>
+      <p>ホームには、今月あと何本・何枚送れるかと、お試しの残り日数が出ます。</p>
+      <figure><img src="img/04-home-start.png" alt="ホーム画面。動画を送る・写真を送るボタンと今月の残り" width="780" height="1457"></figure>
+    </li>
+    <li class="step">
+      <h2><span class="n">4</span>動画を1本選ぶ</h2>
+      <p>「動画を選ぶ」を押して1本選ぶと、すぐに送信が始まります。</p>
+      <p class="hint">1本1GBまで。長さの上限はプランで決まります（動画Aは1分まで）。</p>
+      <figure><img src="img/05-send-video.png" alt="動画を送る画面。動画を選ぶの枠" width="780" height="983"></figure>
+    </li>
+    <li class="step">
+      <h2><span class="n">5</span>顔を探し終わるのを待つ</h2>
+      <p>届いた動画から顔を探します（数分。画面に目安が出ます）。<b>閉じても大丈夫です。</b>終わると LINE でお知らせします。</p>
+      <figure><img src="img/09-analyzing.png" alt="解析中の画面。完了の目安と工程の進み具合" width="780" height="1427"></figure>
+    </li>
+    <li class="step">
+      <h2><span class="n">6</span>残したい人の顔をタップ</h2>
+      <p>場面の写真で、モザイクをかけたくない人（ダンサーなど）の顔の枠をタップします。緑になれば選べています。観客の顔は何もしなくてもモザイクになります。</p>
+      <p class="hint">左右にスクロールすると別の場面が出ます。「拡大する」で大きく見られます。</p>
+      <figure><img src="img/11-pick-tapped.png" alt="顔を選ぶ画面。主役の顔の枠が緑になっている（説明のため顔はぼかしています）" width="780" height="1688"></figure>
+    </li>
+    <li class="step">
+      <h2><span class="n">7</span>確認して書き出す</h2>
+      <p>「モザイクをかける予定」「かけない予定」の2つの列を見比べます。違っていたら顔をタップすると、もう一方の列に移ります。よければ「この内容で書き出す」。</p>
+      <figure><img src="img/14-review-keep.png" alt="確認画面。かけない予定の列に主役の顔が並んでいる（顔はぼかしています）" width="780" height="1688"></figure>
+    </li>
+    <li class="step">
+      <h2><span class="n">8</span>できあがったら保存する</h2>
+      <p>再生して確かめ、「動画に保存する」を押します。完成した動画は<b>30日間</b>、ホームの一覧からいつでも保存し直せます。</p>
+      <p class="hint">書き出しも閉じて待てます。できると LINE でお知らせします。</p>
+      <figure><img src="img/16-done-video.png" alt="完成画面。動画のプレビューと動画に保存するボタン（顔はぼかしています）" width="780" height="1600"></figure>
+    </li>
+  </ol>
+
+  <div class="notes">
+    <section>
+      <h2>覚えておくこと</h2>
+      <ul>
+        <li><span class="warn">元の動画は24時間で消えます。</span>選び直しはそれまでにしてください</li>
+        <li>完成した動画・写真は30日で消えます。必要なものは早めに保存してください</li>
+        <li>顔を選ぶ画面・確認の画面のまま3時間たつと、元の動画ごと消えます（1時間たつと LINE でお知らせします）</li>
+        <li>顔の自動検出は、すべての顔を見つけられるとは限りません。投稿する前に、仕上がりを自分の目で確かめてください</li>
+      </ul>
+    </section>
+    <section>
+      <h2>写真のとき</h2>
+      <p>ホームの「写真を送る」→ 写真を1枚選ぶ → 残したい顔の枠をタップ →「この内容で書き出す」→「写真に保存する」。その場で数秒〜十数秒で終わります。</p>
+      <h2>こまったとき</h2>
+      <p>設定の「問題を報告する」から運営に知らせられます。料金・解約・よくある質問は<a href="guide.html">くわしい説明書</a>へ。</p>
+    </section>
+  </div>
+  <footer>らくちんモザイク 運営：Tetraris ／ 画面の写真の顔は、説明のためにぼかしています。</footer>
+</main>
+</body></html>

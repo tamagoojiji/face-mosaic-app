@@ -434,6 +434,26 @@ def legal_page(name: str):
     return page(os.path.join("legal", name + ".html"))
 
 
+MANUAL = os.path.join(ROOT, "docs", "manual")
+
+
+@app.get("/manual/img/{name}")
+def manual_img(name: str):
+    """説明書の画像（ログイン不要）。"""
+    if not re.fullmatch(r"[0-9a-z-]+\.png", name) or not os.path.isfile(os.path.join(MANUAL, "img", name)):
+        raise HTTPException(404, "見つかりません")
+    return FileResponse(os.path.join(MANUAL, "img", name), headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/manual/{name}")
+def manual_page(name: str):
+    """使い方の説明書（簡易 quick・詳細 guide。ログイン不要）。"""
+    name = name.removesuffix(".html")
+    if name not in ("quick", "guide"):
+        raise HTTPException(404, "見つかりません")
+    return FileResponse(os.path.join(MANUAL, name + ".html"), headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/home")
 def home(request: Request):
     return _guarded(request, "home.html")
