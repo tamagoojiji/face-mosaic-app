@@ -114,7 +114,7 @@ def _user_row(u, usage, now):
     return {"id": u["id"], "display_name": u["display_name"], "instagram_username": u["instagram_username"],
             "login": "LINE" if u["line_user_id"] else "合言葉" if u["device_id"] else "-",
             "plan": u["plan"], "plan_label": quota.PLANS.get(u["plan"], {}).get("label", u["plan"]),
-            "hq": bool(u["hq"]), "role": u["role"], "status": u["status"], "contract": _contract(u, now),
+            "hq": bool(u["hq"]), "launch_price": bool(u["launch_price"]), "role": u["role"], "status": u["status"], "contract": _contract(u, now),
             "usage_video_sec": (usage or {}).get("video_seconds_used") or 0,
             "usage_images": (usage or {}).get("image_count") or 0, "created_at": u["created_at"]}
 
@@ -386,6 +386,7 @@ async def api_report_update(request: Request, rid: int):
 # ---------------------------------------------------------------- 設定
 
 SETTING_LABELS = {
+    "launch_price_until": "リリース記念価格の申し込み期限",
     "campaign_on": "リリース記念", "campaign_from": "リリース記念の開始日", "campaign_to": "リリース記念の終了日",
     "campaign_images": "記念中の写真（枚/月）", "campaign_videos": "記念中の1分動画（本/月）",
     "source_retention_hours": "元データを消すまで（時間）", "output_retention_days": "完成品の保存（日）",
@@ -398,13 +399,13 @@ def _settings_view():
     saved = db.all_settings()
     return {"settings": {k: {"value": quota.setting(k), "default": quota.SETTING_DEFAULTS[k],
                              "overridden": k in saved, "label": SETTING_LABELS[k]} for k in SETTING_LABELS},
-            "campaign_active": quota.campaign_active()}
+            "campaign_active": quota.campaign_active(), "launch_active": quota.launch_active()}
 
 
 def _check_setting(k, v):
     if k == "campaign_on":
         return v in ("0", "1")
-    if k in ("campaign_from", "campaign_to"):
+    if k in ("campaign_from", "campaign_to", "launch_price_until"):
         return v == "" or bool(DATE_RE.match(v))
     if k == "mosaic_default":
         return v in ("block", "glass")

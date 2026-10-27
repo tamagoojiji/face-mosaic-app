@@ -26,7 +26,9 @@ from app.main import app  # noqa: E402
 from app.services import quota  # noqa: E402
 
 SECRET = "whsec_test"
-PRICES = {"image": "price_img", "video_a": "price_va", "video_b": "price_vb", "hq": "price_hq"}
+PRICES = {"image": "price_img", "video_a": "price_va", "video_b": "price_vb", "hq": "price_hq"}  # 記念価格
+REGULAR = {"image": "price_img_r", "video_a": "price_va_r", "video_b": "price_vb_r"}  # 定価
+FUTURE, PAST = "2999-12-31", "2000-01-01"
 
 
 def sign(payload):
@@ -57,6 +59,9 @@ def client():
     db.init()
     for k, v in PRICES.items():
         db.set_setting(f"stripe_price_{k}", v)
+    for k, v in REGULAR.items():
+        db.set_setting(f"stripe_price_{k}_regular", v)
+    db.set_setting("launch_price_until", FUTURE)
     return TestClient(app)
 
 
@@ -145,7 +150,7 @@ def test_flow(client, calls, monkeypatch):
 def _sub_user(line_id):
     u = db.create_user(line_user_id=line_id, display_name="変更", trial_ends_at=time.time() + 86400)
     db.update_user(u["id"], plan="video_a", hq=0, stripe_customer_id="cus_2", stripe_subscription_id="sub_2",
-                   stripe_price_plan=PRICES["video_a"], sub_status="active")
+                   stripe_price_plan=PRICES["video_a"], sub_status="active", launch_price=1)
     return db.get_user(u["id"])
 
 
@@ -305,3 +310,156 @@ def test_trial_migration():
     db.init()
     assert db.user_by("line_user_id", "Umig")["trial_ends_at"] == 1000.0 + 7 * 86400
     assert db.user_by("line_user_id", "Uadm")["trial_ends_at"] is None
+
+
+# ---------------------------------------------------------------- 定価とリリース記念価格（2026-10-27）
+
+@pytest.fixture
+def launch_until():
+    """launch_price_until を書き換えるテスト用。終わったら FUTURE に戻す。"""
+    yield lambda v: db.set_setting("launch_price_until", v)
+    db.set_setting("launch_price_until", FUTURE)
+
+
+@pytest.fixture
+def checkout_calls(monkeypatch):
+    seen = []
+
+    def fake_create(**kw):
+        seen.append(kw)
+        return stripe.StripeObject.construct_from({"id": "cs_x", "object": "checkout.session", "url": "https://x"}, "k")
+    monkeypatch.setattr(stripe.checkout.Session, "create", fake_create)
+    return seen
+
+
+def _checkout_event(eid, u, plan, launch):
+    meta = {"user_id": str(u["id"]), "plan": plan, "hq": "0", "launch": launch}
+    return event(eid, "checkout.session.completed",
+                 {"id": "cs_" + eid, "object": "checkout.session", "customer": "cus_l" + eid,
+                  "subscription": "sub_l" + eid, "client_reference_id": str(u["id"]), "metadata": meta})
+
+
+def test_checkout_in_launch_period_uses_launch_price(client, calls, checkout_calls, launch_until, monkeypatch):
+    from app.services import billing, notify
+    pushed = []
+    monkeypatch.setattr(notify, "push_user", lambda kind, user, *a, **kw: pushed.append(kw.get("text")))
+    launch_until(FUTURE)
+    u = db.create_user(line_user_id="Ulaunch1", display_name="記念", trial_ends_at=time.time() + 86400)
+    billing.checkout_url(u, "video_a", False, "https://app")
+    kw = checkout_calls[-1]
+    assert kw["line_items"] == [{"price": PRICES["video_a"], "quantity": 1}]
+    assert kw["metadata"]["launch"] == "1"
+    # 申し込んだあとに期限が過ぎても、Checkout を始めたときの判定（metadata）で記念価格
+    launch_until(PAST)
+    assert post(client, _checkout_event("l1", u, "video_a", "1")).status_code == 200
+    v = db.get_user(u["id"])
+    assert v["launch_price"] == 1 and v["stripe_price_plan"] == PRICES["video_a"]
+    assert "月980円です。" in pushed[-1]
+
+
+def test_checkout_after_launch_period_uses_regular_price(client, calls, checkout_calls, launch_until, monkeypatch):
+    from app.services import billing, notify
+    pushed = []
+    monkeypatch.setattr(notify, "push_user", lambda kind, user, *a, **kw: pushed.append(kw.get("text")))
+    launch_until(PAST)
+    u = db.create_user(line_user_id="Uregular1", display_name="定価", trial_ends_at=time.time() + 86400)
+    billing.checkout_url(u, "video_a", True, "https://app")
+    kw = checkout_calls[-1]
+    assert kw["line_items"] == [{"price": REGULAR["video_a"], "quantity": 1}, {"price": PRICES["hq"], "quantity": 1}]
+    assert kw["metadata"]["launch"] == "0"
+    assert post(client, _checkout_event("r1", u, "video_a", "0")).status_code == 200
+    v = db.get_user(u["id"])
+    assert v["launch_price"] == 0 and v["stripe_price_plan"] == REGULAR["video_a"]
+    assert "月1,480円です。" in pushed[-1]
+
+
+def test_launch_user_upgrade_keeps_launch_price_after_period(client, up_stripe, launch_until):
+    from app.services import billing
+    launch_until(PAST)
+    u = _sub_user("Ulup1")  # launch_price=1
+    done = billing.change(u, "video_b", False)
+    assert up_stripe[-1][2]["items"] == [{"id": "si_" + PRICES["video_a"], "price": PRICES["video_b"]}]
+    assert done["monthly"] == 1480
+    v = db.get_user(u["id"])
+    assert v["plan"] == "video_b" and v["stripe_price_plan"] == PRICES["video_b"]
+
+
+def test_regular_user_upgrade_uses_regular_price(client, up_stripe, launch_until):
+    from app.services import billing
+    launch_until(FUTURE)  # 期間中でも、定価で契約中の人の変更は定価
+    u = _sub_user("Urup1")
+    db.update_user(u["id"], launch_price=0, stripe_price_plan=REGULAR["video_a"])
+    done = billing.change(db.get_user(u["id"]), "video_b", False)
+    assert up_stripe[-1][2]["items"][0]["price"] == REGULAR["video_b"]
+    assert done["monthly"] == 1980
+    assert db.get_user(u["id"])["stripe_price_plan"] == REGULAR["video_b"]
+
+
+def test_plan_of_reads_both_price_ids(client):
+    from app.services import billing
+    items = sub_obj([REGULAR["video_b"], PRICES["hq"]])["items"]["data"]
+    assert billing._plan_of(items) == ("video_b", True, REGULAR["video_b"])
+    items = sub_obj([PRICES["image"]])["items"]["data"]
+    assert billing._plan_of(items) == ("image", False, PRICES["image"])
+
+
+def test_webhook_sub_updated_with_regular_price(client, calls):
+    u = db.create_user(line_user_id="Uwhr1", display_name="x")
+    db.update_user(u["id"], stripe_subscription_id="sub_whr", stripe_customer_id="cus_whr", plan="image",
+                   sub_status="active")
+    sub = dict(sub_obj([REGULAR["video_a"], PRICES["hq"]]), id="sub_whr", customer="cus_whr")
+    assert post(client, event("evt_whr", "customer.subscription.updated", sub)).status_code == 200
+    v = db.get_user(u["id"])
+    assert v["plan"] == "video_a" and v["hq"] == 1 and v["stripe_price_plan"] == REGULAR["video_a"]
+
+
+def test_api_plans_launch_display(client, launch_until, monkeypatch):
+    import app.main as main_mod
+    u = db.create_user(line_user_id="Uplans1", display_name="x", trial_ends_at=time.time() + 86400)
+    monkeypatch.setattr(main_mod, "require_api", lambda request: db.get_user(u["id"]))
+    launch_until("")  # 空なら記念価格を出さない
+    d = client.get("/api/plans").json()
+    assert d["launch"] == {"until": "", "active": False, "applies": False, "mine": False}
+    va = next(p for p in d["plans"] if p["key"] == "video_a")
+    assert va["price"] == va["regular_price"] == 1480
+    launch_until(FUTURE)
+    d = client.get("/api/plans").json()
+    assert d["launch"]["active"] and d["launch"]["applies"] and d["launch"]["until"] == FUTURE
+    va = next(p for p in d["plans"] if p["key"] == "video_a")
+    assert va["price"] == 980 and va["regular_price"] == 1480
+    assert [x["price"] for x in d["hq_option"]["plans"]] == [980 + 500, 1480 + 500]
+    # 記念価格で契約中なら期限後も記念価格
+    launch_until(PAST)
+    db.update_user(u["id"], launch_price=1, stripe_subscription_id="sub_p1", sub_status="active", plan="video_a")
+    d = client.get("/api/plans").json()
+    assert d["launch"]["mine"] and d["launch"]["applies"] and not d["launch"]["active"]
+    assert next(p for p in d["plans"] if p["key"] == "video_b")["price"] == 1480
+
+
+def test_launch_active_includes_last_day(launch_until):
+    launch_until("2026-11-30")
+    assert quota.launch_active("2026-11-30") and quota.launch_active("2026-10-27")
+    assert not quota.launch_active("2026-12-01")
+    launch_until("")
+    assert not quota.launch_active("2026-10-27")
+
+
+def test_withdraw_clears_launch_price(client, monkeypatch):
+    import app.main as main_mod
+    monkeypatch.setattr(main_mod.notify, "push_user", lambda *a, **kw: None)
+    u = _sub_user("Uwdl1")
+    main_mod.withdraw_user(db.get_user(u["id"]), "unused", cancel=False)
+    assert db.get_user(u["id"])["launch_price"] == 0
+
+
+def test_launch_price_migration(monkeypatch, tmp_path):
+    from app import config
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    with db.connect() as con:  # 列を足す前の DB（users に launch_price がない）
+        con.executescript(db.SCHEMA)
+        con.execute("INSERT INTO users (line_user_id, plan, stripe_subscription_id, created_at) "
+                    "VALUES ('Upaid', 'video_a', 'sub_old', 1)")
+        con.execute("INSERT INTO users (line_user_id, plan, created_at) VALUES ('Ufree', 'free', 1)")
+    db.init()
+    assert db.user_by("line_user_id", "Upaid")["launch_price"] == 1
+    assert db.user_by("line_user_id", "Ufree")["launch_price"] == 0

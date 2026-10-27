@@ -2,26 +2,29 @@
 
 import datetime
 import time
+import zoneinfo
 
 from .. import config, db
 
-# None = 無制限。video_sec_month=0 かつ video_count_month=0 は「動画なし」
+# price = リリース記念価格（期限までの申し込み・続けている間ずっと）、regular_price = 定価。None = 無制限。video_sec_month=0 かつ video_count_month=0 は「動画なし」
 PLANS = {
-    "free": {"label": "無料", "price": 0, "video_sec_month": 0, "video_count_month": 0, "video_len": 60,
+    "free": {"label": "無料", "price": 0, "regular_price": 0, "video_sec_month": 0, "video_count_month": 0, "video_len": 60,
              "images": 5, "quality": "1080p・30fps"},
-    "image": {"label": "画像のみ", "price": 500, "video_sec_month": 0, "video_count_month": 0, "video_len": 0,
+    "image": {"label": "画像のみ", "price": 500, "regular_price": 1000, "video_sec_month": 0, "video_count_month": 0, "video_len": 0,
               "images": 100, "quality": "画像は長辺4000pxまで"},
-    "video_a": {"label": "動画A", "price": 980, "video_sec_month": 600, "video_count_month": None, "video_len": 60,
+    "video_a": {"label": "動画A", "price": 980, "regular_price": 1480, "video_sec_month": 600, "video_count_month": None, "video_len": 60,
                 "images": 100, "quality": "1080p・30fps"},
-    "video_b": {"label": "動画B", "price": 1480, "video_sec_month": 5400, "video_count_month": None, "video_len": 180,
+    "video_b": {"label": "動画B", "price": 1480, "regular_price": 1980, "video_sec_month": 5400, "video_count_month": None, "video_len": 180,
                 "images": None, "quality": "1080p・30fps"},
 }
+JST = zoneinfo.ZoneInfo("Asia/Tokyo")
 PLAN_ORDER = ("free", "image", "video_a", "video_b")
 PAID = ("image", "video_a", "video_b")
 # 高画質オプション（月＋500円・動画A/Bだけ）。解析は 1080p・30fps のまま、書き出しだけ元の解像度・fps（HDR は SDR に変換）
 HQ_OPTION = {"label": "高画質オプション", "price": 500, "plans": ("video_a", "video_b"),
              "quality": "元の解像度と fps で書き出し", "note": "HDR は通常の色（SDR）に変換して書き出し"}
-SETTING_DEFAULTS = {"campaign_on": "0", "campaign_from": "", "campaign_to": "",
+SETTING_DEFAULTS = {"launch_price_until": "",  # リリース記念価格の申し込み期限（YYYY-MM-DD・その日を含む・空=記念価格なし）
+                    "campaign_on": "0", "campaign_from": "", "campaign_to": "",
                     "campaign_images": "10", "campaign_videos": "3",
                     # 運営の上書き（管理画面の設定）。既定は環境変数（config）の値
                     "source_retention_hours": f"{config.SOURCE_RETENTION_HOURS:g}",
@@ -75,6 +78,30 @@ def campaign_active(today=None):
     today = today or datetime.date.today().isoformat()
     f, t = (setting("campaign_from") or "").strip(), (setting("campaign_to") or "").strip()
     return (not f or today >= f) and (not t or today <= t)
+
+
+def launch_until():
+    return (setting("launch_price_until") or "").strip()
+
+
+def launch_active(today=None):
+    """いま申し込むとリリース記念価格になるか（期限は日本時間のその日を含む）。"""
+    until = launch_until()
+    if not until:
+        return False
+    today = today or datetime.datetime.now(JST).date().isoformat()
+    return today <= until
+
+
+def uses_launch(user):
+    """この人の価格がリリース記念価格か。契約中は launch_price のまま、未契約なら申し込み時点の期間で決まる。"""
+    if user.get("launch_price"):
+        return True
+    return not user.get("stripe_subscription_id") and launch_active()
+
+
+def price_yen(user, plan):
+    return PLANS[plan]["price" if uses_launch(user) else "regular_price"]
 
 
 def fmt_sec(sec):

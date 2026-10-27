@@ -57,7 +57,7 @@ async function load() {
         return [String(u.id),
           [h('a', { href: '/admin/users/' + u.id }, u.display_name || 'ゲスト'), u.role === 'admin' ? h('span', { class: 'sub' }, '（運営）') : null],
           u.instagram_username ? '@' + u.instagram_username : h('span', { class: 'sub' }, '—'),
-          u.login, u.plan_label + (u.hq ? '＋高画質' : ''), badge(c[0], c[1]),
+          u.login, [u.plan_label + (u.hq ? '＋高画質' : ''), u.launch_price ? [' ', badge('記念価格', 'run')] : null], badge(c[0], c[1]),
           mmss(u.usage_video_sec), u.usage_images + ' 枚', badge(u.status, ST[u.status]), day(u.created_at)];
       }),
       i => ({ class: 'link', onclick: ev => { if (ev.target.tagName !== 'A') location.href = '/admin/users/' + d.users[i].id; } })));

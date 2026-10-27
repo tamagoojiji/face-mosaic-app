@@ -156,6 +156,9 @@ def init():
         for name, typ in ADD_USER_COLUMNS.items():
             if name not in ucols:
                 con.execute(f"ALTER TABLE users ADD COLUMN {name} {typ}")
+        if "launch_price" not in ucols:  # リリース記念価格（定価を入れる前からの有料利用者は記念価格のまま）
+            con.execute("ALTER TABLE users ADD COLUMN launch_price INTEGER NOT NULL DEFAULT 0")
+            con.execute("UPDATE users SET launch_price=1 WHERE stripe_subscription_id IS NOT NULL")
         # LINE の無料利用者にお試し期限（登録＋7日）。合言葉・運営は対象外
         con.execute("UPDATE users SET trial_ends_at=created_at+? WHERE plan='free' AND line_user_id IS NOT NULL "
                     "AND role!='admin' AND trial_ends_at IS NULL AND created_at IS NOT NULL", (TRIAL_DAYS * 86400,))

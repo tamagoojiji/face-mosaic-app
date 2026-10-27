@@ -16,11 +16,15 @@ import stripe  # noqa: E402
 
 from app import config, db  # noqa: E402
 
-# (settings のキー, lookup_key, 商品名, 月額 円)
+# (settings のキー, lookup_key, 商品名, 月額 円)。上4つ=リリース記念価格（高画質は記念も定価も同じ）、下3つ=定価
+# 定価は記念価格と同じ商品に足す（商品は1つ・価格が2つ）
 PRICES = (("image", "fm_image_500", "画像のみ", 500),
           ("video_a", "fm_video_a_980", "動画A", 980),
           ("video_b", "fm_video_b_1480", "動画B", 1480),
-          ("hq", "fm_hq_500", "高画質オプション", 500))
+          ("hq", "fm_hq_500", "高画質オプション", 500),
+          ("image_regular", "fm_image_1000", "画像のみ", 1000),
+          ("video_a_regular", "fm_video_a_1480", "動画A", 1480),
+          ("video_b_regular", "fm_video_b_1980", "動画B", 1980))
 # 旧商品（docs/external-ids.md・2026-10-26 価格改定でアーカイブ。価格は商品の既定価格なので商品ごと止める）
 OLD_PRODUCTS = ("prod_VVLoTIM3d8p0EP", "prod_VVLpJlHhbUxKGw", "prod_VVLp4pIQb9ifqS", "prod_VVLpWvGmYuNyI9")
 WEBHOOK_ID = "we_1UUjJ8CK9wiENSxs9O7tLmzI"  # 2026-10-26 再発行（旧 we_1UULAo… は削除）
@@ -35,7 +39,8 @@ PORTAL = {"features": {"payment_method_update": {"enabled": True},
 
 def dry_run():
     for key, lk, name, yen in PRICES:
-        print(f"price {key}: lookup_key={lk} 商品「{name}」 {yen}円/月（無ければ作成）→ settings stripe_price_{key}")
+        how = "記念価格と同じ商品に追加" if key.endswith("_regular") else "無ければ作成"
+        print(f"price {key}: lookup_key={lk} 商品「{name}」 {yen}円/月（{how}）→ settings stripe_price_{key}")
     print(f"旧商品のアーカイブ: {len(OLD_PRODUCTS)} 件 {', '.join(OLD_PRODUCTS)}")
     print(f"webhook {WEBHOOK_ID}: enabled_events {len(WEBHOOK_EVENTS)} 件 {', '.join(WEBHOOK_EVENTS)}")
     print("portal: 設定を1つ作成（カード変更ON・解約OFF・プラン切替OFF・請求履歴ON）→ settings stripe_portal_config"
@@ -51,14 +56,19 @@ def run():
     stripe.api_key = config.STRIPE_SECRET_KEY
     db.init()
     made = 0
+    products = {}  # 商品名 → 商品ID（記念価格の商品に定価を足す）
     for key, lk, name, yen in PRICES:
         found = stripe.Price.list(lookup_keys=[lk], active=True, limit=1).to_dict()["data"]
         if found:
             pid, how = found[0]["id"], "既存"
+            prod = found[0]["product"]
+            products.setdefault(name, prod if isinstance(prod, str) else prod["id"])
         else:
-            pid = stripe.Price.create(currency="jpy", unit_amount=yen, recurring={"interval": "month"},
-                                      lookup_key=lk, product_data={"name": name})["id"]
-            how, made = "作成", made + 1
+            kw = {"product": products[name]} if name in products else {"product_data": {"name": name}}
+            created = stripe.Price.create(currency="jpy", unit_amount=yen, recurring={"interval": "month"},
+                                          lookup_key=lk, **kw)
+            pid, how, made = created["id"], "作成", made + 1
+            products.setdefault(name, created["product"])
         db.set_setting(f"stripe_price_{key}", pid)
         print(f"price {key}: {pid}（{how}）")
     archived = 0

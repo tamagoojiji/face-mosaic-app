@@ -26,6 +26,15 @@ legend{font-size:13px;font-weight:600;padding:0;margin-bottom:4px}
   <p class="msg err" id="err" role="alert" hidden></p>
   <form id="f" novalidate>
     <section class="a-box a-pad">
+      <h2 style="margin-top:0">リリース記念価格（有料プラン）</h2>
+      <div class="form-grid">
+        <div class="fld"><label for="launch_price_until">申し込み期限（この日を含む・空なら記念価格は出さず定価だけ）</label>
+          <div class="unit"><input class="a-in d" type="date" id="launch_price_until"></div>
+          <span class="hint" data-k="launch_price_until"></span></div>
+      </div>
+      <p class="hint" style="margin:12px 0 0">期限までに申し込んだ人は、契約を続けている間ずっと記念価格（画像のみ 500円・動画A 980円・動画B 1,480円）。期限後の申し込みは定価（1,000円・1,480円・1,980円）。</p>
+    </section>
+    <section class="a-box a-pad" style="margin-top:16px">
       <h2 style="margin-top:0">リリース記念（無料プランの上限を一時的に増やす）</h2>
       <div class="form-grid">
         <div class="fld"><span>リリース記念</span>
@@ -73,13 +82,13 @@ legend{font-size:13px;font-weight:600;padding:0;margin-bottom:4px}
 <script src="/static/admin.js"></script>
 <script>
 const UNIT = { campaign_images: ' 枚', campaign_videos: ' 本', source_retention_hours: ' 時間', output_retention_days: ' 日', idle_warn_hours: ' 時間', idle_delete_hours: ' 時間' };
-const SHOW = { campaign_on: v => v === '1' ? 'ON' : 'OFF', mosaic_default: v => v === 'glass' ? 'すりガラス' : 'ブロック粗め', campaign_from: v => v || '指定なし' };
+const SHOW = { launch_price_until: v => v || '指定なし', campaign_on: v => v === '1' ? 'ON' : 'OFF', mosaic_default: v => v === 'glass' ? 'すりガラス' : 'ブロック粗め', campaign_from: v => v || '指定なし' };
 const fmt = (k, v) => (SHOW[k] ? SHOW[k](v) : v + (UNIT[k] || ''));
 function render(d) {
   const s = d.settings;
   $('campaign_on').checked = s.campaign_on.value === '1';
   $('campaign_on_s').textContent = $('campaign_on').checked ? 'ON' : 'OFF';
-  ['campaign_from', 'campaign_to', 'campaign_images', 'campaign_videos', 'source_retention_hours', 'output_retention_days', 'idle_warn_hours', 'idle_delete_hours']
+  ['launch_price_until', 'campaign_from', 'campaign_to', 'campaign_images', 'campaign_videos', 'source_retention_hours', 'output_retention_days', 'idle_warn_hours', 'idle_delete_hours']
     .forEach(k => $(k).value = s[k].value);
   document.querySelector('input[name=mosaic_default][value=' + (s.mosaic_default.value === 'glass' ? 'glass' : 'block') + ']').checked = true;
   document.querySelectorAll('.hint[data-k]').forEach(el => {
@@ -88,6 +97,11 @@ function render(d) {
     if (k === 'campaign_from') {
       const to = s.campaign_to;
       t = 'いま ' + (it.value || '指定なし') + ' 〜 ' + (to.value || '指定なし') + ((it.overridden || to.overridden) ? '（上書き中）' : '（既定）');
+    }
+    if (k === 'launch_price_until') {
+      const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(it.value);
+      t = d.launch_active && m ? 'いま ' + Number(m[1]) + '月' + Number(m[2]) + '日まで記念価格（この日までの申し込み）'
+        : it.value ? 'いま記念価格は出していません（期限 ' + it.value + ' を過ぎています）' : 'いま記念価格は出していません（期限が空）';
     }
     if (k === 'campaign_on') t += d.campaign_active ? '。今日は記念期間中です' : '。今日は記念期間ではありません';
     el.textContent = t;
@@ -98,7 +112,7 @@ $('f').addEventListener('submit', async ev => {
   ev.preventDefault();
   $('msg').textContent = ''; $('save').disabled = true;
   const body = { campaign_on: $('campaign_on').checked ? '1' : '0', mosaic_default: document.querySelector('input[name=mosaic_default]:checked').value };
-  ['campaign_from', 'campaign_to', 'campaign_images', 'campaign_videos', 'source_retention_hours', 'output_retention_days', 'idle_warn_hours', 'idle_delete_hours']
+  ['launch_price_until', 'campaign_from', 'campaign_to', 'campaign_images', 'campaign_videos', 'source_retention_hours', 'output_retention_days', 'idle_warn_hours', 'idle_delete_hours']
     .forEach(k => body[k] = $(k).value);
   try {
     const d = await api('/admin/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

@@ -59,7 +59,7 @@ function render(d) {
   const rows = [
     ['状態', badge(u.status, u.status === 'active' ? 'ok' : u.status === 'stopped' ? 'bad' : '')],
     ['プラン', u.plan_label + (u.hq ? '＋高画質' : '') + (u.hq && !u.hq_effective ? '（いまのプランでは無効）' : '')],
-    ['契約', CT[u.contract] || u.contract],
+    ['契約', [CT[u.contract] || u.contract, u.launch_price ? [' ', badge('記念価格', 'run')] : null]],
     ['次の更新日', u.current_period_end ? day(u.current_period_end) + (u.cancel_at_period_end ? '（この日で解約）' : '') : '—'],
     ['お試しの期限', u.plan !== 'free' ? '—（有料プランのため対象外）' : u.trial_ends_at ? day(u.trial_ends_at) : '—'],
     ['今月の使用量', '動画 ' + u.usage_videos + ' 本・' + mmss(u.usage_video_sec) + '（上限 ' + (u.limits.video_sec_month == null ? '無制限' : mmss(u.limits.video_sec_month)) + '）／写真 ' + u.usage_images + ' 枚（上限 ' + lim(u.limits.images, ' 枚') + '）'],

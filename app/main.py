@@ -1082,11 +1082,15 @@ def api_me(request: Request):
 @app.get("/api/plans")
 def api_plans(request: Request):
     u = require_api(request)
-    plans = [dict(quota.PLANS[k], key=k) for k in quota.PLAN_ORDER]
+    # price = この人が払う月額（記念価格 or 定価）、launch_price = 記念価格、regular_price = 定価
+    plans = [dict(quota.PLANS[k], key=k, price=quota.price_yen(u, k), launch_price=quota.PLANS[k]["price"])
+             for k in quota.PLAN_ORDER]
     hq = dict(quota.HQ_OPTION, plans=[{"key": k, "label": quota.PLANS[k]["label"],
-                                       "price": quota.PLANS[k]["price"] + quota.HQ_OPTION["price"]}
+                                       "price": quota.price_yen(u, k) + quota.HQ_OPTION["price"]}
                                       for k in quota.HQ_OPTION["plans"]])
-    return JSONResponse({"me": _me(u), "plans": plans, "hq_option": hq}, headers=NO_STORE)
+    launch = {"until": quota.launch_until(), "active": quota.launch_active(), "applies": quota.uses_launch(u),
+              "mine": bool(u.get("launch_price"))}
+    return JSONResponse({"me": _me(u), "plans": plans, "hq_option": hq, "launch": launch}, headers=NO_STORE)
 
 
 @app.post("/api/me/instagram")
@@ -1141,7 +1145,8 @@ def withdraw_user(u, reason, note=None, cancel=True):
     db.update_user(u["id"], status="withdrawn", instagram_username=None, notify=0, withdraw_reason=reason,
                    withdraw_note=note or None, withdrawn_at=time.time(),
                    sub_status=None, cancel_at_period_end=0, current_period_end=None, past_due_since=None,
-                   pending_plan=None, pending_hq=None, stripe_subscription_id=None, stripe_price_plan=None)
+                   pending_plan=None, pending_hq=None, stripe_subscription_id=None, stripe_price_plan=None,
+                   launch_price=0)  # 再登録・再契約はそのときの価格（期限後なら定価）
     discord.usage(f"退会: #{u['id']} {u['display_name'] or 'ゲスト'}（{config.AUTH_MODE}）\n理由: {WITHDRAW_REASONS[reason]}"
                   + (f"\nひとこと: {note}" if note else ""))
     log.info("withdraw user=%s reason=%s 削除 %d 件", u["id"], reason, n)

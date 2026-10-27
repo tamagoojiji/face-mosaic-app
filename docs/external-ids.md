@@ -19,6 +19,11 @@
 | 動画A | 980円 | `prod_VVkJGXyUIl9Y6p` | `price_1UUipFCK9wiENSxsTiJpWFE5`（fm_video_a_980） | stripe_price_video_a |
 | 動画B | 1,480円 | `prod_VVkJKUYESJCDg2` | `price_1UUipFCK9wiENSxsGXVDtiK2`（fm_video_b_1480） | stripe_price_video_b |
 | 高画質オプション | 500円 | `prod_VVkJSsVGnj6Wzl` | `price_1UUipGCK9wiENSxsFG6YPAMD`（fm_hq_500） | stripe_price_hq |
+| 画像のみ（定価） | 1,000円 | `prod_VVkJxkxKcnEjGW`（同じ商品） | setup 実行後に記入（fm_image_1000） | stripe_price_image_regular |
+| 動画A（定価） | 1,480円 | `prod_VVkJGXyUIl9Y6p`（同じ商品） | setup 実行後に記入（fm_video_a_1480） | stripe_price_video_a_regular |
+| 動画B（定価） | 1,980円 | `prod_VVkJKUYESJCDg2`（同じ商品） | setup 実行後に記入（fm_video_b_1980） | stripe_price_video_b_regular |
+
+上の 500円／980円／1,480円 はリリース記念価格（管理画面の設定 `launch_price_until` までの申し込み・契約を続けている間ずっと）。期限後の申し込みは定価の価格ID（2026-10-27 追加）。高画質オプションは記念・定価とも同じ 500円。
 
 | 種別 | ID | 内容 |
 |---|---|---|

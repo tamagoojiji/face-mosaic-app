@@ -13,9 +13,12 @@
 .plans{list-style:none;margin:var(--s5) 0 0;padding:0;display:flex;flex-direction:column;gap:var(--s3)}
 .plan{border:1.5px solid var(--line);border-radius:var(--radius);padding:var(--s4);background:var(--paper)}
 .plan.cur{border-color:var(--pri);border-width:2px}
-.plan .head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--s2);margin:0 0 var(--s3)}
-.plan .name{font-weight:700;font-size:18px}
-.plan .price{font-weight:700;font-size:18px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.plan .head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:var(--s2);margin:0 0 var(--s3)}
+.plan .name{font-weight:700;font-size:18px;word-break:keep-all}
+.plan .price{margin-left:auto;font-weight:700;font-size:18px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.plan .price s{display:block;font-weight:400;font-size:14px;color:var(--sub);text-align:right}
+.plan .price .lk{font-size:13px;color:var(--pri-press)}
+.plan .lnote{font-size:14px;color:var(--pri-press);font-weight:600;margin:calc(-1 * var(--s2)) 0 var(--s3)}
 .plan .tag{display:inline-block;font-size:12px;font-weight:700;color:var(--pri-press);background:var(--pri-soft);border-radius:6px;padding:0 6px;margin-left:6px;vertical-align:2px}
 .plan dl{display:grid;grid-template-columns:auto 1fr;gap:var(--s1) var(--s3);margin:0 0 var(--s4);font-size:15px}
 .plan dt{color:var(--sub)}
@@ -35,6 +38,7 @@
     <div class="v" id="cur">—</div>
     <p class="s" id="curs"></p>
     <p class="s" id="pend" hidden></p>
+    <p class="s" id="mine" hidden>あなたはリリース記念価格で利用中です（続けている間はこの価格のままです）</p>
   </div>
   <p class="notice plain" id="prep" hidden>お支払い（月額）の受付は準備中です。始まったら、この画面から申し込めます。</p>
   <p class="notice warn" id="lock" hidden></p>
@@ -57,11 +61,12 @@ const md = ts => { const t = new Date(ts * 1000); return (t.getMonth() + 1) + '�
 function showErr(e) { $('err').textContent = e.message; $('err').hidden = false; }
 const post = (path, body) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const yen = n => n.toLocaleString('ja-JP') + '円';
+const ymd = s => { const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(s || ''); return m ? Number(m[1]) + '月' + Number(m[2]) + '日' : ''; };
 (async () => {
   try { const f = sessionStorage.getItem('planFlash'); if (f) { $('ok').textContent = f; $('ok').hidden = false; sessionStorage.removeItem('planFlash'); } } catch (e) { }
   let d;
   try { d = await api('/api/plans'); } catch (e) { showErr(e); return; }
-  const me = d.me, label = k => (d.plans.find(p => p.key === k) || {}).label || k;
+  const me = d.me, lp = d.launch, label = k => (d.plans.find(p => p.key === k) || {}).label || k;
   const hqPlans = d.hq_option.plans.map(x => x.key);
   const ready = me.stripe_ready, subscribed = me.sub_status === 'active';
   const canStart = ready && me.plan === 'free' && !['active', 'canceling', 'past_due'].includes(me.sub_status);
@@ -102,6 +107,7 @@ const yen = n => n.toLocaleString('ja-JP') + '円';
   }
   $('cur').textContent = me.plan_label + (me.campaign ? '（リリース記念で増量中）' : '');
   $('curs').textContent = quotaLine(me);
+  $('mine').hidden = !lp.mine;
   if (me.campaign) { $('free').textContent = '無料プラン: リリース記念の期間は 写真が月' + me.limits.images + '枚・1分までの動画が月' + me.limits.video_count_month + '本 使えます（ふだんは写真5枚・動画なし）。'; $('free').hidden = false; }
   for (const p of d.plans) {
     const li = document.createElement('li'); li.className = 'plan' + (p.key === me.plan ? ' cur' : '');
@@ -109,7 +115,12 @@ const yen = n => n.toLocaleString('ja-JP') + '円';
     const nm = document.createElement('div'); nm.className = 'name'; nm.textContent = p.label;
     if (p.key === me.plan) { const t = document.createElement('span'); t.className = 'tag'; t.textContent = 'いまのプラン'; nm.append(t); }
     const pr = document.createElement('div'); pr.className = 'price';
-    pr.textContent = '月' + p.price.toLocaleString('ja-JP') + '円';
+    const launchShown = lp.applies && p.regular_price > p.price;
+    if (launchShown) {
+      const was = document.createElement('s'); was.textContent = '通常価格 月' + yen(p.regular_price);
+      const k = document.createElement('span'); k.className = 'lk'; k.textContent = 'リリース記念価格';
+      pr.append(was, k, ' 月' + yen(p.price));
+    } else pr.textContent = '月' + yen(p.price);
     head.append(nm, pr);
     const dl = document.createElement('dl');
     const row = (k, v) => { const dt = document.createElement('dt'); dt.textContent = k; const dd = document.createElement('dd'); dd.textContent = v; dl.append(dt, dd); };
@@ -117,7 +128,15 @@ const yen = n => n.toLocaleString('ja-JP') + '円';
     row('1本の長さ', p.video_sec_month && p.video_len ? len(p.video_len) + 'まで' : '—');
     row('写真（1か月）', p.images === null ? '無制限' : p.images + '枚まで');
     row('書き出しの画質', p.quality);
-    li.append(head, dl);
+    li.append(head);
+    if (launchShown && !lp.mine) {  // 契約中の人には上の「リリース記念価格で利用中」1行で伝える
+      const ln = document.createElement('p'); ln.className = 'lnote';
+      const seg = t => { const sp = document.createElement('span'); sp.className = 'nw'; sp.textContent = t; return sp; };
+      if (lp.active && !lp.mine) ln.append(seg(ymd(lp.until) + 'までのお申し込み'), '・');
+      ln.append(seg('続けている間はこの価格'));
+      li.append(ln);
+    }
+    li.append(dl);
     if (p.note) { const n = document.createElement('p'); n.className = 'pnote'; n.textContent = '※ ' + p.note; li.append(n); }
     const b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-sec';
     const isTgt = p.key === tgtPlan;

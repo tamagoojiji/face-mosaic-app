@@ -1,6 +1,7 @@
 """Stripe（月額サブスク・お試し後の契約・決済失敗）。DESIGN 2節「契約・解約・決済失敗の条件」。
 
 価格ID・ポータル設定IDは settings（stripe_price_image|video_a|video_b|hq・stripe_portal_config）。
+stripe_price_<plan> はリリース記念価格、stripe_price_<plan>_regular は定価（同じ商品に価格が2つ）。
 鍵が空なら Stripe を呼ばずに billing(skip) を1行ログに出して None を返す（notify/discord と同じ流儀）。
 プラン変更・高画質の ON/OFF・解約はアプリ内で実行（ポータルはカード変更・請求履歴だけ）。
 """
@@ -18,6 +19,7 @@ from . import discord, notify, quota
 
 log = logging.getLogger("uvicorn.error")
 PRICE_KEYS = ("image", "video_a", "video_b", "hq")
+REGULAR_KEYS = ("image", "video_a", "video_b")
 GRACE_SEC = 7 * 86400  # 決済失敗の猶予
 JST = zoneinfo.ZoneInfo("Asia/Tokyo")
 
@@ -47,14 +49,24 @@ def price_ids():
     return {k: db.get_setting(f"stripe_price_{k}") or "" for k in PRICE_KEYS}
 
 
+def regular_price_ids():
+    return {k: db.get_setting(f"stripe_price_{k}_regular") or "" for k in REGULAR_KEYS}
+
+
 def ready():
-    """申し込みを受け付けられるか（鍵2つ＋価格ID 4つ）。"""
-    return config.STRIPE_READY and all(price_ids().values())
+    """申し込みを受け付けられるか（鍵2つ＋価格ID 7つ＝記念価格4つ・定価3つ）。"""
+    return config.STRIPE_READY and all(price_ids().values()) and all(regular_price_ids().values())
+
+
+def price_for(user, plan):
+    """この人がこのプランで払う価格ID（launch_price=1 か未契約で記念期間内なら記念価格、それ以外は定価）。"""
+    return (price_ids() if quota.uses_launch(user) else regular_price_ids()).get(plan) or ""
 
 
 def _plan_of(items):
-    """購読のライン → (plan, hq, plan の価格ID)。知らない価格だけなら plan=None。"""
-    by_price = {v: k for k, v in price_ids().items() if v}
+    """購読のライン → (plan, hq, plan の価格ID)。定価・記念価格のどちらの価格IDでも引く。知らない価格だけなら plan=None。"""
+    by_price = {v: k for k, v in regular_price_ids().items() if v}
+    by_price.update({v: k for k, v in price_ids().items() if v})
     plan, hq, plan_price = None, False, None
     for it in items:
         pid = (it.get("price") or {}).get("id")
@@ -92,17 +104,18 @@ def checkout_url(user, plan, hq, base):
     if not _api():
         return _skip("checkout", user)
     ids = price_ids()
-    items = [{"price": ids[plan], "quantity": 1}]
+    launch = quota.uses_launch(user)
+    items = [{"price": price_for(user, plan), "quantity": 1}]
     if hq:
         items.append({"price": ids["hq"], "quantity": 1})
-    meta = {"user_id": str(user["id"]), "plan": plan, "hq": "1" if hq else "0"}
+    meta = {"user_id": str(user["id"]), "plan": plan, "hq": "1" if hq else "0", "launch": "1" if launch else "0"}
     params = {"mode": "subscription", "line_items": items, "client_reference_id": str(user["id"]),
               "metadata": meta, "subscription_data": {"metadata": meta},
               "success_url": base + "/billing/return?ok=1", "cancel_url": base + "/plans"}
     if user.get("stripe_customer_id"):
         params["customer"] = user["stripe_customer_id"]
     s = _d(stripe.checkout.Session.create(**params))
-    db.audit(user["id"], "billing.checkout_start", f"user:{user['id']}", json.dumps({"plan": plan, "hq": int(hq)}))
+    db.audit(user["id"], "billing.checkout_start", f"user:{user['id']}", json.dumps({"plan": plan, "hq": int(hq), "launch": int(launch)}))
     return s["url"]
 
 
@@ -121,8 +134,8 @@ class PaymentFailed(Exception):
     """差額の即時請求でカードが通らなかった（購読もDBも変えていない）。"""
 
 
-def _monthly(plan, hq):
-    return quota.PLANS[plan]["price"] + (quota.HQ_OPTION["price"] if hq else 0)
+def _monthly(user, plan, hq):
+    return quota.price_yen(user, plan) + (quota.HQ_OPTION["price"] if hq else 0)
 
 
 def _plan_text(plan, hq):
@@ -146,7 +159,7 @@ def _plan_diff(user, plan, hq):
             plan_item = it
     items = []
     if plan_up and plan_item:
-        items.append({"id": plan_item["id"], "price": ids[plan]})
+        items.append({"id": plan_item["id"], "price": price_for(user, plan)})
     if hq_on and not hq_item:
         items.append({"price": ids["hq"], "quantity": 1})
     return {"sub": sub, "items": items, "plan_up": plan_up, "plan_down": plan_down, "hq_on": hq_on,
@@ -173,7 +186,7 @@ def preview(user, plan, hq):
             subscription_details={"items": diff["items"], "proration_behavior": "always_invoice"}))
         lines = ((inv.get("lines") or {}).get("data")) or []
         now = sum(int(ln.get("amount") or 0) for ln in lines if _is_proration(ln))
-    return {"now": now, "monthly": _monthly(plan, hq), "next_date": _period_end(diff["sub"]),
+    return {"now": now, "monthly": _monthly(user, plan, hq), "next_date": _period_end(diff["sub"]),
             "immediate": diff["immediate"], "deferred": diff["deferred"]}
 
 
@@ -194,7 +207,6 @@ def change(user, plan, hq):
     if not _api():
         return _skip("change", user)
     cur_plan, cur_hq = user["plan"], bool(user["hq"])
-    ids = price_ids()
     diff = _plan_diff(user, plan, hq)
     plan_up, plan_down, hq_on, hq_off = diff["plan_up"], diff["plan_down"], diff["hq_on"], diff["hq_off"]
     fields, done = {}, {"now": [], "next": []}
@@ -210,7 +222,7 @@ def change(user, plan, hq):
         if inv:
             charged, invoice_id = int(inv.get("amount_paid") or 0), inv.get("id")
     if plan_up:
-        fields.update(plan=plan, stripe_price_plan=ids[plan])
+        fields.update(plan=plan, stripe_price_plan=price_for(user, plan))
         done["now"].append("plan")
     if hq_on:
         fields["hq"] = 1
@@ -223,7 +235,7 @@ def change(user, plan, hq):
     if hq_off:
         done["next"].append("hq")
     db.update_user(user["id"], **fields)
-    monthly = _monthly(plan, hq)
+    monthly = _monthly(user, plan, hq)
     db.audit(user["id"], "billing.change", f"user:{user['id']}",
              json.dumps({"from": [cur_plan, int(cur_hq)], "to": [plan, int(hq)], **done,
                          "charged": charged, "invoice": invoice_id}))
@@ -337,16 +349,21 @@ def _on_checkout(s, _withdraw):
         return
     plan = meta.get("plan") if meta.get("plan") in quota.PAID else u["plan"]
     hq = 1 if meta.get("hq") == "1" and plan in quota.HQ_OPTION["plans"] else 0
+    # 申し込み時点（Checkout を始めたとき）に記念期間内だったか。古いセッションは完了時点の期間で決める
+    launch = (meta["launch"] == "1") if meta.get("launch") in ("0", "1") else quota.launch_active()
+    priced = dict(u, launch_price=1 if launch else 0, stripe_subscription_id=None)
     sub_id = _id(s.get("subscription"))
     period_end = None
     if sub_id and _api():
         period_end = _period_end(_d(stripe.Subscription.retrieve(sub_id)))
     db.update_user(u["id"], stripe_customer_id=_id(s.get("customer")), stripe_subscription_id=sub_id, plan=plan, hq=hq,
-                   stripe_price_plan=price_ids().get(plan) or None, sub_status="active", cancel_at_period_end=0,
+                   stripe_price_plan=price_for(priced, plan) or None, launch_price=priced["launch_price"],
+                   sub_status="active", cancel_at_period_end=0,
                    past_due_since=None, pending_plan=None, pending_hq=None, current_period_end=period_end)
-    db.audit(None, "billing.checkout_completed", f"user:{u['id']}", json.dumps({"plan": plan, "hq": hq}))
+    db.audit(None, "billing.checkout_completed", f"user:{u['id']}",
+             json.dumps({"plan": plan, "hq": hq, "launch": priced["launch_price"]}))
     discord.usage(f"有料プラン契約: {discord.who(u)} {plan}{'+高画質' if hq else ''}")
-    nxt = (f"次回の更新日は {_md(period_end)}、月{_monthly(plan, hq):,}円です。" if period_end
+    nxt = (f"次回の更新日は {_md(period_end)}、月{_monthly(priced, plan, hq):,}円です。" if period_end
            else "次回の更新日は設定画面で確認できます。")
     notify.push_user("subscribed", db.get_user(u["id"]),
                      text=f"お申し込みありがとうございます。{_plan_text(plan, hq)}が使えるようになりました。{nxt}")
@@ -415,6 +432,7 @@ def _apply_pending(u):
     plan = u["pending_plan"] or u["plan"]
     hq = (bool(u["hq"]) if u["pending_hq"] is None else bool(u["pending_hq"])) and plan in quota.HQ_OPTION["plans"]
     ids = price_ids()
+    target = price_for(u, plan)
     if _api() and u["stripe_subscription_id"]:
         sub = _d(stripe.Subscription.retrieve(u["stripe_subscription_id"]))
         items = []
@@ -423,14 +441,14 @@ def _apply_pending(u):
             if pid == ids["hq"]:
                 if not hq:
                     items.append({"id": it["id"], "deleted": True})
-            elif pid != ids[plan]:
-                items.append({"id": it["id"], "price": ids[plan]})
+            elif pid != target:
+                items.append({"id": it["id"], "price": target})
         if items:
             stripe.Subscription.modify(u["stripe_subscription_id"], items=items, proration_behavior="none")
     else:
         _skip("apply_pending", u)
     discord.usage(f"プラン変更（更新日に適用）: {discord.who(u)} → {plan}{'+高画質' if hq else ''}")
-    return {"plan": plan, "hq": 1 if hq else 0, "stripe_price_plan": ids.get(plan) or None,
+    return {"plan": plan, "hq": 1 if hq else 0, "stripe_price_plan": target or None,
             "pending_plan": None, "pending_hq": None}
 
 
