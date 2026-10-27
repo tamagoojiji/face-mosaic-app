@@ -18,7 +18,9 @@ URL=$(cat "$DIR/gas_url")
 TOKEN="$DIR/token"
 log() { echo "$(TZ=Asia/Tokyo date '+%F %T') $*"; }
 
+ALERTED=0
 alert() {
+  ALERTED=1
   local hook
   hook=$(grep -E '^DISCORD_WEBHOOK_ALERTS=' "$APP/.env" | head -1 | cut -d= -f2- | tr -d '"' || true)
   [ -n "$hook" ] && curl -sS -m 15 -H 'Content-Type: application/json' \
@@ -45,7 +47,7 @@ case "${1:-backup}" in
 esac
 
 tmp=$(mktemp -d)
-trap 'rc=$?; rm -rf "$tmp"; [ $rc -ne 0 ] && { log "失敗 rc=$rc"; alert "スクリプトが止まりました（rc=$rc）。$DIR/backup.log を見てください"; }' EXIT
+trap 'rc=$?; rm -rf "$tmp"; if [ $rc -ne 0 ] && [ "$ALERTED" = 0 ]; then log "失敗 rc=$rc"; alert "スクリプトが途中で止まりました（rc=$rc）。$DIR/backup.log を見てください"; fi' EXIT
 ts=$(TZ=Asia/Tokyo date +%Y%m%d-%H%M%S)
 name="app-$ts.db.gz.age"
 
@@ -60,7 +62,13 @@ base64 -w0 "$tmp/$name" > "$tmp/b64"
 
 resp=$(post upload --data-urlencode "name=$name" --data-urlencode "sha256=$sha" --data-urlencode "data@$tmp/b64" || true)
 if ! printf '%s' "$resp" | grep -q '"ok":true'; then
-  alert "GAS への送信に失敗しました: $(printf '%s' "$resp" | head -c 300)"
+  case "$resp" in
+    '{'*) why="GAS の応答: $(printf '%s' "$resp" | head -c 200)" ;;
+    *'<html'*|*'<!DOCTYPE'*) why="GAS が JSON ではなく HTML を返しました（URL の間違いか、GAS の許可が切れている可能性）" ;;
+    '') why="GAS から応答がありません（通信エラーかタイムアウト）" ;;
+    *) why="GAS の応答: $(printf '%s' "$resp" | head -c 120)" ;;
+  esac
+  alert "GAS への送信に失敗しました。$why"
   log "送信失敗 $name resp=$(printf '%s' "$resp" | head -c 200)"
   exit 1
 fi
