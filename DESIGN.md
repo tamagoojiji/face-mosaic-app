@@ -252,6 +252,9 @@ settings     key, value   （プラン上限・元動画の削除までの時間
 audit_log    id, actor_id, action, target, detail, created_at                          ← 通報対応用の記録
 ```
 
+### DB のバックアップ（2026-10-27）
+毎晩3時（VPS ホストの cron）に `scripts/backup-to-gas.sh` が SQLite を `.backup` でコピー→整合性チェック→gzip→**age で暗号化（公開鍵は VPS・復号鍵は運営の Mac の Keychain `face-mosaic-backup-age` にだけ）**→ GAS Web アプリ（`~/dev/gas-tools/face-mosaic-backup`）へ POST → Google ドライブのフォルダ `face-mosaic-backup` に30日分。VPS にも暗号化済みの控えを7件。失敗は Discord #mosaic-alerts。GAS との合言葉は VPS が作って初回だけ登録（`enroll`・以後は拒否）。復元は Mac で `scripts/restore-from-backup.sh`。Contabo の Auto Backup は使わない（動画・写真は期限付きデータのため対象外・サーバーは GitHub から作り直す）
+
 ### 保存しないもの
 - 元動画・元画像と解析データ（場面写真・顔の切り抜き・追跡結果）は24時間で削除。完成品（モザイク済み）だけ30日保存
 - 顔の特徴ベクトル（SFace）・服の色ヒストグラムはジョブ完了時に削除（判定にだけ使う）
@@ -335,6 +338,7 @@ Claude Codeが事前に完了させること:
 5. [ ] 運営向け: プロフィール → 通知 で「支払い成功・失敗」を受け取るか決める（Discord #mosaic-usage と重複するので既定は OFF）
 6. [ ] 本番カードで 動画A 契約 → 動画B＋高画質へ変更（差額の即時請求とレシートメール）→ 設定の「解約する」→ LINE 通知 → 設定の「解約を取り消す」→ 退会（LINE 通知）→ 最後に本人の購読を Stripe で終了し、運営アカウントを `users.py` で動画B・高画質ON に戻す
 7. [ ] 利用規約・特商法表記の支払い条件（段③）が本番の金額・条件と一致しているか見直す
+8. [ ] DB バックアップを VPS 6 へ引っ越す: `backup/`（gas_url・age.pub・token）を新 VPS の同じ場所へコピー（`scp -r` で中身を画面に出さない）→ `apt install age sqlite3` → ホストの crontab に `0 3 * * * /bin/bash /opt/docker/face-mosaic-app/scripts/backup-to-gas.sh >> /opt/docker/face-mosaic-app/backup/backup.log 2>&1` → `bash scripts/backup-to-gas.sh` で1回送って `list` に出ることを確認
 
 ## 7. フェーズ定義
 

@@ -11,3 +11,6 @@ __pycache__/
 *.pyc
 .venv/
 prototype/*.log
+
+# DB バックアップの置き場（VPS だけ・合言葉と暗号化済みの控え）
+backup/

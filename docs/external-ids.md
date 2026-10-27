@@ -40,3 +40,10 @@
 - ベーシックID: @606cuvoe
 - 友だち追加リンク: https://line.me/R/ti/p/@606cuvoe
 - Webhook URL 登録済み・「Webhookの利用」はオフ（受け口は未実装）
+
+## DB バックアップ（GAS・2026-10-27）
+- GAS プロジェクト: face-mosaic-backup・scriptId `18T0vKKRifiaI-hkBoLAGBL5IA02H89Kfu4hmdIrztUx1p8Z7AYYDOWfG`（正本 `~/dev/gas-tools/face-mosaic-backup`）
+- Web アプリのデプロイ ID（@1・更新は `clasp redeploy` でこの ID のまま）: `AKfycbxOvLYaS8OFgejmR3t3rg0jTrTEuYzJoIEzMCoO1SMgvfcwp-6U5O9uMTk1nrtV5We0nQ`
+- 保存先: Google ドライブ（tamagoojiji@gmail.com）のフォルダ `face-mosaic-backup`（ID `1EpaZFNgPFNs_VypwN_YPx6_XaTQZzDty`）
+- 合言葉: GAS の Script Properties `TOKEN` と VPS `backup/token`（値はどこにも書かない）
+- 復号鍵: 運営の Mac の Keychain（サービス名 `face-mosaic-backup-age`）
