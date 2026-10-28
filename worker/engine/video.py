@@ -158,7 +158,10 @@ def to_1080(path, vf, out):
     自動回転を効かせると displaymatrix は出力に引き継がれず、回転情報の無い正立動画になる。"""
     if os.path.exists(out):
         return out
-    filt = join_vf(vf, "scale='if(gt(iw,ih),1920,-2)':'if(gt(iw,ih),-2,1920)'", "fps=30")
+    # 順番が大事: 先に 30fps へ間引いて 1080p に縮めてから HDR→SDR の LUT を掛ける。
+    # LUT（RGB 化→3D LUT→YUV 戻し）を 4K60 のまま掛けると、最後に捨てる 7/8 の画素にも掛かる
+    # （VPS 6 実測・4K60 HLG 30秒: LUT→縮小 299秒 / 間引き→縮小→LUT 90秒・PSNR 44dB で見た目は同じ）
+    filt = join_vf("fps=30", "scale='if(gt(iw,ih),1920,-2)':'if(gt(iw,ih),-2,1920)'", vf)
     cmd = [FFMPEG, "-v", "error", "-y", *HWACCEL, "-i", path,
            "-vf", filt, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "16",
            "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709",
