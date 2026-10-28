@@ -13,13 +13,16 @@
 
 import argparse
 import bisect
+import collections
 import json
 import math
+import multiprocessing
 import os
 import shutil
 import statistics
 import subprocess
 import sys
+from fractions import Fraction
 
 os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
 
@@ -173,6 +176,24 @@ def to_1080(path, vf, out):
 
 # ---------------------------------------------------------------- 顔の追跡（video_retouch.py）
 
+def _env_int(name, default):
+    try:
+        return max(1, int(os.environ.get(name, default)))
+    except ValueError:
+        return default
+
+
+def _pool_init():
+    # 並列のワーカーは1プロセス1スレッド（プロセス数で CPU を使う）
+    cv2.setNumThreads(1)
+
+
+def _track_detect(buf, dw, dh, face_score, upscale):
+    """ワーカー側: 1コマの顔検出（検出器は detect.py のキャッシュでプロセスごとに1つ）。"""
+    frame = np.frombuffer(buf, dtype=np.uint8).reshape(dh, dw, 3)
+    return detect_faces_yunet(frame, YUNET_PATH, face_score, upscale=upscale)
+
+
 def track_faces(path, info, vf, args):
     ow, oh = info["out_width"], info["out_height"]
     scale = min(1.0, DETECT_LONG_SIDE / float(max(ow, oh)))
@@ -192,50 +213,72 @@ def track_faces(path, info, vf, args):
     active, tracks = [], []
     next_id = 0
     step = max(1, int(args.detect_every))
+    upscale = getattr(args, "detect_upscale", 2)
     mark = 0
     i = 0
+
+    def associate(fi, dets, warn):
+        # 対応付け（IoU・EMA・HOLD_FRAMES）はコマの順に親で直列に行う
+        nonlocal active, next_id
+        if warn and fi == 0:
+            print(warn, file=sys.stderr)
+        dets.sort(key=lambda f: -float(f.get("conf", 0.0)))
+        used = set()
+        for d in dets:
+            best, best_iou = None, IOU_MATCH
+            for t in active:
+                if t["id"] in used:
+                    continue
+                iou, _c = _overlap(d, t["last"])
+                if iou > best_iou:
+                    best, best_iou = t, iou
+            if best is None:
+                best = {"id": next_id, "boxes": {}, "confs": [],
+                        "last": {k: float(d[k]) for k in "xywh"},
+                        "last_frame": fi, "first_frame": fi}
+                next_id += 1
+                active.append(best)
+                tracks.append(best)
+            else:
+                lb = best["last"]
+                best["last"] = {k: EMA_ALPHA * float(d[k]) + (1.0 - EMA_ALPHA) * lb[k]
+                                for k in "xywh"}
+            used.add(best["id"])
+            best["boxes"][fi] = dict(best["last"], conf=float(d.get("conf", 0.0)))
+            best["confs"].append(float(d.get("conf", 0.0)))
+            best["last_frame"] = fi
+        active = [t for t in active if fi - t["last_frame"] <= HOLD_FRAMES]
+
+    n_workers = _env_int("TRACK_WORKERS", 4)
+    pool = multiprocessing.get_context("spawn").Pool(n_workers, initializer=_pool_init) \
+        if n_workers > 1 else None
+    pending = collections.deque()  # (コマ番号, AsyncResult)。未完了は 2N 個まで
     try:
         while True:
             buf = proc.stdout.read(fsize)
             if len(buf) < fsize:
                 break
             if i % step == 0:
-                frame = np.frombuffer(buf, dtype=np.uint8).reshape(dh, dw, 3)
-                dets, warn = detect_faces_yunet(frame, YUNET_PATH, args.face_score,
-                                                upscale=getattr(args, "detect_upscale", 2))
-                if warn and i == 0:
-                    print(warn, file=sys.stderr)
-                dets.sort(key=lambda f: -float(f.get("conf", 0.0)))
-                used = set()
-                for d in dets:
-                    best, best_iou = None, IOU_MATCH
-                    for t in active:
-                        if t["id"] in used:
-                            continue
-                        iou, _c = _overlap(d, t["last"])
-                        if iou > best_iou:
-                            best, best_iou = t, iou
-                    if best is None:
-                        best = {"id": next_id, "boxes": {}, "confs": [],
-                                "last": {k: float(d[k]) for k in "xywh"},
-                                "last_frame": i, "first_frame": i}
-                        next_id += 1
-                        active.append(best)
-                        tracks.append(best)
-                    else:
-                        lb = best["last"]
-                        best["last"] = {k: EMA_ALPHA * float(d[k]) + (1.0 - EMA_ALPHA) * lb[k]
-                                        for k in "xywh"}
-                    used.add(best["id"])
-                    best["boxes"][i] = dict(best["last"], conf=float(d.get("conf", 0.0)))
-                    best["confs"].append(float(d.get("conf", 0.0)))
-                    best["last_frame"] = i
-                active = [t for t in active if i - t["last_frame"] <= HOLD_FRAMES]
+                if pool is None:
+                    frame = np.frombuffer(buf, dtype=np.uint8).reshape(dh, dw, 3)
+                    associate(i, *detect_faces_yunet(frame, YUNET_PATH, args.face_score, upscale=upscale))
+                else:
+                    while len(pending) >= 2 * n_workers:
+                        fi, res = pending.popleft()
+                        associate(fi, *res.get())
+                    pending.append((i, pool.apply_async(
+                        _track_detect, (buf, dw, dh, args.face_score, upscale))))
             i += 1
             if total and i * 10 // max(total, 1) > mark:
                 mark = i * 10 // max(total, 1)
                 print(f"  追跡 {mark * 10}%  ({i}/{total}f・トラック {len(tracks)})", flush=True)
+        while pending:
+            fi, res = pending.popleft()
+            associate(fi, *res.get())
     finally:
+        if pool is not None:
+            pool.terminate()
+            pool.join()
         try:
             proc.stdout.close()
         except OSError:
@@ -294,7 +337,9 @@ def get_tracks(path, info, vf, tracks_path, fast=False):
     if os.path.exists(tracks_path):
         return load_tracks(tracks_path)
     # fast: 1フレームおき・拡大なしで探す（VPS 実測で 1 フレーム 0.31 秒 → 0.12 秒）
-    args = argparse.Namespace(face_score=0.25, detect_every=2 if fast else 1, preview_only=False,
+    # DETECT_EVERY（env）で fast の間引きを変えられる（既定 2）
+    args = argparse.Namespace(face_score=0.25, detect_every=_env_int("DETECT_EVERY", 2) if fast else 1,
+                              preview_only=False,
                               detect_upscale=1 if fast else 2)
     tracks, dw, dh, seen = track_faces(path, info, vf, args)
     save_tracks(tracks_path, tracks, dw, dh, seen, args)
@@ -381,6 +426,24 @@ def load_feats(path):
     return face_m, cloth_m
 
 
+_FEAT_MODELS = None  # ワーカー側で遅延生成する (det, rec)
+
+
+def _feat_frame(buf, fw, fh, k, items):
+    """ワーカー側: 1コマ分の [(tid, 顔特徴 or None, 服ヒストグラム or None)]。"""
+    global _FEAT_MODELS
+    if _FEAT_MODELS is None:
+        _FEAT_MODELS = (cv2.FaceDetectorYN.create(YUNET_PATH, "", (160, 160), score_threshold=0.3),
+                        cv2.FaceRecognizerSF.create(SFACE_PATH, ""))
+    det, rec = _FEAT_MODELS
+    img = np.frombuffer(buf, dtype=np.uint8).reshape(fh, fw, 3)
+    out = []
+    for tid, b in items:
+        x, y, w, h = b["x"] * k, b["y"] * k, b["w"] * k, b["h"] * k
+        out.append((tid, face_feature(img, x, y, w, h, det, rec), torso_hist(img, x, y, w, h)))
+    return out
+
+
 def compute_features(path, info, vf, tracks, dw, cache):
     """BLUR_MIN_CONF 以上のトラックについて、顔と服の特徴を1パスで計算する。"""
     if os.path.exists(cache) and "ver" in np.load(cache).files \
@@ -402,9 +465,23 @@ def compute_features(path, info, vf, tracks, dw, cache):
         for f in sample_frames(t):
             need.setdefault(f, []).append((t["id"], bx[f]))
 
-    det = cv2.FaceDetectorYN.create(YUNET_PATH, "", (160, 160), score_threshold=0.3)
-    rec = cv2.FaceRecognizerSF.create(SFACE_PATH, "")
+    n_workers = _env_int("FEAT_WORKERS", 4)
+    if n_workers > 1:
+        pool = multiprocessing.get_context("spawn").Pool(n_workers, initializer=_pool_init)
+        det = rec = None  # 親では作らない（各ワーカーで遅延生成）
+    else:
+        pool = None
+        det = cv2.FaceDetectorYN.create(YUNET_PATH, "", (160, 160), score_threshold=0.3)
+        rec = cv2.FaceRecognizerSF.create(SFACE_PATH, "")
     faces, cloths = {}, {}
+
+    def collect(rows):
+        for tid, fe, th in rows:
+            if fe is not None:
+                faces.setdefault(tid, []).append(fe)
+            if th is not None:
+                cloths.setdefault(tid, []).append(th)
+
     cmd = [FFMPEG, "-v", "error", *HWACCEL,
            "-i", path, "-an", "-sn", "-dn"]
     feat_vf = join_vf(vf, f"scale={fw}:{fh}" if fw != ow else "")
@@ -413,6 +490,7 @@ def compute_features(path, info, vf, tracks, dw, cache):
     cmd += ["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
     fsize = fw * fh * 3
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=fsize)
+    pending = collections.deque()  # 未完了は 2N 個まで・コマの順に取り出す
     i, last = 0, max(need) if need else -1
     try:
         while i <= last:
@@ -420,17 +498,27 @@ def compute_features(path, info, vf, tracks, dw, cache):
             if len(buf) < fsize:
                 break
             if i in need:
-                img = np.frombuffer(buf, dtype=np.uint8).reshape(fh, fw, 3)
-                for tid, b in need[i]:
-                    x, y, w, h = b["x"] * k, b["y"] * k, b["w"] * k, b["h"] * k
-                    fe = face_feature(img, x, y, w, h, det, rec)
-                    if fe is not None:
-                        faces.setdefault(tid, []).append(fe)
-                    th = torso_hist(img, x, y, w, h)
-                    if th is not None:
-                        cloths.setdefault(tid, []).append(th)
+                if pool is None:
+                    img = np.frombuffer(buf, dtype=np.uint8).reshape(fh, fw, 3)
+                    for tid, b in need[i]:
+                        x, y, w, h = b["x"] * k, b["y"] * k, b["w"] * k, b["h"] * k
+                        fe = face_feature(img, x, y, w, h, det, rec)
+                        if fe is not None:
+                            faces.setdefault(tid, []).append(fe)
+                        th = torso_hist(img, x, y, w, h)
+                        if th is not None:
+                            cloths.setdefault(tid, []).append(th)
+                else:
+                    while len(pending) >= 2 * n_workers:
+                        collect(pending.popleft().get())
+                    pending.append(pool.apply_async(_feat_frame, (buf, fw, fh, k, need[i])))
             i += 1
+        while pending:
+            collect(pending.popleft().get())
     finally:
+        if pool is not None:
+            pool.terminate()
+            pool.join()
         proc.stdout.close()
         proc.kill()
         proc.wait()
@@ -742,57 +830,87 @@ def build_frame_boxes(tracks, n_frames, inv_scale, detect_every):
     return per_frame
 
 
-def render(path, info, vf, per_frame, out_path, encoder, style):
-    """video_retouch.render の LUT なし・プレビューなし版。"""
-    w, h = info["out_width"], info["out_height"]
-    fsize = w * h * 3
-    bitrate = min(int(info["bit_rate"] * BITRATE_SCALE) or BITRATE_CAP, BITRATE_CAP)
+# 書き出しの分割並列: 1 分割あたりの最低コマ数（短い動画は分割数を減らす）
+SEG_MIN_FRAMES = 150
 
-    dec_cmd = [FFMPEG, "-v", "error", *HWACCEL,
-               "-i", path, "-an", "-sn", "-dn"]
+
+def _seg_bounds(total, n):
+    """コマ範囲 [0, total) を n 個の [a, b) に分ける。"""
+    n = max(1, min(n, total // SEG_MIN_FRAMES))
+    return [(total * k // n, total * (k + 1) // n) for k in range(n)]
+
+
+def _render_seg(hq, path, info, vf, boxes, a, b, last, seg_path, encoder, style, sx, sy, label):
+    """コマ [a, b) を音声なしで seg_path に書く（last は最後の分割＝ b で止めずに最後まで読む）。
+
+    hq=False: 1080p 版。boxes は {絶対コマ番号: [枠]}。
+    hq=True: 元動画（cfr）。boxes は filled_tracks、sx・sy は元の解像度への倍率。"""
+    w, h = info["out_width"], info["out_height"]
+    fps = info["fps"]
+    fsize = w * h * 3
+
+    dec_cmd = [FFMPEG, "-v", "error", *HWACCEL]
+    if hq and HQ_DEC_THREADS:
+        dec_cmd += ["-threads", str(HQ_DEC_THREADS)]
+    if a > 0:
+        # 入力シーク（accurate_seek 既定）。コマ a の時刻 = a / fps（分数で計算）
+        dec_cmd += ["-ss", f"{float(a / Fraction(info['fps_str'])):.9f}"]
+    dec_cmd += ["-i", path, "-an", "-sn", "-dn"]
     if vf:
         dec_cmd += ["-vf", vf]
+    if hq:
+        # 1コマ＝1/元fps 秒に揃える（可変フレームレートでもフレーム番号と時刻を対応させるため）
+        dec_cmd += ["-fps_mode", "cfr", "-r", info["fps_str"]]
+    if not last:
+        dec_cmd += ["-frames:v", str(b - a)]
     dec_cmd += ["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
 
     enc_cmd = [FFMPEG, "-v", "error", "-y",
                "-f", "rawvideo", "-pix_fmt", "rgb24", "-video_size", f"{w}x{h}",
-               "-framerate", info["fps_str"], "-i", "-"]
-    if info["has_audio"]:
-        enc_cmd += ["-i", path, "-map", "0:v:0", "-map", "1:a:0", "-c:a", "copy"]
+               "-framerate", info["fps_str"], "-i", "-", "-map", "0:v:0"]
+    if hq:
+        enc_cmd += ["-c:v", "libx264", "-crf", HQ_CRF, "-preset", HQ_PRESET]
+        if HQ_ENC_THREADS:
+            enc_cmd += ["-threads", str(HQ_ENC_THREADS)]
+        if HQ_LOOKAHEAD is not None:
+            enc_cmd += ["-rc-lookahead", str(HQ_LOOKAHEAD)]
+        enc_cmd += ["-tag:v", "avc1"]
     else:
-        enc_cmd += ["-map", "0:v:0"]
-    enc_cmd += ["-c:v", encoder]
-    if encoder == "libx264":
-        enc_cmd += ["-crf", "20", "-preset", "veryfast"]
-    else:
-        enc_cmd += ["-b:v", str(bitrate)]
-    enc_cmd += ["-tag:v", "avc1" if encoder == "libx264" else "hvc1", "-pix_fmt", "yuv420p",
+        bitrate = min(int(info["bit_rate"] * BITRATE_SCALE) or BITRATE_CAP, BITRATE_CAP)
+        enc_cmd += ["-c:v", encoder]
+        if encoder == "libx264":
+            enc_cmd += ["-crf", "20", "-preset", "veryfast"]
+        else:
+            enc_cmd += ["-b:v", str(bitrate)]
+        enc_cmd += ["-threads", "2", "-tag:v", "avc1" if encoder == "libx264" else "hvc1"]
+    enc_cmd += ["-pix_fmt", "yuv420p",
                 "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
-                "-f", "mp4", out_path]
+                "-f", "mp4", seg_path]
 
     dec = subprocess.Popen(dec_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=fsize)
     enc = subprocess.Popen(enc_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=fsize)
 
-    total = info["frames"]
-    mark, i, blurred = 0, 0, 0
+    total = b - a
+    mark, j, blurred = 0, 0, 0
     try:
         while True:
             buf = dec.stdout.read(fsize)
             if len(buf) < fsize:
                 break
-            boxes = per_frame.get(i)
-            if boxes:
+            # 枠は絶対コマ番号 a+j で引く
+            fb = hq_boxes_at(boxes, a + j, fps, sx, sy) if hq else boxes.get(a + j)
+            if fb:
                 arr = np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 3).copy()
-                for box in boxes:
+                for box in fb:
                     mosaic_face(arr, box, 0, style)
                 enc.stdin.write(arr.tobytes())
                 blurred += 1
             else:
                 enc.stdin.write(buf)
-            i += 1
-            if total and i * 10 // max(total, 1) > mark:
-                mark = i * 10 // max(total, 1)
-                print(f"  書き出し {mark * 10}%  ({i}/{total}f)", flush=True)
+            j += 1
+            if total and j * 10 // max(total, 1) > mark:
+                mark = min(10, j * 10 // max(total, 1))
+                print(f"  {label} {mark * 10}%  ({j}/{total}f)", flush=True)
     except BrokenPipeError:
         pass
     finally:
@@ -805,12 +923,66 @@ def render(path, info, vf, per_frame, out_path, encoder, style):
         enc_err = enc.stderr.read().decode("utf-8", "replace")
         dec.stderr.close()
         enc.stderr.close()
-        dec.wait()
+        drc = dec.wait()
         rc = enc.wait()
-    if rc != 0 or not os.path.exists(out_path):
+    if hq:
+        if rc != 0 or drc not in (0, 255) or j == 0 or not os.path.exists(seg_path):
+            raise RuntimeError(f"高画質の書き出しに失敗 (dec rc={drc} enc rc={rc}): "
+                               f"{(enc_err or dec_err).strip()[-400:]}")
+    elif rc != 0 or not os.path.exists(seg_path):
         raise RuntimeError(f"書き出しに失敗 (enc rc={rc}): "
                            f"{(enc_err or dec_err).strip()[-400:]}")
-    return {"frames_written": i, "frames_blurred": blurred, "encoder": encoder}
+    return j, blurred
+
+
+def _render_split(hq, path, info, vf, boxes_of_seg, total, n_seg, out_path, encoder, style, sx, sy, label):
+    """[0, total) を分割して別プロセスで同時に描画し、音声を付けて連結する。戻り値は (書いたコマ数, モザイクのコマ数)。"""
+    bounds = _seg_bounds(total, n_seg)
+    n = len(bounds)
+    segs = [f"{out_path}.seg{k}.mp4" for k in range(n)]
+    lst = f"{out_path}.list.txt"
+    jobs = [(hq, path, info, vf, boxes_of_seg(a, b), a, b, k == n - 1, segs[k], encoder, style, sx, sy,
+             f"{label} {k + 1}/{n}" if n > 1 else label)
+            for k, (a, b) in enumerate(bounds)]
+    pool = None
+    try:
+        if n == 1:
+            res = [_render_seg(*jobs[0])]
+        else:
+            pool = multiprocessing.get_context("spawn").Pool(n)
+            rs = [pool.apply_async(_render_seg, job) for job in jobs]
+            res = [r.get() for r in rs]
+        with open(lst, "w", encoding="utf-8") as f:
+            for sp in segs:
+                f.write("file '" + os.path.abspath(sp).replace("'", "'\\''") + "'\n")
+        cmd = [FFMPEG, "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", lst]
+        if info["has_audio"]:
+            cmd += ["-i", path, "-map", "0:v:0", "-map", "1:a:0", "-c:a", "copy"]
+        else:
+            cmd += ["-map", "0:v:0"]
+        cmd += ["-c:v", "copy", "-movflags", "+faststart", "-f", "mp4", out_path]
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode != 0 or not os.path.exists(out_path):
+            raise RuntimeError(f"{label}の連結に失敗 (rc={r.returncode}): "
+                               f"{(r.stderr or r.stdout).strip()[-400:]}")
+    finally:
+        if pool is not None:
+            pool.terminate()
+            pool.join()
+        for sp in segs + [lst]:
+            if os.path.exists(sp):
+                os.remove(sp)
+    return sum(x[0] for x in res), sum(x[1] for x in res)
+
+
+def render(path, info, vf, per_frame, out_path, encoder, style):
+    """video_retouch.render の LUT なし・プレビューなし版。EXPORT_SEGMENTS 本に分けて同時に描画する。"""
+    def boxes_of_seg(a, b):
+        return {f: v for f, v in per_frame.items() if a <= f < b}
+    written, blurred = _render_split(False, path, info, vf, boxes_of_seg, info["frames"],
+                                     _env_int("EXPORT_SEGMENTS", 3), out_path, encoder, style, 1.0, 1.0,
+                                     "書き出し")
+    return {"frames_written": written, "frames_blurred": blurred, "encoder": encoder}
 
 
 def export(path, work_dir, tracks_path, keep, blur, style, out_path):
@@ -870,77 +1042,16 @@ def hq_boxes_at(filled_tracks, j, src_fps, sx, sy):
 
 
 def render_hq(path, info, vf, filled_tracks, sx, sy, out_path, style):
-    """元動画をデコード（自動回転・HDR は hdr_sdr と同じ LUT で SDR 化・元の fps のまま）→ 1コマずつモザイク → libx264。"""
-    w, h = info["out_width"], info["out_height"]
-    fps = info["fps"]
-    fsize = w * h * 3
+    """元動画をデコード（自動回転・HDR は hdr_sdr と同じ LUT で SDR 化・元の fps のまま）→ 1コマずつモザイク → libx264。
 
-    dec_cmd = [FFMPEG, "-v", "error", *HWACCEL]
-    if HQ_DEC_THREADS:
-        dec_cmd += ["-threads", str(HQ_DEC_THREADS)]
-    dec_cmd += ["-i", path, "-an", "-sn", "-dn"]
-    if vf:
-        dec_cmd += ["-vf", vf]
-    # 1コマ＝1/元fps 秒に揃える（可変フレームレートでもフレーム番号と時刻を対応させるため）
-    dec_cmd += ["-fps_mode", "cfr", "-r", info["fps_str"], "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
-
-    enc_cmd = [FFMPEG, "-v", "error", "-y",
-               "-f", "rawvideo", "-pix_fmt", "rgb24", "-video_size", f"{w}x{h}",
-               "-framerate", info["fps_str"], "-i", "-"]
-    if info["has_audio"]:
-        enc_cmd += ["-i", path, "-map", "0:v:0", "-map", "1:a:0", "-c:a", "copy"]
-    else:
-        enc_cmd += ["-map", "0:v:0"]
-    enc_cmd += ["-c:v", "libx264", "-crf", HQ_CRF, "-preset", HQ_PRESET]
-    if HQ_ENC_THREADS:
-        enc_cmd += ["-threads", str(HQ_ENC_THREADS)]
-    if HQ_LOOKAHEAD is not None:
-        enc_cmd += ["-rc-lookahead", str(HQ_LOOKAHEAD)]
-    enc_cmd += ["-tag:v", "avc1", "-pix_fmt", "yuv420p",
-                "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
-                "-movflags", "+faststart", "-f", "mp4", out_path]
-
-    dec = subprocess.Popen(dec_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=fsize)
-    enc = subprocess.Popen(enc_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=fsize)
-
-    total = int(round(info["duration"] * fps))  # CFR で出るコマ数（可変fpsの nb_frames より多い）
-    mark, i, blurred = 0, 0, 0
-    try:
-        while True:
-            buf = dec.stdout.read(fsize)
-            if len(buf) < fsize:
-                break
-            boxes = hq_boxes_at(filled_tracks, i, fps, sx, sy)
-            if boxes:
-                arr = np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 3).copy()
-                for box in boxes:
-                    mosaic_face(arr, box, 0, style)
-                enc.stdin.write(arr.tobytes())
-                blurred += 1
-            else:
-                enc.stdin.write(buf)
-            i += 1
-            if total and i * 10 // max(total, 1) > mark:
-                mark = i * 10 // max(total, 1)
-                print(f"  高画質の書き出し {mark * 10}%  ({i}/{total}f)", flush=True)
-    except BrokenPipeError:
-        pass
-    finally:
-        for p in (dec.stdout, enc.stdin):
-            try:
-                p.close()
-            except OSError:
-                pass
-        dec_err = dec.stderr.read().decode("utf-8", "replace")
-        enc_err = enc.stderr.read().decode("utf-8", "replace")
-        dec.stderr.close()
-        enc.stderr.close()
-        drc = dec.wait()
-        rc = enc.wait()
-    if rc != 0 or drc not in (0, 255) or i == 0 or not os.path.exists(out_path):
-        raise RuntimeError(f"高画質の書き出しに失敗 (dec rc={drc} enc rc={rc}): "
-                           f"{(enc_err or dec_err).strip()[-400:]}")
-    return {"frames_written": i, "frames_blurred": blurred, "encoder": f"libx264-crf{HQ_CRF}-{HQ_PRESET}"}
+    HQ_SEGMENTS 本に分けて同時に描画する（1 本 2.7GB 使うため既定 2）。"""
+    total = int(round(info["duration"] * info["fps"]))  # CFR で出るコマ数（可変fpsの nb_frames より多い）
+    # hq_boxes_at はトラック本体を使わないので、子プロセスへは枠だけ渡す
+    slim = [(None, filled) for _t, filled in filled_tracks]
+    written, blurred = _render_split(True, path, info, vf, lambda a, b: slim, total,
+                                     _env_int("HQ_SEGMENTS", 2), out_path, None, style, sx, sy,
+                                     "高画質の書き出し")
+    return {"frames_written": written, "frames_blurred": blurred, "encoder": f"libx264-crf{HQ_CRF}-{HQ_PRESET}"}
 
 
 def export_hq(src, v1080, work_dir, tracks_path, keep, blur, style, out_path):

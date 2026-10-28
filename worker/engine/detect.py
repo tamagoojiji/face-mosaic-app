@@ -24,6 +24,9 @@ YUNET_MIN_FRAC = 0.01
 # 主役の胴体ゾーン内の検出を信じる最低 confidence
 BODY_ZONE_CONF = 0.9
 
+# YuNet 検出器のキャッシュ（(w, h, score) ごとに1つ。毎コマのモデル読み直しを避ける）
+_YUNET_CACHE = {}
+
 
 def detect_faces_yunet(rgb_uint8, model_path=YUNET_PATH, score=0.3, upscale=2):
     """OpenCV YuNet で顔矩形を取る。戻り値は (faces, warning)。"""
@@ -45,8 +48,12 @@ def detect_faces_yunet(rgb_uint8, model_path=YUNET_PATH, score=0.3, upscale=2):
     h, w = bgr.shape[:2]
 
     try:
-        det = cv2.FaceDetectorYN.create(model_path, "", (w, h), score_threshold=float(score),
-                                        nms_threshold=0.3, top_k=5000)
+        key = (w, h, float(score))
+        det = _YUNET_CACHE.get(key)
+        if det is None:
+            det = cv2.FaceDetectorYN.create(model_path, "", (w, h), score_threshold=float(score),
+                                            nms_threshold=0.3, top_k=5000)
+            _YUNET_CACHE[key] = det
         _, raw = det.detect(bgr)
     except Exception as e:
         return [], f"YuNet の検出に失敗: {e}"
