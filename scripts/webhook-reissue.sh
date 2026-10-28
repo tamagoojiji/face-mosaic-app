@@ -5,6 +5,9 @@
 # 3) compose で app/worker を作り直して環境変数を読み直す
 set -eu
 cd /opt/docker/face-mosaic-app
+# 0) 設定ファイルを変えた直後でも新しい鍵（本番/テスト）で作れるように、先にコンテナを作り直して環境変数を読み直す（2026-10-28: これが無く本番化の1回目がテスト環境に作られた）
+docker compose up -d 2>&1 | tail -2
+docker exec -i face-mosaic-app python -c "import os;k=os.environ.get('STRIPE_SECRET_KEY','');print('key mode:', 'live' if k.startswith('sk_live') else ('test' if k.startswith('sk_test') else 'unset'))"
 docker exec -i face-mosaic-app python - <<'PY'
 import os, stat, stripe
 stripe.api_key = os.environ["STRIPE_SECRET_KEY"]
