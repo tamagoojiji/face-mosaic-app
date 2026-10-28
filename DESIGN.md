@@ -339,8 +339,8 @@ Claude Codeが事前に完了させること:
    - 解約の確認メールは Stripe にはない → LINE 通知 #7（`docs/line-notify-templates.md`）で代える
 5. [ ] 運営向け: プロフィール → 通知 で「支払い成功・失敗」を受け取るか決める（Discord #mosaic-usage と重複するので既定は OFF）
 6. [ ] 本番カードで 動画A 契約 → 動画B＋高画質へ変更（差額の即時請求とレシートメール）→ 設定の「解約する」→ LINE 通知 → 設定の「解約を取り消す」→ 退会（LINE 通知）→ 最後に本人の購読を Stripe で終了し、運営アカウントを `users.py` で動画B・高画質ON に戻す
-7. [ ] 利用規約・特商法表記の支払い条件（段③）が本番の金額・条件と一致しているか見直す
-8. [ ] DB バックアップを VPS 6 へ引っ越す: `backup/`（gas_url・age.pub・token）を新 VPS の同じ場所へコピー（`scp -r` で中身を画面に出さない）→ `apt install age sqlite3` → ホストの crontab に `0 3 * * * /bin/bash /opt/docker/face-mosaic-app/scripts/backup-to-gas.sh >> /opt/docker/face-mosaic-app/backup/backup.log 2>&1` → `bash scripts/backup-to-gas.sh` で1回送って `list` に出ることを確認
+7. [x] 利用規約・特商法表記の支払い条件（段③）が本番の金額・条件と一致しているか見直す（2026-10-28 確認: terms/tokushoho の定価 1,000／1,480／1,980・＋500、記念 500／980／1,480、返金なし・自動更新・解約後は更新日まで、が決定事項と一致）
+8. [x] DB バックアップを VPS 6 へ引っ越す（2026-10-28 確認: VPS 6 に crontab 1行・age/sqlite3 あり・10/28 03:00 の送信 ok・users=3）: `backup/`（gas_url・age.pub・token）を新 VPS の同じ場所へコピー（`scp -r` で中身を画面に出さない）→ `apt install age sqlite3` → ホストの crontab に `0 3 * * * /bin/bash /opt/docker/face-mosaic-app/scripts/backup-to-gas.sh >> /opt/docker/face-mosaic-app/backup/backup.log 2>&1` → `bash scripts/backup-to-gas.sh` で1回送って `list` に出ることを確認
 
 ## 7. フェーズ定義
 
