@@ -38,8 +38,21 @@ td.num{text-align:right;white-space:nowrap}
 dl.faq dt{font-weight:700;margin-top:14px}
 dl.faq dd{margin:4px 0 0}
 footer{margin-top:40px;font-size:14px;color:var(--sub)}
+.find{position:sticky;top:0;z-index:10;background:var(--bg);padding:12px 0 8px;border-bottom:1px solid var(--line)}
+.find label{display:block;font-size:14px;font-weight:700;margin-bottom:4px}
+.find-row{display:flex;gap:8px}
+.find input{flex:1;min-width:0;height:44px;padding:0 12px;font:inherit;font-size:16px;color:var(--fg);background:var(--paper);border:1px solid var(--line);border-radius:10px}
+.find input:focus{outline:2px solid var(--pri);outline-offset:1px;border-color:var(--pri)}
+.find button{width:44px;height:44px;font-size:18px;color:var(--pri);background:var(--pri-soft);border:0;border-radius:10px;cursor:pointer}
+.find button:disabled{color:var(--sub);background:var(--surface);cursor:default}
+.find .status{margin:6px 0 0;min-height:1.4em;font-size:14px;color:var(--sub)}
+mark.hit{background:#FFE79A;color:inherit;border-radius:3px;scroll-margin-top:140px}
+mark.hit.cur{background:#F2B33D;outline:2px solid #B5431A}
+section.ch{scroll-margin-top:110px}
 @page{size:A4 portrait;margin:12mm}
 @media print{
+  .find{display:none}
+  mark.hit{background:none;outline:0}
   body{font-size:10pt;line-height:1.55;background:#fff}
   .wrap{max-width:none;padding:0}
   nav.toc a{min-height:0;line-height:1.5}
@@ -56,6 +69,15 @@ footer{margin-top:40px;font-size:14px;color:var(--sub)}
 </style>
 </head><body>
 <main class="wrap">
+  <div class="find" role="search">
+    <label for="find-q">この説明書の中を探す</label>
+    <div class="find-row">
+      <input id="find-q" type="search" placeholder="例: 解約、高画質、お試し" autocomplete="off" enterkeyhint="search">
+      <button type="button" id="find-prev" aria-label="前の場所へ" disabled>↑</button>
+      <button type="button" id="find-next" aria-label="次の場所へ" disabled>↓</button>
+    </div>
+    <p class="status" id="find-status" aria-live="polite"></p>
+  </div>
   <header>
     <p class="kicker">らくらくモザイク（アプリ内の表示は「顔モザイク」）</p>
     <h1>くわしい説明書</h1>
@@ -300,11 +322,50 @@ footer{margin-top:40px;font-size:14px;color:var(--sub)}
       <dt>ログアウトするには？</dt>
       <dd>設定の「ログアウト」。次に開くときは LINE で入り直します。</dd>
       <dt>問い合わせ先は？</dt>
-      <dd>アプリ内の「問題を報告する」か、tamagoojiji@gmail.com へ。</dd>
+      <dd>アプリ内の「問題を報告する」か、contact@tetraris.com へ。</dd>
     </dl>
     <p class="hint">規約: <a href="/legal/terms">利用規約</a>・<a href="/legal/privacy">プライバシーポリシー</a>・<a href="/legal/tokushoho">特定商取引法に基づく表記</a></p>
   </section>
 
   <footer>らくらくモザイク 運営：Tetraris ／ 画面の写真の顔は、説明のためにぼかしています。</footer>
 </main>
+<script>
+(()=>{
+  const q=document.getElementById('find-q'),prev=document.getElementById('find-prev'),next=document.getElementById('find-next'),st=document.getElementById('find-status');
+  const root=document.querySelector('main.wrap'),box=document.querySelector('.find');
+  let hits=[],cur=-1,timer;
+  function clear(){
+    for(const m of root.querySelectorAll('mark.hit')){const p=m.parentNode;m.replaceWith(document.createTextNode(m.textContent));p.normalize();}
+    hits=[];cur=-1;
+  }
+  function search(){
+    clear();
+    const w=q.value.trim();
+    if(!w){st.textContent='';prev.disabled=next.disabled=true;return;}
+    const lw=w.toLowerCase(),nodes=[];
+    const walk=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:n=>box.contains(n)||n.parentNode.closest('script,style')||!n.nodeValue.toLowerCase().includes(lw)?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT});
+    while(walk.nextNode())nodes.push(walk.currentNode);
+    for(const n of nodes){
+      const s=n.nodeValue,ls=s.toLowerCase(),f=document.createDocumentFragment();let i=0,j;
+      while((j=ls.indexOf(lw,i))>-1){f.append(s.slice(i,j));const m=document.createElement('mark');m.className='hit';m.textContent=s.slice(j,j+w.length);f.append(m);hits.push(m);i=j+w.length;}
+      f.append(s.slice(i));n.replaceWith(f);
+    }
+    prev.disabled=next.disabled=hits.length<2;
+    if(!hits.length){st.textContent='「'+w+'」は見つかりませんでした。ほかのことば（例: 料金→プラン、やめる→解約）で探してみてください';return;}
+    go(0);
+  }
+  function go(i){
+    if(!hits.length)return;
+    if(cur>-1)hits[cur].classList.remove('cur');
+    cur=(i+hits.length)%hits.length;
+    hits[cur].classList.add('cur');
+    hits[cur].scrollIntoView({block:'center'});
+    st.textContent=hits.length+'か所 見つかりました（'+(cur+1)+'/'+hits.length+'）';
+  }
+  q.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(search,250);});
+  q.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();if(e.isComposing)return;hits.length?go(cur+(e.shiftKey?-1:1)):search();}});
+  next.addEventListener('click',()=>go(cur+1));
+  prev.addEventListener('click',()=>go(cur-1));
+})();
+</script>
 </body></html>
