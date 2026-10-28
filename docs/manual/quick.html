@@ -37,7 +37,9 @@ footer{margin-top:32px;font-size:14px;color:var(--sub)}
   .step figure img{width:100%}
 }
 @page{size:A4 portrait;margin:12mm}
+.howto{margin:16px auto 0;max-width:360px}.howto video{display:block;width:100%;height:auto;border-radius:12px;background:#000}.howto figcaption{font-size:14px;color:var(--sub);text-align:center;margin-top:6px}
 @media print{
+  .howto{display:none}
   body{font-size:10.5pt;line-height:1.55;background:#fff}
   .wrap{max-width:none;padding:0}
   header{padding:0 0 2mm}
@@ -70,6 +72,7 @@ footer{margin-top:32px;font-size:14px;color:var(--sub)}
         <li>無料のお試し（登録から7日間）で送れるのは<b>写真5枚まで</b>です。動画は有料プラン（動画A・動画B）で送れます。写真の流れも下とほぼ同じです</li>
       </ul>
     </div>
+    <figure class="howto"><video src="img/howto.mp4#t=0.1" controls muted playsinline preload="metadata" width="1080" height="1920" aria-label="使い方の動画（41秒・音声なし・字幕つき）"></video><figcaption>41秒の動画で流れを見る（音声なし・字幕つき）</figcaption></figure>
   </header>
 
   <ol class="steps">

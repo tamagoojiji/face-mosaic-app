@@ -440,7 +440,7 @@ MANUAL = os.path.join(ROOT, "docs", "manual")
 @app.get("/manual/img/{name}")
 def manual_img(name: str):
     """説明書の画像（ログイン不要）。"""
-    if not re.fullmatch(r"[0-9a-z-]+\.png", name) or not os.path.isfile(os.path.join(MANUAL, "img", name)):
+    if not re.fullmatch(r"[0-9a-z-]+\.(png|mp4)", name) or not os.path.isfile(os.path.join(MANUAL, "img", name)):
         raise HTTPException(404, "見つかりません")
     return FileResponse(os.path.join(MANUAL, "img", name), headers={"Cache-Control": "no-cache"})
 
