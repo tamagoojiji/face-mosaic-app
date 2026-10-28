@@ -333,12 +333,12 @@ Claude Codeが事前に完了させること:
 1. [x]（2026-10-28・アプリ専用キー `face-mosaic` を作成して投入）Stripe ダッシュボードを本番モードに切り替え、「開発者 → APIキー」の本番シークレットキーを VPS の設定ファイル `STRIPE_SECRET_KEY` に入れる（値は端末に出さない）
 2. [x]（2026-10-28・`we_1UVTEp…`・1回目はコンテナが旧鍵のままでテスト環境に作られたのでスクリプトを「先に compose up -d」に修正）Webhook エンドポイントを本番で作る: VPS で `bash scripts/webhook-reissue.sh`（新規作成→署名シークレットをサーバー内で設定ファイルへ→再起動→自己署名テスト。手で転記しない）。出力された新IDを `scripts/stripe_setup.py` の WEBHOOK_ID に書き換える
 3. [x]（2026-10-28・価格7本・ポータル `bpc_1UVTKe…`・`docs/external-ids.md` 追記済み）`docker exec face-mosaic-app python scripts/stripe_setup.py` で商品4つ・ポータル設定を本番に作成（settings の価格IDが本番のものに置き換わる）。`docs/external-ids.md` に本番IDを追記
-4. [ ] **顧客メールを有効化**（本番モードのみ有効・テスト環境では送られない）
+4. [x]（2026-10-28・設定 → ビジネス → 送信メール: 言語を日本語・決済成功時 ON・返金時 ON／Billing → サブスクリプションとメール通知: カード期限切れ ON・カード決済失敗 ON）**顧客メールを有効化**（本番モードのみ有効・テスト環境では送られない）
    - 設定 → 顧客メール: 「成功した支払いのレシート」ON（契約時・差額請求時・毎月の更新時に領収書が届く）
    - 設定 → Billing → サブスクリプションとメール: 「支払い失敗時のリマインダー」ON・「カード期限切れのお知らせ」ON（「更新前のお知らせ」は任意）
    - 解約の確認メールは Stripe にはない → LINE 通知 #7（`docs/line-notify-templates.md`）で代える
-5. [ ] 運営向け: プロフィール → 通知 で「支払い成功・失敗」を受け取るか決める（Discord #mosaic-usage と重複するので既定は OFF）
-6. [ ] 本番カードで 動画A 契約 → 動画B＋高画質へ変更（差額の即時請求とレシートメール）→ 設定の「解約する」→ LINE 通知 → 設定の「解約を取り消す」→ 退会（LINE 通知）→ 最後に本人の購読を Stripe で終了し、運営アカウントを `users.py` で動画B・高画質ON に戻す
+5. [x]（既定 OFF のまま）運営向け: プロフィール → 通知 で「支払い成功・失敗」を受け取るか決める（Discord #mosaic-usage と重複するので既定は OFF）
+6. [x]（2026-10-28 実施: 980→+500→+500 の3決済・レシート送信・Webhook 全 200・アプリのエラー 0・退会で購読 canceled・3件とも返金済み。**本番化の後始末**: users に残ったテスト環境の `cus_…` で Checkout が 500 になるので、本番化直後に stripe_customer_id／stripe_subscription_id 等を NULL にする（今回は data/ に一時スクリプトを置いて `docker exec -e PYTHONPATH=/app … python /data/clear_test_stripe.py`・実行後に削除））本番カードで 動画A 契約 → 動画B＋高画質へ変更（差額の即時請求とレシートメール）→ 設定の「解約する」→ LINE 通知 → 設定の「解約を取り消す」→ 退会（LINE 通知）→ 最後に本人の購読を Stripe で終了し、運営アカウントを `users.py` で動画B・高画質ON に戻す
 7. [x] 利用規約・特商法表記の支払い条件（段③）が本番の金額・条件と一致しているか見直す（2026-10-28 確認: terms/tokushoho の定価 1,000／1,480／1,980・＋500、記念 500／980／1,480、返金なし・自動更新・解約後は更新日まで、が決定事項と一致）
 8. [x] DB バックアップを VPS 6 へ引っ越す（2026-10-28 確認: VPS 6 に crontab 1行・age/sqlite3 あり・10/28 03:00 の送信 ok・users=3）: `backup/`（gas_url・age.pub・token）を新 VPS の同じ場所へコピー（`scp -r` で中身を画面に出さない）→ `apt install age sqlite3` → ホストの crontab に `0 3 * * * /bin/bash /opt/docker/face-mosaic-app/scripts/backup-to-gas.sh >> /opt/docker/face-mosaic-app/backup/backup.log 2>&1` → `bash scripts/backup-to-gas.sh` で1回送って `list` に出ることを確認
 
