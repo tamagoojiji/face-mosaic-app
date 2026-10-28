@@ -1,4 +1,4 @@
-# 外部サービスの ID 控え（らくちんモザイク）
+# 外部サービスの ID 控え（らくらくモザイク）
 
 作成日: 2026-10-25。秘密値（Channel secret・アクセストークン・Stripe シークレットキー・Webhook 署名シークレット）は書かない。
 
@@ -6,7 +6,7 @@
 
 | 種別 | 名前 | ID | 状態 |
 |---|---|---|---|
-| LINEログイン チャネル | らくちんモザイク | Channel ID `2012193762` | 公開済み・アプリタイプ=ウェブアプリ・コールバック `https://mosaic.tamago-ai-world.com/auth/line/callback` |
+| LINEログイン チャネル | らくらくモザイク | Channel ID `2012193762` | 公開済み・アプリタイプ=ウェブアプリ・コールバック `https://mosaic.tamago-ai-world.com/auth/line/callback` |
 | Messaging API チャネル | — | 未作成 | LINE Developers から直接作成不可。LINE Official Account Manager で公式アカウント作成→Messaging API 有効化が必要 |
 
 ## Stripe（アカウント Tetraris・**テスト環境（サンドボックス）**）

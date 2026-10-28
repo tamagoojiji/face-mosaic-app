@@ -34,7 +34,7 @@ PORTAL = {"features": {"payment_method_update": {"enabled": True},
                        "subscription_cancel": {"enabled": False},  # 解約はアプリ内「解約する」だけ
                        "subscription_update": {"enabled": False},
                        "invoice_history": {"enabled": True}},
-          "business_profile": {"headline": "らくちんモザイク"}}
+          "business_profile": {"headline": "らくらくモザイク"}}
 
 
 def dry_run():
