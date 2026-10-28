@@ -84,9 +84,13 @@ def run():
     print(f"webhook {we['id']}: enabled_events {len(we['enabled_events'])} 件")
     cfg = db.get_setting("stripe_portal_config")
     if cfg:
-        stripe.billing_portal.Configuration.modify(cfg, **PORTAL)
-        print(f"portal: {cfg}（既存・同期）")
-    else:
+        try:
+            stripe.billing_portal.Configuration.modify(cfg, **PORTAL)
+            print(f"portal: {cfg}（既存・同期）")
+        except stripe.InvalidRequestError as e:  # テスト環境で作った ID が settings に残っているとき（本番化）は作り直す
+            print(f"portal: {cfg} は無い（{getattr(e, 'code', None) or type(e).__name__}）→ 作成し直す")
+            cfg = ""
+    if not cfg:
         cfg = stripe.billing_portal.Configuration.create(**PORTAL)["id"]
         db.set_setting("stripe_portal_config", cfg)
         print(f"portal: {cfg}（作成）")

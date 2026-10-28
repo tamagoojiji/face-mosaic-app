@@ -330,9 +330,9 @@ Claude Codeが事前に完了させること:
 
 ### 本番移行チェックリスト（Stripe をテスト環境→本番モードへ・④ VPS 6 移行時に実施）
 テスト環境で作った商品・Webhook・ポータル設定は本番モードに引き継がれない。順番どおりに行う。
-1. [ ] Stripe ダッシュボードを本番モードに切り替え、「開発者 → APIキー」の本番シークレットキーを VPS の設定ファイル `STRIPE_SECRET_KEY` に入れる（値は端末に出さない）
-2. [ ] Webhook エンドポイントを本番で作る: VPS で `bash scripts/webhook-reissue.sh`（新規作成→署名シークレットをサーバー内で設定ファイルへ→再起動→自己署名テスト。手で転記しない）。出力された新IDを `scripts/stripe_setup.py` の WEBHOOK_ID に書き換える
-3. [ ] `docker exec face-mosaic-app python scripts/stripe_setup.py` で商品4つ・ポータル設定を本番に作成（settings の価格IDが本番のものに置き換わる）。`docs/external-ids.md` に本番IDを追記
+1. [x]（2026-10-28・アプリ専用キー `face-mosaic` を作成して投入）Stripe ダッシュボードを本番モードに切り替え、「開発者 → APIキー」の本番シークレットキーを VPS の設定ファイル `STRIPE_SECRET_KEY` に入れる（値は端末に出さない）
+2. [x]（2026-10-28・`we_1UVTEp…`・1回目はコンテナが旧鍵のままでテスト環境に作られたのでスクリプトを「先に compose up -d」に修正）Webhook エンドポイントを本番で作る: VPS で `bash scripts/webhook-reissue.sh`（新規作成→署名シークレットをサーバー内で設定ファイルへ→再起動→自己署名テスト。手で転記しない）。出力された新IDを `scripts/stripe_setup.py` の WEBHOOK_ID に書き換える
+3. [x]（2026-10-28・価格7本・ポータル `bpc_1UVTKe…`・`docs/external-ids.md` 追記済み）`docker exec face-mosaic-app python scripts/stripe_setup.py` で商品4つ・ポータル設定を本番に作成（settings の価格IDが本番のものに置き換わる）。`docs/external-ids.md` に本番IDを追記
 4. [ ] **顧客メールを有効化**（本番モードのみ有効・テスト環境では送られない）
    - 設定 → 顧客メール: 「成功した支払いのレシート」ON（契約時・差額請求時・毎月の更新時に領収書が届く）
    - 設定 → Billing → サブスクリプションとメール: 「支払い失敗時のリマインダー」ON・「カード期限切れのお知らせ」ON（「更新前のお知らせ」は任意）
