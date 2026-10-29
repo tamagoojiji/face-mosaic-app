@@ -29,6 +29,7 @@ li{margin:2px 0}
 .figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:12px 0}
 figure{margin:0}
 figure img{display:block;width:100%;max-width:300px;height:auto;margin:0 auto;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+figure.vid{margin:12px 0}figure.vid video{display:block;width:100%;max-width:360px;height:auto;margin:0 auto;border:1px solid var(--line);border-radius:12px;background:var(--paper)}figure.vid figcaption{max-width:360px;margin:6px auto 0}
 figcaption{font-size:13px;color:var(--sub);text-align:center;margin-top:4px}
 table{width:100%;border-collapse:collapse;margin:8px 0 12px;font-size:15px}
 th,td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left;vertical-align:top}
@@ -65,6 +66,7 @@ section.ch{scroll-margin-top:110px}
   .figs{grid-template-columns:repeat(4,1fr);gap:4mm}
   figure{break-inside:avoid}
   figure img{max-height:70mm;width:auto;max-width:100%}
+  figure.vid{display:none}
   table{font-size:9.5pt}
 }
 </style>
@@ -166,6 +168,7 @@ section.ch{scroll-margin-top:110px}
       <li>待っている間は画面を閉じても大丈夫です。終わると LINE でお知らせします。</li>
       <li>元の画質（4K など）での書き出しは高画質オプションの方だけです。確認画面で 1080p と選べます。</li>
     </ul>
+    <figure class="vid"><video src="img/quality-compare.mp4" poster="img/quality-compare-poster.png" controls muted loop playsinline preload="metadata" width="1080" height="1272">お使いのブラウザでは動画を再生できません</video><figcaption>上が 1080p、下が元の画質（4K・60fps）。同じ動画の同じ10秒です。スマホの画面ではほとんど差が分かりません。PC やテレビで拡大すると、衣装の柄や文字の輪郭に差が出ます</figcaption></figure>
     <div class="figs">
       <figure><img src="img/05-send-video.png" alt="動画を送る画面" loading="lazy"><figcaption>送る</figcaption></figure>
       <figure><img src="img/07-sending.png" alt="送信中の画面" loading="lazy"><figcaption>送信中</figcaption></figure>
