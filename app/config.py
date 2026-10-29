@@ -17,7 +17,7 @@ OWNER_COOKIE = "fm_owner"  # 端末ごとの持ち主（合言葉は共有のた
 OWNER_DAYS = 365
 # 動画モード
 MAX_VIDEO_SEC = float(os.environ.get("MAX_VIDEO_SEC") or "180")  # プランの「1本の長さ」の上限の上限
-MAX_VIDEO_BYTES = 1024 * 1024 * 1024
+MAX_VIDEO_BYTES = int(1.5 * 1024 * 1024 * 1024)  # 1.5GB（4K60 の 3 分≒1.2〜1.4GB が通るよう 2026-10-30 に 1GB から変更）
 PART_SIZE = 8 * 1024 * 1024
 IDLE_WARN_HOURS = 1    # 選択・確認がこの時間放置されたら「あと2時間で削除」を出す
 IDLE_DELETE_HOURS = 3  # 選択・確認がこの時間放置されたら元動画・解析結果を削除

@@ -864,7 +864,7 @@ async def create_upload(request: Request):
     if size <= 0:
         raise HTTPException(400, "動画を選び直してください")
     if size > config.MAX_VIDEO_BYTES:
-        raise HTTPException(413, f"この動画は {size / 1048576:.0f}MB です。1本1GBまでです")
+        raise HTTPException(413, f"この動画は {size / 1048576:.0f}MB です。1本1.5GBまでです")
     msg = quota.check_video(u, dur)
     if msg:
         raise HTTPException(402, msg)
