@@ -686,40 +686,54 @@ def result_image(request: Request, job_id: str, dl: int = 0):
 
 # ---------------------------------------------------------------- 動画モード
 
-# 1分あたりの目安秒（引き継ぎ 4節・いまのVPS・1080p高速モード）。実測が貯まったら中央値に置き換わる
-FALLBACK_PER_MIN = {"prepare": 70, "track": 144, "feature": 98, "export_pixel": 159, "export_blur": 291}
-# 高画質（元の解像度・fps）の書き出しは、実測が無い間は 1080p の何倍で見積もるか。
-# VPS 実測（4K60 HLG 1分・ブロック粗め）: 高画質 1191.7秒 ÷ 1080p 75.3秒 ≒ 15.8
-HQ_FALLBACK_FACTOR = 16
+# 1分あたりの目安秒（4K60 HDR・並列化後の実測・1080p 書き出し）。実測が貯まったら中央値に置き換わる
+# 出典: 2026-10-29 本番実測 825.3秒・計測 892.0秒。export_blur は pixel×1.83（従来比）
+FALLBACK_PER_MIN = {"prepare": 184, "track": 44, "feature": 50, "export_pixel": 62, "export_blur": 113}
+# 高画質（元の解像度・fps）の書き出し: ブロック粗め・4K60 換算の 1分あたり秒（すりガラスは ×1.83）。出典は同上
+FALLBACK_HQ_PER_MIN_4K60 = 850
+BLUR_FACTOR = 1.83
+LOAD_REF = 3840 * 2160 * 60  # 負荷係数 1.0 の基準（4K60）
 PREP_STAGES = (("t_prepare_sec", "prepare", "convert"), ("t_track_sec", "track", "track"),
                ("t_feature_sec", "feature", "feature"))
 VIDEO_BUSY = ("queued", "preparing", "queued_export", "exporting")
 COMPLETING = set()  # complete の二重実行よけ
 
 
-def _rates():
-    rows = db.done_video_stats()
+def load_factor(j):
+    """元動画の重さ（幅×高さ×fps）を 4K60=1.0 とした比。0.05〜1.5 に丸める。不明なら 1.0。"""
+    w, h, f = j.get("width"), j.get("height"), j.get("fps")
+    if not (w and h and f):
+        return 1.0
+    return min(1.5, max(0.05, w * h * f / LOAD_REF))
 
-    def med(col, ok=lambda r: True):
-        v = [r[col] / r["duration_sec"] * 60 for r in rows if r[col] and ok(r)]
+
+def _rates():
+    # 処理の版（vengine.ENGINE_VER）が今と同じジョブの実測だけ使う（高速化前の統計を混ぜない）
+    rows = [r for r in db.done_video_stats() if r.get("engine_ver") == vengine.ENGINE_VER]
+
+    def med(col, ok=lambda r: True, norm=lambda r: 1.0):
+        v = [r[col] / r["duration_sec"] * 60 / norm(r) for r in rows if r[col] and ok(r)]
         return statistics.median(v) if v else None
     def exp(style, hq):
-        return med("t_export_sec", lambda r: bool(r["hq_export"]) == hq and (r["mosaic_style"] == "blur") == (style == "blur"))
+        return med("t_export_sec", lambda r: bool(r["hq_export"]) == hq and (r["mosaic_style"] == "blur") == (style == "blur"),
+                   load_factor if hq else (lambda r: 1.0))
     r = {"prepare": med("t_prepare_sec") or FALLBACK_PER_MIN["prepare"],
          "track": med("t_track_sec") or FALLBACK_PER_MIN["track"],
          "feature": med("t_feature_sec") or FALLBACK_PER_MIN["feature"],
          "export_pixel": exp("pixel", False) or FALLBACK_PER_MIN["export_pixel"],
          "export_blur": exp("blur", False) or FALLBACK_PER_MIN["export_blur"]}
-    r["export_hq_pixel"] = exp("pixel", True) or r["export_pixel"] * HQ_FALLBACK_FACTOR
-    r["export_hq_blur"] = exp("blur", True) or r["export_blur"] * HQ_FALLBACK_FACTOR
+    # 高画質は 4K60 換算の 1分あたり（見積もるときにこのジョブの負荷係数を掛ける）
+    r["export_hq_pixel"] = exp("pixel", True) or FALLBACK_HQ_PER_MIN_4K60
+    r["export_hq_blur"] = exp("blur", True) or FALLBACK_HQ_PER_MIN_4K60 * BLUR_FACTOR
     return r
 
 
 def _export_est(j, rates, style=None, hq=None):
-    """書き出しの目安秒（1分あたりの実測中央値 × 長さ）。"""
+    """書き出しの目安秒（1分あたりの実測中央値 × 長さ。高画質はさらに × 負荷係数）。"""
     style = style or ("blur" if j["mosaic_style"] == "blur" else "pixel")
     hq = bool(j.get("hq_export")) if hq is None else hq
-    return rates[("export_hq_" if hq else "export_") + style] * (j["duration_sec"] or 60) / 60.0
+    est = rates[("export_hq_" if hq else "export_") + style] * (j["duration_sec"] or 60) / 60.0
+    return est * load_factor(j) if hq else est
 
 
 def _hq_ready(j):
@@ -773,7 +787,7 @@ def _public_video(j, detail=False):
          "idle_warn": st in ("awaiting_pick", "awaiting_review") and j["expires_at"] is not None
          and j["expires_at"] - now <= (quota.idle_delete_hours() - quota.idle_warn_hours()) * 3600,
          "hq_export": bool(j.get("hq_export")), "out_width": j.get("out_width"), "out_height": j.get("out_height"),
-         "out_fps": j.get("out_fps")}
+         "out_fps": j.get("out_fps"), "fps": j.get("fps")}
     d.update(_keep_fields(j, st, now, os.path.exists(p["v1080"])))
     if st in VIDEO_BUSY:
         rates = _rates()
@@ -790,9 +804,13 @@ def _public_video(j, detail=False):
             rv = _read_json(os.path.join(p["dir"], "review.json"))
             if rv:
                 d["review"] = rv["lists"]
-        if st in ("awaiting_review", "done") and _hq_ready(j):  # 確認画面の「高画質で書き出す（約 n 分）」
+        if st in ("awaiting_review", "done"):  # 確認画面の「画質」（1080p／元の画質）と書き出しの見込み
             rates = _rates()
-            d["hq_est_sec"] = {s: round(_export_est(j, rates, s, True)) for s in ("pixel", "blur")}
+            d["export_est_sec"] = {s: round(_export_est(j, rates, s, False)) for s in ("pixel", "blur")}
+            ready = _hq_ready(j)
+            if ready:
+                d["hq_est_sec"] = {s: round(_export_est(j, rates, s, True)) for s in ("pixel", "blur")}
+            d["hq_choice"] = ready and (max(j["width"] or 0, j["height"] or 0) > 1920 or (j.get("fps") or 0) >= 31)
     return d
 
 
@@ -1001,6 +1019,8 @@ async def video_review(request: Request, job_id: str):
     keep = (set(rv["auto_keep"]) - blur_ids) | keep_ids
     blur = (set(rv["auto_blur"]) - keep_ids) | blur_ids
     hq = _hq_ready(j)
+    if "hq" in b:  # 確認画面で選んだ画質。高画質で書き出せる人だけ尊重（無ければ従来どおり）
+        hq = hq and b["hq"] is True
     db.update_job(job_id, status="queued_export", keep=json.dumps(sorted(keep)), blur=json.dumps(sorted(blur)),
                   mosaic_style=style, error=None, expires_at=None, hq_export=1 if hq else 0)
     log.info("review %s %s keep %d blur %d（%s）%s", job_id, style, len(keep), len(blur),

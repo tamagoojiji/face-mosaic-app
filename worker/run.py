@@ -86,7 +86,7 @@ def fail_export(job_id, exc):
 
 def do_prepare(j):
     jid, p = j["id"], paths(j["id"])
-    db.update_job(jid, status="preparing", error=None, fast_mode=1, prep_started_at=time.time(),
+    db.update_job(jid, status="preparing", error=None, fast_mode=1, prep_started_at=time.time(), engine_ver=video.ENGINE_VER,
                   t_prepare_sec=None, t_track_sec=None, t_feature_sec=None)
     t0 = time.time()
     info0, vf0, hdr = video.prepare(p["src"], p["dir"])

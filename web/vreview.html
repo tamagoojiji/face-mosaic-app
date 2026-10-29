@@ -27,10 +27,11 @@ h1{margin-top:var(--s4)}
 .t.k .cap b{color:var(--keep-ink)}
 .empty{grid-column:1/-1;background:var(--surface);border-radius:var(--radius-sm);color:var(--sub);font-size:14px;padding:var(--s3) var(--s4);margin:0}
 .repick{margin:var(--s5) 0 0}
-.hqbox{display:flex;gap:var(--s2);align-items:flex-start;background:var(--pri-soft);border-radius:var(--radius-sm);padding:var(--s3);margin:calc(-1 * var(--s1)) 0 var(--s4);font-size:14px;line-height:1.5}
-.hqbox::before{content:"";flex:none;width:16px;height:16px;margin-top:3px;border-radius:4px;background:var(--pri) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E") center/12px no-repeat}
-.hqbox b{display:block}
-.hqbox span{color:var(--sub);font-size:14px}
+.seg.q{grid-template-columns:1fr}
+.seg.q .d{font-size:14px}
+.qone{margin:calc(-1 * var(--s1)) 0 var(--s4);font-size:14px;line-height:1.5;color:var(--sub)}
+.qone p{margin:0}
+.qone a{display:inline-flex;align-items:center;min-height:44px}
 #toast{position:fixed;left:var(--s4);right:var(--s4);z-index:11;text-align:center;background:var(--fg);color:var(--on-pri);font-size:14px;border-radius:var(--radius-sm);padding:var(--s3);
   opacity:0;transition:opacity .2s;pointer-events:none}
 #toast.show{opacity:1}
@@ -54,7 +55,12 @@ h1{margin-top:var(--s4)}
     <label><input type="radio" name="st" value="pixel" checked><span><span class="m">ブロック粗め</span><span class="d">マス目で強く隠す</span></span></label>
     <label><input type="radio" name="st" value="blur"><span><span class="m">すりガラス</span><span class="d">ぼかして隠す。約2.5分長くかかります</span></span></label>
   </fieldset>
-  <p class="hqbox" id="hq" hidden><span><b>高画質で書き出す</b><span id="hqd"></span></span></p>
+  <fieldset class="seg q" id="qual" hidden>
+    <legend>画質</legend>
+    <label><input type="radio" name="q" value="1080"><span><span class="m">1080p</span><span class="d" id="qd0"></span></span></label>
+    <label><input type="radio" name="q" value="src" checked><span><span class="m">元の画質</span><span class="d" id="qd1"></span></span></label>
+  </fieldset>
+  <div class="qone" id="qone" hidden><p id="qest"></p><p id="qup" hidden><a href="/plans">元の画質（4K など）で書き出すには高画質オプション</a></p></div>
   <div class="tabs" role="tablist" aria-label="モザイクの予定">
     <button type="button" role="tab" id="tb" aria-controls="pb" aria-selected="true">モザイクをかける予定<span class="n" id="nb">0件</span></button>
     <button type="button" role="tab" id="tk" aria-controls="pk" aria-selected="false" tabindex="-1">かけない予定<span class="n" id="nk">0件</span></button>
@@ -78,7 +84,11 @@ h1{margin-top:var(--s4)}
 <script src="/static/common.js"></script>
 <script>
 const id = jobIdFromPath(), $ = x => document.getElementById(x);
-let ITEMS = [], KEEP = new Set(), tab = 'b', toastT = 0;
+let ITEMS = [], KEEP = new Set(), tab = 'b', toastT = 0, HQ = false, CHOICE = false;
+const mins = s => Math.max(1, Math.round(s / 60));
+const style = () => document.querySelector('input[name=st]:checked').value;
+const wantHq = () => CHOICE ? document.querySelector('input[name=q]:checked').value === 'src' : HQ;
+const goLabel = () => wantHq() ? '元の画質で書き出す' : '1080p で書き出す';
 
 function render() {
   const b = ITEMS.filter(it => !KEEP.has(it.id)), k = ITEMS.filter(it => KEEP.has(it.id));
@@ -136,11 +146,27 @@ new ResizeObserver(fit).observe($('ft'));
   ITEMS = [...j.review.blur, ...j.review.keep];
   KEEP = new Set(ITEMS.filter(it => j.keep.includes(it.id)).map(it => it.id));
   document.querySelector('input[name=st][value=' + (j.style === 'blur' ? 'blur' : 'pixel') + ']').checked = true;
-  if (j.hq_est_sec) {  // 高画質オプションの人だけ（元動画が残っている間）
-    const upd = () => { const st = document.querySelector('input[name=st]:checked').value;
-      $('hqd').textContent = '元の解像度・fps のまま。書き出しは約' + Math.max(1, Math.round(j.hq_est_sec[st] / 60)) + '分'; };
-    document.querySelectorAll('input[name=st]').forEach(r => r.addEventListener('change', upd));
-    upd(); $('hq').hidden = false;
+  // 画質: 高画質で書き出せる（オプション＋元動画あり）かつ元動画が 1080p30 より重いときだけ 2 択
+  HQ = !!j.hq_est_sec; CHOICE = !!j.hq_choice;
+  const src = (j.width && j.height ? j.width + '×' + j.height : '元の解像度') + '・' + (j.fps ? Math.round(j.fps) + 'fps' : '元の fps');
+  const upd = () => {
+    const st = style(), n = j.export_est_sec ? mins(j.export_est_sec[st]) : null, m = HQ ? mins(j.hq_est_sec[st]) : null;
+    if (CHOICE) {
+      $('qd0').textContent = '1920×1080・30fps。スマホで見るなら十分。書き出し 約 ' + n + ' 分';
+      $('qd1').textContent = src + ' のまま。書き出し 約 ' + m + ' 分・ファイルは大きめ';
+    } else if (HQ) {
+      $('qest').textContent = '書き出し 約 ' + m + ' 分（元の画質 ' + src + ' のまま）';
+    } else if (n) {
+      $('qest').textContent = '書き出し 約 ' + n + ' 分（1080p）';
+    }
+    if (!$('go').disabled) $('go').textContent = goLabel();
+  };
+  document.querySelectorAll('input[name=st], input[name=q]').forEach(r => r.addEventListener('change', upd));
+  upd();
+  if (CHOICE) $('qual').hidden = false;
+  else if (j.export_est_sec) {
+    $('qone').hidden = false;
+    if (!HQ) api('/api/me').then(me => { if (!me.hq) $('qup').hidden = false; }).catch(() => {});  // オプションなしの人だけ案内
   }
   render(); fit();
 })();
@@ -148,13 +174,13 @@ new ResizeObserver(fit).observe($('ft'));
 $('go').onclick = async () => {
   const go = $('go'); go.disabled = true; go.textContent = '書き出しを受け付けています…'; $('ferr').hidden = true;
   const body = { keep: ITEMS.filter(it => KEEP.has(it.id)).map(it => it.id), blur: ITEMS.filter(it => !KEEP.has(it.id)).map(it => it.id),
-    style: document.querySelector('input[name=st]:checked').value };
+    style: style(), hq: wantHq() };
   try {
     await api('/api/jobs/' + id + '/review', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     location.href = '/status/' + id;
   } catch (e) {
     $('ferr').textContent = e.message; $('ferr').hidden = false;
-    go.disabled = false; go.textContent = 'この内容で書き出す';
+    go.disabled = false; go.textContent = goLabel();
   }
 };
 </script>

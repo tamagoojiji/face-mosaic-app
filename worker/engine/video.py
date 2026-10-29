@@ -35,6 +35,9 @@ from .detect import (BODY_ZONE_CONF, MAIN_CONF, MAIN_SUBJECT_FRAC, YUNET_PATH,
                      _overlap, detect_faces_yunet)
 from .mosaic import mosaic_face
 
+# 処理の版（並列化版）。jobs.engine_ver に記録し、見込みの統計は同じ版の実測だけ使う
+ENGINE_VER = "2026-10-29"
+
 MODELS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "models")
 SFACE_PATH = os.path.join(MODELS, "sface.onnx")
 

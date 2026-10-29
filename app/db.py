@@ -117,6 +117,7 @@ ADD_COLUMNS = {
     "out_width": "INTEGER",        # 動画: 完成品の幅・高さ・fps（ffprobe の実測）
     "out_height": "INTEGER",
     "out_fps": "REAL",
+    "engine_ver": "TEXT",          # 動画: 解析した処理の版（worker.engine.video.ENGINE_VER・見込みの統計の切り分け）
 }
 # 起動時に足す列（users・③b 課金）
 ADD_USER_COLUMNS = {
@@ -318,7 +319,7 @@ def reset_running():
 def done_video_stats(limit=30):
     with connect() as con:
         rows = con.execute(
-            "SELECT duration_sec, mosaic_style, hq_export, t_prepare_sec, t_track_sec, t_feature_sec, t_export_sec FROM jobs "
+            "SELECT duration_sec, width, height, fps, engine_ver, mosaic_style, hq_export, t_prepare_sec, t_track_sec, t_feature_sec, t_export_sec FROM jobs "
             "WHERE kind='video' AND t_prepare_sec IS NOT NULL AND duration_sec>0 ORDER BY created_at DESC LIMIT ?",
             (limit,)).fetchall()
     return [dict(r) for r in rows]
