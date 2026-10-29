@@ -163,12 +163,7 @@ def _to_1080_cmd(path, vf, out, info):
     # LUT（RGB 化→3D LUT→YUV 戻し）を 4K60 のまま掛けると、最後に捨てる 7/8 の画素にも掛かる
     # （VPS 6 実測・4K60 HLG 30秒: LUT→縮小 299秒 / 間引き→縮小→LUT 90秒・PSNR 44dB で見た目は同じ）
     filt = join_vf("fps=30", "scale='if(gt(iw,ih),1920,-2)':'if(gt(iw,ih),-2,1920)'", vf)
-    dec = []
-    # 50fps 以上で B フレームがあるときは、非参照 B フレームをデコードしない（30fps への間引きで捨てる側のため）
-    # （VPS 6 実測・4K60 HLG 1分: 188.6→127.9秒・出力コマ数は同じ）。CONVERT_SKIP_BIDIR=0 で無効
-    if os.environ.get("CONVERT_SKIP_BIDIR", "1") != "0" and info["fps"] >= 50 and info.get("has_b_frames"):
-        dec = ["-skip_frame", "bidir"]
-    return [FFMPEG, "-v", "error", "-y", *HWACCEL, *dec, "-i", path,
+    return [FFMPEG, "-v", "error", "-y", *HWACCEL, "-i", path,
             "-vf", filt, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "16",
             "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709",
             "-colorspace", "bt709", "-c:a", "copy", "-metadata:s:v", "rotate=0", out + ".part.mp4"]
