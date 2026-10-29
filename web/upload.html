@@ -209,7 +209,7 @@ $('vfile').addEventListener('change', async () => {
   $('verr').hidden = true; $('vresume').hidden = true; $('vplan').hidden = true;
   if (!CFG) { try { CFG = await api('/api/config'); } catch (e) { vfail(e.message, false); return; } }
   if (CFG.video_block) { vfail(CFG.video_block, false, true); return; }
-  if (f.size > CFG.max_video_bytes) { vfail('この動画は ' + mb(f.size) + ' です。試験版は1GBまでです', false); return; }
+  if (f.size > CFG.max_video_bytes) { vfail('この動画は ' + mb(f.size) + ' です。1本1GBまでです', false); return; }
   $('vbig').textContent = '長さを確認しています…';
   const dur = await readDuration(f);
   if (dur > CFG.max_video_sec + 0.5) {
