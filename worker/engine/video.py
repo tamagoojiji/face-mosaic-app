@@ -14,6 +14,7 @@
 import argparse
 import bisect
 import collections
+import concurrent.futures
 import json
 import math
 import multiprocessing
@@ -112,7 +113,7 @@ def probe(path):
     out_w, out_h = (h, w) if rot in (90, 270) else (w, h)
     return {"width": w, "height": h, "out_width": out_w, "out_height": out_h,
             "rotation": rot, "fps": fps, "fps_str": v.get("r_frame_rate", "30/1"),
-            "frames": nb, "duration": dur, "bit_rate": br,
+            "frames": nb, "duration": dur, "bit_rate": br, "has_b_frames": int(v.get("has_b_frames") or 0),
             "has_audio": any(s.get("codec_type") == "audio" for s in d["streams"])}
 
 
@@ -157,6 +158,22 @@ def prepare(path, work_dir):
     return info, vf, hdr_info
 
 
+def _to_1080_cmd(path, vf, out, info):
+    # 順番が大事: 先に 30fps へ間引いて 1080p に縮めてから HDR→SDR の LUT を掛ける。
+    # LUT（RGB 化→3D LUT→YUV 戻し）を 4K60 のまま掛けると、最後に捨てる 7/8 の画素にも掛かる
+    # （VPS 6 実測・4K60 HLG 30秒: LUT→縮小 299秒 / 間引き→縮小→LUT 90秒・PSNR 44dB で見た目は同じ）
+    filt = join_vf("fps=30", "scale='if(gt(iw,ih),1920,-2)':'if(gt(iw,ih),-2,1920)'", vf)
+    dec = []
+    # 50fps 以上で B フレームがあるときは、非参照 B フレームをデコードしない（30fps への間引きで捨てる側のため）
+    # （VPS 6 実測・4K60 HLG 1分: 188.6→127.9秒・出力コマ数は同じ）。CONVERT_SKIP_BIDIR=0 で無効
+    if os.environ.get("CONVERT_SKIP_BIDIR", "1") != "0" and info["fps"] >= 50 and info.get("has_b_frames"):
+        dec = ["-skip_frame", "bidir"]
+    return [FFMPEG, "-v", "error", "-y", *HWACCEL, *dec, "-i", path,
+            "-vf", filt, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "16",
+            "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709",
+            "-colorspace", "bt709", "-c:a", "copy", "-metadata:s:v", "rotate=0", out + ".part.mp4"]
+
+
 def to_1080(path, vf, out):
     """最初に1回だけ 1080p・30fps・SDR へ変換する。以降の工程はすべてこのファイルで行う。
 
@@ -164,15 +181,7 @@ def to_1080(path, vf, out):
     自動回転を効かせると displaymatrix は出力に引き継がれず、回転情報の無い正立動画になる。"""
     if os.path.exists(out):
         return out
-    # 順番が大事: 先に 30fps へ間引いて 1080p に縮めてから HDR→SDR の LUT を掛ける。
-    # LUT（RGB 化→3D LUT→YUV 戻し）を 4K60 のまま掛けると、最後に捨てる 7/8 の画素にも掛かる
-    # （VPS 6 実測・4K60 HLG 30秒: LUT→縮小 299秒 / 間引き→縮小→LUT 90秒・PSNR 44dB で見た目は同じ）
-    filt = join_vf("fps=30", "scale='if(gt(iw,ih),1920,-2)':'if(gt(iw,ih),-2,1920)'", vf)
-    cmd = [FFMPEG, "-v", "error", "-y", *HWACCEL, "-i", path,
-           "-vf", filt, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "16",
-           "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709",
-           "-colorspace", "bt709", "-c:a", "copy", "-metadata:s:v", "rotate=0", out + ".part.mp4"]
-    subprocess.run(cmd, check=True)
+    subprocess.run(_to_1080_cmd(path, vf, out, probe(path)), check=True)
     os.replace(out + ".part.mp4", out)
     return out
 
@@ -640,10 +649,15 @@ def build_shots(path, info, vf, shots, dw, out_dir):
     """build_page と同じ場面写真と枠のデータ。戻り値は items（画面の元データ）。"""
     os.makedirs(out_dir, exist_ok=True)
     k = SHOT_W / float(dw)
+    # 切り出しは ffmpeg 待ちなのでスレッドで SHOT_WORKERS 本ずつ同時に行う
+    with concurrent.futures.ThreadPoolExecutor(max_workers=_env_int("SHOT_WORKERS", 6)) as ex:
+        futs = [ex.submit(grab_frame, path, f / info["fps"], vf, SHOT_W, os.path.join(out_dir, f"shot{j}.jpg"))
+                for j, (f, _faces) in enumerate(shots)]
+        for fu in futs:
+            fu.result()
     items = []
     for j, (f, faces) in enumerate(shots):
         img = f"shot{j}.jpg"
-        grab_frame(path, f / info["fps"], vf, SHOT_W, os.path.join(out_dir, img))
         with Image.open(os.path.join(out_dir, img)) as im:
             sw, sh = im.size
         groups = []
