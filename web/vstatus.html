@@ -41,7 +41,7 @@
 <script>
 const id = jobIdFromPath(), $ = x => document.getElementById(x);
 const PREP = [['waiting', '解析の順番を待つ'], ['convert', '1080p・通常の色に変換'], ['track', '顔を追いかける'],
-  ['feature', '顔と服の特徴を調べる'], ['shots', '場面の写真を用意する']];
+  ['shots', '場面の写真を用意する']];
 const EXP = [['waiting_export', '書き出しの順番を待つ'], ['export', 'モザイクをかけて書き出す']];
 function timeline(list, stage) {
   const idx = list.findIndex(s => s[0] === stage);

@@ -25,7 +25,7 @@ body{overflow-x:hidden}
 #ft{position:fixed;left:0;right:0;bottom:0;z-index:10;border-top:1px solid var(--line);background:var(--paper);
   padding:var(--s2) var(--s4) calc(var(--s2) + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:6px}
 #cnt{font-size:15px;font-weight:700;line-height:22px}
-#ferr{margin:0}
+#ferr,#fwait{margin:0}
 #msg{padding:var(--s5) var(--s4)}
 #msg p{margin:0 0 var(--s4)}
 #vw{position:fixed;inset:0;z-index:20;background:var(--dark);display:flex;flex-direction:column}
@@ -51,6 +51,7 @@ body.viewing > :not(#vw):not(script){visibility:hidden}
 <div id="ft">
   <span id="cnt" aria-live="polite">選んだ 0 件</span>
   <p class="err" id="ferr" hidden></p>
+  <p class="notice" id="fwait" role="status" hidden></p>
   <button class="btn btn-pri" id="go" type="button">決定して確認へ進む</button>
 </div>
 <div id="msg" hidden></div>
@@ -201,12 +202,25 @@ window.addEventListener('resize', fit);
   paintAll(); fit();
 })();
 
+// 顔と服の特徴の計算が終わっていないと 202 が返る。3 秒おきに自動で送り直す（最大 2 分）
+const WAIT_MS = 120000;
 $('go').onclick = async () => {
-  const go = $('go'); go.disabled = true; go.textContent = '確認画面を準備しています…'; $('ferr').hidden = true;
+  const go = $('go'), t0 = Date.now(); go.disabled = true; go.textContent = '確認画面を準備しています…'; $('ferr').hidden = true;
   try {
-    await api('/api/jobs/' + id + '/picks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ picks: [...sel] }) });
+    for (;;) {
+      const r = await api('/api/jobs/' + id + '/picks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ picks: [...sel] }) });
+      if (!r || r.status !== 'features_pending') break;
+      if (Date.now() - t0 >= WAIT_MS) {
+        $('fwait').hidden = true;
+        $('ferr').textContent = '時間がかかっています。もう一度「確認へ進む」を押してください'; $('ferr').hidden = false;
+        go.disabled = false; count(); return;
+      }
+      $('fwait').textContent = '顔の特徴を計算中です。もう少しお待ちください'; $('fwait').hidden = false;
+      await new Promise(ok => setTimeout(ok, (r.retry_after || 3) * 1000));
+    }
     location.href = '/review/' + id;
   } catch (e) {
+    $('fwait').hidden = true;
     $('ferr').textContent = e.message; $('ferr').hidden = false;
     go.disabled = false; count();
   }

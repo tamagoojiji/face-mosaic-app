@@ -1,6 +1,6 @@
 """動画のキューを1件ずつ処理する worker（app とは別プロセス・同じ /data を使う）。
 
-queued        → preparing（1080p/30fps 変換・HDR→SDR → 顔の追跡 → 顔と服の特徴 → 場面写真）→ awaiting_pick
+queued        → preparing（1080p/30fps 変換・HDR→SDR → 顔の追跡 → 場面写真）→ awaiting_pick → 顔と服の特徴（選択中に計算）
 queued_export → exporting（書き出し）→ done
 失敗は failed＋error（利用者向けの文）。元動画などのファイルは消す。
 LINE 通知（①選択の準備 ②できました ③処理できなかった）と、失敗時の Discord #mosaic-alerts もここから送る。
@@ -87,7 +87,7 @@ def fail_export(job_id, exc):
 def do_prepare(j):
     jid, p = j["id"], paths(j["id"])
     db.update_job(jid, status="preparing", error=None, fast_mode=1, prep_started_at=time.time(), engine_ver=video.ENGINE_VER,
-                  t_prepare_sec=None, t_track_sec=None, t_feature_sec=None)
+                  t_prepare_sec=None, t_track_sec=None, t_feature_sec=None, features_state=None)
     t0 = time.time()
     info0, vf0, hdr = video.prepare(p["src"], p["dir"])
     db.update_job(jid, fps=info0["fps"], hdr=1 if hdr.get("mode") == "hlg" else 0,
@@ -99,21 +99,31 @@ def do_prepare(j):
     tracks, dw, dh, seen = video.get_tracks(p["v1080"], info, vf, p["tracks"], fast=True)
     t2 = time.time()
     db.update_job(jid, t_track_sec=round(t2 - t1, 1))
-    video.compute_features(p["v1080"], info, vf, tracks, dw, p["feats"])
-    t3 = time.time()
-    db.update_job(jid, t_feature_sec=round(t3 - t2, 1))
     shots = video.pick_shots(tracks, dw, dh, seen)
     items = video.build_shots(p["v1080"], info, vf, shots, dw, p["shots"])
     n_thumbs = video.make_thumbs(p["v1080"], info, vf, tracks, dw, p["thumbs"])
     with open(p["shots_json"], "w", encoding="utf-8") as f:
         json.dump(items, f)
-    t4 = time.time()
+    t3 = time.time()
     db.update_job(jid, status="awaiting_pick", expires_at=time.time() + quota.idle_delete_hours() * 3600,
-                  idle_notified=0)
+                  idle_notified=0, features_state="pending")
     notify.push("ready", db.get_job(jid))
-    log.info("prepare %s %.0fs  %dx%d %.2ffps hdr=%s  変換 %.1fs 追跡 %.1fs 特徴 %.1fs 場面写真・切り抜き %.1fs  "
+    log.info("prepare %s %.0fs  %dx%d %.2ffps hdr=%s  変換 %.1fs 追跡 %.1fs 場面写真・切り抜き %.1fs  "
              "トラック %d 場面 %d 切り抜き %d", jid, info0["duration"], info0["out_width"], info0["out_height"],
-             info0["fps"], hdr.get("mode"), t1 - t0, t2 - t1, t3 - t2, t4 - t3, len(tracks), len(items), n_thumbs)
+             info0["fps"], hdr.get("mode"), t1 - t0, t2 - t1, t3 - t2, len(tracks), len(items), n_thumbs)
+    # 顔と服の特徴は選択画面を出した後に計算する（選んで「確認へ進む」を押したときに使う）。
+    # 失敗しても選択はできる（特徴なしで判定する）ので failed にはしない
+    try:
+        video.compute_features(p["v1080"], info, vf, tracks, dw, p["feats"])
+    except Exception as e:
+        log.error("job %s 特徴の計算に失敗: %s\n%s", jid, e, traceback.format_exc())
+        db.update_job(jid, features_state="failed")
+        discord.alert(f"処理失敗 job={jid} 工程=特徴（選択は特徴なしで続行）利用者=#{j.get('user_id')}\n例外: "
+                      f"{type(e).__name__}: {str(e)[:300]}")
+        return
+    t4 = time.time()
+    db.update_job(jid, t_feature_sec=round(t4 - t3, 1), features_state="ready")
+    log.info("features %s 特徴 %.1fs", jid, t4 - t3)
 
 
 def do_export(j):

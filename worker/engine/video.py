@@ -677,10 +677,45 @@ def dh_of(info, dw):
     return int(round(info["out_height"] * dw / float(info["out_width"])))
 
 
+def _thumb_save(buf, fw, fh, k, items, out_dir):
+    """1コマ分の顔の切り抜きを書く（items は [(tid, 枠)]）。"""
+    im = Image.frombuffer("RGB", (fw, fh), buf, "raw", "RGB", 0, 1)
+    for tid, b in items:
+        cx, cy = (b["x"] + b["w"] / 2.0) * k, (b["y"] + b["h"] / 2.0) * k
+        half = max(12.0, max(b["w"], b["h"]) * k)
+        im.crop((int(cx - half), int(cy - half), int(cx + half), int(cy + half))) \
+          .resize((REVIEW_THUMB, REVIEW_THUMB), Image.LANCZOS) \
+          .save(os.path.join(out_dir, f"t{tid}.jpg"), quality=85)
+
+
+def _thumb_range(hwaccel, path, vf, fw, fh, k, fps_str, a, b, need, out_dir):
+    """ワーカー側: コマ [a, b) を入力シークで読み、need（{コマ番号: [(tid, 枠)]}）の切り抜きを書く。"""
+    cmd = [FFMPEG, "-v", "error", *hwaccel]
+    if a > 0:
+        # 入力シーク（accurate_seek 既定）。コマ a の時刻 = a / fps（分数で計算）
+        cmd += ["-ss", f"{float(a / Fraction(fps_str)):.9f}"]
+    cmd += ["-i", path, "-an", "-sn", "-dn", "-vf", join_vf(vf, f"scale={fw}:{fh}"),
+            "-frames:v", str(b - a), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+    fsize = fw * fh * 3
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=fsize)
+    try:
+        for i in range(a, b):
+            buf = proc.stdout.read(fsize)
+            if len(buf) < fsize:
+                break
+            if i in need:
+                _thumb_save(buf, fw, fh, k, need[i], out_dir)
+    finally:
+        proc.stdout.close()
+        proc.kill()
+        proc.wait()
+
+
 def make_thumbs(path, info, vf, tracks, dw, out_dir):
     """確認画面に出る可能性のある顔（conf 0.40 以上・高さ短辺 4.2% 以上）の切り抜きを作る。
 
     切り抜くフレーム（conf 最大）と範囲（顔の2倍・200px）は build_review と同じ。
+    THUMB_WORKERS 個のコマ範囲に分けて別プロセスで同時に読む（1 範囲あたり最低 SEG_MIN_FRAMES コマ）。
     """
     os.makedirs(out_dir, exist_ok=True)
     short = min(dw, dh_of(info, dw))
@@ -695,6 +730,25 @@ def make_thumbs(path, info, vf, tracks, dw, out_dir):
     fw = min(SHOT_W, ow)
     fh = int(round(oh * fw / float(ow) / 2)) * 2
     k = fw / float(dw)
+    if need:
+        lo, hi = min(need), max(need) + 1
+        bounds = [(lo + a, lo + b) for a, b in _seg_bounds(hi - lo, _env_int("THUMB_WORKERS", 4))]
+    else:
+        bounds = []
+    if len(bounds) > 1:
+        jobs = []
+        for a, b in bounds:
+            sub = {f: v for f, v in need.items() if a <= f < b}
+            if sub:  # 範囲を必要なコマの最初〜最後に詰める
+                jobs.append((HWACCEL, path, vf, fw, fh, k, info["fps_str"], min(sub), max(sub) + 1, sub, out_dir))
+        pool = multiprocessing.get_context("spawn").Pool(len(jobs))
+        try:
+            for r in [pool.apply_async(_thumb_range, job) for job in jobs]:
+                r.get()
+        finally:
+            pool.terminate()
+            pool.join()
+        return len(rows)
     cmd = [FFMPEG, "-v", "error", *HWACCEL,
            "-i", path, "-an", "-sn", "-dn", "-vf", join_vf(vf, f"scale={fw}:{fh}"),
            "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
@@ -707,13 +761,7 @@ def make_thumbs(path, info, vf, tracks, dw, out_dir):
             if len(buf) < fsize:
                 break
             if i in need:
-                im = Image.frombuffer("RGB", (fw, fh), buf, "raw", "RGB", 0, 1)
-                for tid, b in need[i]:
-                    cx, cy = (b["x"] + b["w"] / 2.0) * k, (b["y"] + b["h"] / 2.0) * k
-                    half = max(12.0, max(b["w"], b["h"]) * k)
-                    im.crop((int(cx - half), int(cy - half), int(cx + half), int(cy + half))) \
-                      .resize((REVIEW_THUMB, REVIEW_THUMB), Image.LANCZOS) \
-                      .save(os.path.join(out_dir, f"t{tid}.jpg"), quality=85)
+                _thumb_save(buf, fw, fh, k, need[i], out_dir)
             i += 1
     finally:
         proc.stdout.close()

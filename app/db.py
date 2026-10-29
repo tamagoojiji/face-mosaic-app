@@ -118,6 +118,7 @@ ADD_COLUMNS = {
     "out_height": "INTEGER",
     "out_fps": "REAL",
     "engine_ver": "TEXT",          # 動画: 解析した処理の版（worker.engine.video.ENGINE_VER・見込みの統計の切り分け）
+    "features_state": "TEXT",      # 動画: 顔と服の特徴（選択画面を出した後に計算）pending | ready | failed
 }
 # 起動時に足す列（users・③b 課金）
 ADD_USER_COLUMNS = {
@@ -314,6 +315,9 @@ def reset_running():
     with connect() as con:
         con.execute("UPDATE jobs SET status='queued' WHERE kind='video' AND status='preparing'")
         con.execute("UPDATE jobs SET status='queued_export' WHERE kind='video' AND status='exporting'")
+        # 選択画面を出した後の特徴の計算が途中で止まったもの → 特徴なしで選べるようにする
+        con.execute("UPDATE jobs SET features_state='failed' WHERE kind='video' AND status='awaiting_pick' "
+                    "AND features_state='pending'")
 
 
 def done_video_stats(limit=30):

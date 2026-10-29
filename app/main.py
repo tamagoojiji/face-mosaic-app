@@ -693,8 +693,8 @@ FALLBACK_PER_MIN = {"prepare": 184, "track": 44, "feature": 50, "export_pixel": 
 FALLBACK_HQ_PER_MIN_4K60 = 850
 BLUR_FACTOR = 1.83
 LOAD_REF = 3840 * 2160 * 60  # 負荷係数 1.0 の基準（4K60）
-PREP_STAGES = (("t_prepare_sec", "prepare", "convert"), ("t_track_sec", "track", "track"),
-               ("t_feature_sec", "feature", "feature"))
+# 顔と服の特徴は選択画面を出した後に計算する（見込みに入れない）
+PREP_STAGES = (("t_prepare_sec", "prepare", "convert"), ("t_track_sec", "track", "track"))
 VIDEO_BUSY = ("queued", "preparing", "queued_export", "exporting")
 COMPLETING = set()  # complete の二重実行よけ
 
@@ -748,7 +748,7 @@ def _remaining(j, rates, now):
     exp = _export_est(j, rates)
     st = j["status"]
     if st == "queued":
-        return (rates["prepare"] + rates["track"] + rates["feature"]) * m, "waiting"
+        return (rates["prepare"] + rates["track"]) * m, "waiting"
     if st == "preparing":
         rem, stage = 0.0, None
         for col, key, name in PREP_STAGES:
@@ -963,6 +963,9 @@ async def complete_upload(request: Request, job_id: str):
     return JSONResponse(_public(db.get_job(job_id)), headers=NO_STORE)
 
 
+FEATURES_WAIT_SEC = 20  # picks: 特徴の計算を待つ最大秒（1秒おきに見る）
+
+
 @app.post("/api/jobs/{job_id}/picks")
 async def video_picks(request: Request, job_id: str):
     require_api(request)
@@ -973,10 +976,20 @@ async def video_picks(request: Request, job_id: str):
     except (TypeError, ValueError):
         raise HTTPException(400, "送信内容が正しくありません")
     p = vpaths(job_id)
+    # 顔と服の特徴は worker が選択画面を出した後に計算している。まだなら少し待ち、終わらなければ 202 で再送してもらう
+    fs = j.get("features_state")
+    for _ in range(FEATURES_WAIT_SEC):
+        if fs != "pending":
+            break
+        await asyncio.sleep(1)
+        fs = (db.get_job(job_id) or {}).get("features_state")
+    if fs == "pending":
+        return JSONResponse({"status": "features_pending", "retry_after": 3}, status_code=202, headers=NO_STORE)
+    use_feats = fs != "failed"  # 計算に失敗したときは特徴なしで判定する
 
     def run():
         tracks, dw, dh, _seen = vengine.load_tracks(p["tracks"])
-        face_m, cloth_m = vengine.load_feats(p["feats"])
+        face_m, cloth_m = vengine.load_feats(p["feats"]) if use_feats else ({}, {})
         keep, blur = vengine.decide(tracks, picks, face_m, cloth_m, min(dw, dh))
         lists = vengine.review_lists(vengine.probe(p["v1080"]), tracks, keep, dw)
         return keep, blur, lists
