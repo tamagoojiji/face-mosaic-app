@@ -35,6 +35,7 @@ th,td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left;vertic
 th{background:var(--surface);font-weight:700}
 td.num{text-align:right;white-space:nowrap}
 .tbl{overflow-x:auto}
+#time-table td:first-child,#time-table th:first-child{white-space:nowrap}
 dl.faq dt{font-weight:700;margin-top:14px}
 dl.faq dd{margin:4px 0 0}
 footer{margin-top:40px;font-size:14px;color:var(--sub)}
@@ -153,7 +154,7 @@ section.ch{scroll-margin-top:110px}
     <p>「この内容で書き出す」を押すと書き出しが始まります。閉じて待てます。できたら再生して確かめ、「動画に保存する」を押してください。</p>
     <h3>処理にかかる時間の目安</h3>
     <p>4K・60fps で撮った動画での実測です。4K・30fps や 1080p で撮った動画はこれより短くなります。</p>
-    <div class="tbl"><table>
+    <div class="tbl"><table id="time-table">
       <tr><th>動画の長さ</th><th>顔を選べるまで</th><th>書き出し（1080p）</th><th>書き出し（元の画質 4K・60fps）</th></tr>
       <tr><td>30秒</td><td class="num">約3分</td><td class="num">約1分</td><td class="num">約7分</td></tr>
       <tr><td>1分</td><td class="num">約5分</td><td class="num">約1分</td><td class="num">約15分</td></tr>
@@ -247,7 +248,8 @@ section.ch{scroll-margin-top:110px}
       <li><b>上のプランへ・高画質オプションを付ける</b>: すぐに切り替わります。残りの日数分の差額を、登録しているカードにその場で請求します。押す前に請求額が表示されます</li>
       <li><b>下のプランへ・高画質オプションを外す</b>: 次の更新日から変わります（請求はありません）。それまでは今のプランのまま使えます</li>
     </ul>
-    <p>契約は1か月ごとで、契約した日と同じ日に毎月自動で更新されます。返金はありません（日割りもありません）。元の画質での書き出しは 1080p の約 10〜15 倍の時間がかかります（1分の動画で約15分）。確認画面で毎回 1080p と選べます。</p>
+    <p>元の画質での書き出しは 1080p の約 10〜15 倍の時間がかかります（1分の動画で約15分）。確認画面で毎回 1080p と選べます。</p>
+    <p>契約は1か月ごとで、契約した日と同じ日に毎月自動で更新されます。返金はありません（日割りもありません）。</p>
   </section>
 
   <section class="ch" id="cancel">
