@@ -9,16 +9,24 @@
   <p class="lead">動画や写真の観客の顔に、自動でモザイクをかけます。残したい人をタップ。あとは自動。</p>
   <a class="btn btn-pri" href="/auth/line/start">LINEでログインする</a>
   <p class="err" id="e" role="alert" hidden></p>
+  <a class="btn" id="recv" hidden>受付の公式 LINE を友だち追加する</a>
   <p class="note">ログインには LINE のアカウントを使います。送った動画・写真は24時間、完成したものは30日で自動で消えます。</p>
   <footer class="legal-links"><a href="/legal/terms">利用規約</a><a href="/legal/privacy">プライバシーポリシー</a><a href="/legal/tokushoho">特商法表記</a></footer>
 </main>
 <script>
-const e = new URLSearchParams(location.search).get('e'), el = document.getElementById('e');
+const q = new URLSearchParams(location.search), e = q.get('e'), el = document.getElementById('e');
 if (e) {
-  el.textContent = e === 'stopped' ? 'このアカウントはいま使えません。運営にお問い合わせください'
+  el.textContent = e === 'reception' ? 'はじめての人は、先に受付の公式 LINE を友だち追加してください。返信の案内に沿って登録できます'
+    : e === 'stopped' ? 'このアカウントはいま使えません。運営にお問い合わせください'
     : e === 'closed' ? '新しい登録の受付はいま停止しています。すでに登録した人はそのままログインできます'
     : 'LINE でのログインができませんでした。もう一度「LINEでログインする」を押してください';
   el.hidden = false;
+  const r = q.get('r') || '';
+  if (e === 'reception' && /^@[\w.-]+$/.test(r)) {
+    const b = document.getElementById('recv');
+    b.href = 'https://line.me/R/ti/p/' + encodeURIComponent(r);
+    b.hidden = false;
+  }
 }
 </script>
 </body></html>

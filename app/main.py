@@ -298,6 +298,11 @@ def _login_line_user(request, line_user_id, name, friend=None):
     if not u:
         # 公式 LINE の番号: 受付で割り当て済みならそれ・無ければ空きを見るだけ（記録は募集枠を通ってから）
         a = db.assignment(line_user_id)
+        rc = db.reception_channel()
+        if not a and rc:  # 受付 LINE を通っていない人は登録させず、受付へ案内する（定員は受付の時点で数える）
+            discord.usage(f"受付前の新規ログインを受付 LINE へ案内: {name}")
+            return RedirectResponse("/?" + urllib.parse.urlencode({"e": "reception", "r": rc["basic_id"] or ""}),
+                                    status_code=303)
         if not a and db.pick_channel() is None and any(c["kind"] == "notify" for c in db.channels()):
             discord.usage(f"満員のため新規ログインを断りました: {name}")
             return RedirectResponse("/?e=closed", status_code=303)

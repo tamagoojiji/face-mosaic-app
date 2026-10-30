@@ -141,7 +141,18 @@ def test_login_uses_assignment():
     assert db.channel_used(2) == BASE[2] + 1  # 登録後は users 側だけで数える
 
 
+def test_login_without_reception_redirects():
+    """受付 LINE を通っていない新規ログインは登録せず、受付へ案内する（枠も番号も使わない）。"""
+    db.set_setting("signup_remaining", "3")
+    r = login("Ulcnorecv")
+    assert r.status_code == 303 and r.headers["location"] == "/?e=reception&r=%40recv"
+    assert db.user_by("line_user_id", "Ulcnorecv") is None and db.assignment("Ulcnorecv") is None
+    assert db.get_setting("signup_remaining") == "3"
+    db.set_setting("signup_remaining", "")
+
+
 def test_login_direct_and_full():
+    db.upsert_channel(0, active=0)  # 受付用が無い運用では、直接ログインで空きの番号に入る
     for uid, no in (("Ulcdirect1", 1), ("Ulcdirect2", 2), ("Ulcdirect3", 2)):
         assert login(uid).headers["location"] == "/home"
         assert db.user_by("line_user_id", uid)["line_channel_no"] == no
@@ -160,6 +171,9 @@ def test_login_direct_and_full():
 
 def test_push_uses_channel_token(env):
     db.upsert_channel(1, capacity=BASE[1])  # ①は満員 → ②
+    c = TestClient(main.app)
+    post(c, "/line/webhook/0", [follow("Ulcpush2")], SEC[0])
+    post(c, "/line/webhook/2", [follow("Ulcpush2")], SEC[2])
     login("Ulcpush2")
     u = db.user_by("line_user_id", "Ulcpush2")
     assert u["line_channel_no"] == 2
@@ -259,6 +273,7 @@ def test_other_channel_unfollow_ignored():
 
 
 def test_signup_closed_leaves_no_assignment():
+    db.upsert_channel(0, active=0)
     db.set_setting("signup_remaining", "0")
     r = login("Ulcclosed")
     assert r.headers["location"] == "/?e=closed"
