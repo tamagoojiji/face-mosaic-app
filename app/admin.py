@@ -21,7 +21,7 @@ from .services import discord, monitor, quota, retention
 router = APIRouter(prefix="/admin")
 NOT_FOUND = "Not Found"  # 存在しないページと同じ応答
 STATUSES = ("active", "stopped")
-ROLES = ("user", "admin")
+ROLES = ("user", "tester", "admin")
 # ジョブ一覧の絞り込み
 JOB_GROUPS = {"queued": ("uploading", "queued", "queued_export"), "running": db.RUNNING,
               "waiting": ("awaiting_pick", "awaiting_review"), "failed": ("failed",), "done": ("done",),
@@ -102,6 +102,8 @@ def settings_page(request: Request):
 
 def _contract(u, now):
     """契約状態の表示: free / お試し残り n 日 / お試し終了 / active / canceling / past_due。"""
+    if u.get("role") == "tester":
+        return "テスター"
     if u.get("sub_status") in ("active", "canceling", "past_due"):
         return u["sub_status"]
     t = u.get("trial_ends_at")

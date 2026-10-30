@@ -240,7 +240,7 @@ LINE公式を友だち追加（QR／リンク）
 - 通報の画像: `/data/reports/<id>/<n>.jpg`（スクショ3枚まで・長辺2000px JPEG・EXIF なし）。作成から90日で削除・退会で削除（通報の文字は残す）
 
 ```
-users        id, line_user_id, display_name, instagram_username(任意・自己申告), role(user|admin・運営の判定はこれが正), plan(free|image|video_a|video_b), hq(0/1・高画質オプション・動画A/Bのときだけ有効),
+users        id, line_user_id, display_name, instagram_username(任意・自己申告), role(user|tester|admin・運営の判定は admin・tester は枚数・本数の月上限なし＋お試し期限なし・2026-10-30), plan(free|image|video_a|video_b), hq(0/1・高画質オプション・動画A/Bのときだけ有効),
              stripe_customer_id, stripe_subscription_id, sub_status, notify(bool), status(active|stopped|withdrawn),
              withdraw_reason, withdraw_note, withdrawn_at, created_at
 usage        user_id, month(YYYY-MM), video_seconds_used, video_count, image_count      ← 月次カウンタ

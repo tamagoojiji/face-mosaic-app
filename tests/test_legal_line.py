@@ -121,6 +121,14 @@ def test_webhook_unfollow_notify_off(monkeypatch):
     assert got["notify"] == 0 and got["line_friend"] == 0
 
 
+def test_webhook_message_no_reply(monkeypatch):
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: pytest.fail("message には返信しない"))
+    c = TestClient(main.app)
+    r = post(c, [{"type": "message", "replyToken": "rt-m", "message": {"type": "text", "text": "こんにちは"},
+                  "source": {"type": "user", "userId": "Umsg"}}])
+    assert r.status_code == 200
+
+
 class JsonResp(FakeResp):
     def __init__(self, data):
         self.data = json.dumps(data).encode()

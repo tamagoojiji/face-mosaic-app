@@ -3,7 +3,7 @@
   python scripts/users.py list
   python scripts/users.py set-plan <id> free|image|video_a|video_b
   python scripts/users.py set-hq <id> 0|1          # 高画質オプション（動画A・B だけ有効）
-  python scripts/users.py set-role <id> user|admin # 運営の判定は users.role=admin が正
+  python scripts/users.py set-role <id> user|tester|admin # tester=枚数・本数の月上限なし（長さ・容量はプランのまま）
 
 VPS では: docker exec face-mosaic-app python scripts/users.py list
 LINE の userId は表示しない（ログイン方法だけ LINE／合言葉 と出す）。
@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app import db  # noqa: E402
 from app.services import quota  # noqa: E402
 
-ROLES = ("user", "admin")
+ROLES = ("user", "tester", "admin")
 
 
 def show(u):

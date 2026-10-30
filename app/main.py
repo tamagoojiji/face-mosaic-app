@@ -1096,12 +1096,12 @@ def _me(u):
     st = quota.status(u)
     lim = st["limits"]
     now = time.time()
-    trial = u.get("trial_ends_at") if lim["plan"] == "free" and u.get("line_user_id") else None
+    trial = u.get("trial_ends_at") if lim["plan"] == "free" and u.get("line_user_id") and not lim["tester"] else None
     blocked = quota.blocked(u, now)
     return {"id": u["id"], "display_name": u["display_name"], "instagram_username": u["instagram_username"],
             "notify": bool(u["notify"]), "auth_mode": config.AUTH_MODE, "plan": lim["plan"], "plan_label": lim["label"],
             "hq": lim["hq"], "hq_available": lim["plan"] in quota.HQ_OPTION["plans"],
-            "campaign": lim["campaign"], "video_allowed": lim["video_allowed"], "video_len": lim["video_len"],
+            "campaign": lim["campaign"], "tester": lim["tester"], "video_allowed": lim["video_allowed"], "video_len": lim["video_len"],
             "limits": {"images": lim["images"], "video_sec_month": lim["video_sec_month"],
                        "video_count_month": lim["video_count_month"]},
             "usage": {"images": st["usage"]["image_count"], "videos": st["usage"]["video_count"],
@@ -1444,14 +1444,12 @@ async def stripe_webhook(request: Request):
 # ---------------------------------------------------------------- LINE 公式アカウントの Webhook
 
 def _line_events(events):
-    """follow → あいさつ＋アプリのリンク／message(text) → アプリのリンク／unfollow → 通知 OFF。"""
+    """follow → あいさつ＋アプリのリンク／unfollow → 通知 OFF（message には返信しない）。"""
     for ev in events:
         typ = ev.get("type")
         if typ == "follow":
             _line_friend(ev, 1)
             notify.reply("follow", ev.get("replyToken"))
-        elif typ == "message" and (ev.get("message") or {}).get("type") == "text":
-            notify.reply("message", ev.get("replyToken"))
         elif typ == "unfollow":
             _line_friend(ev, 0)
 

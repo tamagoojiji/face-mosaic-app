@@ -25,7 +25,7 @@
 reply（Webhook 応答）
 - 公式アカウントの Webhook（`POST /line/webhook`）に届いたイベントへ、reply（`replyToken`）で1回だけ返す。末尾に `APP_BASE_URL/?openExternalBrowser=1` を自動で付ける。定義場所は `app/services/notify.py` の REPLY_TEXT
 - 友だち追加（follow）: 友だち追加ありがとうございます。アプリはこちらから使えます。
-- メッセージ（text）: こちらから使えます。（会話はしない。スタンプ・画像などには返さない）
+- メッセージ（message）: 返信しない（Webhook は受けるが何も送らない・2026-10-30）
 - ブロック（unfollow）は返信せず、その利用者の LINE 通知を OFF にする
 
 送らないもの

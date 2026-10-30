@@ -172,6 +172,7 @@ function quotaLine(me) {
   if (!me.video_allowed) parts.push('動画なし');
   else if (r.video_count !== null) parts.push('動画 あと' + r.video_count + '本');
   else if (r.video_sec !== null) parts.push('動画 あと' + mmss(r.video_sec));
+  else parts.push('動画 無制限');
   parts.push(r.images === null ? '写真 無制限' : '写真 あと' + r.images + '枚');
   return '今月の残り: ' + parts.join('・');
 }

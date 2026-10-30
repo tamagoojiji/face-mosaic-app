@@ -80,12 +80,11 @@ def push_user(kind, user, job=None, reason=None, text=None, link=None):
 
 
 REPLY_URL = "https://api.line.me/v2/bot/message/reply"
-REPLY_TEXT = {"follow": "友だち追加ありがとうございます。アプリはこちらから使えます。",
-              "message": "こちらから使えます。"}
+REPLY_TEXT = {"follow": "友だち追加ありがとうございます。アプリはこちらから使えます。"}
 
 
 def reply(kind, token):
-    """Webhook の応答（follow・message）。アプリのリンクを付ける（会話はしない）。"""
+    """Webhook の応答（follow）。アプリのリンクを付ける（会話はしない）。"""
     if not config.LINE_MSG_CHANNEL_ACCESS_TOKEN or not token:
         log.info("line reply(skip) kind=%s reason=%s", kind, "LINE_MSG未設定" if token else "replyTokenなし")
         return False

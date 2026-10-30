@@ -1,4 +1,5 @@
-"""プランと月の上限（DESIGN 2節 料金プラン表）。リリース記念は settings の campaign_* で切り替える。"""
+"""プランと月の上限（DESIGN 2節 料金プラン表）。リリース記念は settings の campaign_* で切り替える。
+role=tester は枚数・本数の月上限なし・お試し期限なし（1本の長さ・容量はプランのまま）。"""
 
 import datetime
 import time
@@ -122,10 +123,13 @@ def _campaign_for(user):
 def limits(user):
     """プランの上限。記念増量は登録日で判定（期間中に登録した人はお試し終了まで増量のまま）。"""
     plan = user.get("plan") if user.get("plan") in PLANS else "free"
-    p = dict(PLANS[plan], plan=plan, campaign=False, hq=bool(user.get("hq")) and plan in HQ_OPTION["plans"])
+    p = dict(PLANS[plan], plan=plan, campaign=False, hq=bool(user.get("hq")) and plan in HQ_OPTION["plans"],
+             tester=(user.get("role") == "tester"))
     if plan == "free" and _campaign_for(user):
         p.update(campaign=True, images=int(setting("campaign_images") or 10),
                  video_count_month=int(setting("campaign_videos") or 3))
+    if p["tester"]:
+        p.update(campaign=False, images=None, video_sec_month=None, video_count_month=None)
     p["video_allowed"] = bool(p["video_len"]) and (p["video_sec_month"] != 0 or p["video_count_month"] != 0)
     p["video_len"] = min(p["video_len"], config.MAX_VIDEO_SEC) if p["video_allowed"] else 0
     return p
@@ -157,7 +161,7 @@ def blocked(user, now=None):
         return "past_due"
     t = user.get("trial_ends_at")
     if (user.get("plan") or "free") == "free" and user.get("line_user_id") and t is not None \
-            and t < (now or time.time()):
+            and t < (now or time.time()) and user.get("role") != "tester":
         return "trial_expired"
     return None
 
