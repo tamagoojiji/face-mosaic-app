@@ -12,6 +12,7 @@
 | Messaging API チャネル（②・no=2） | らくらくモザイク② | Channel ID `2012301111`・ベーシックID `@597uvhwa`（友だち追加 https://line.me/R/ti/p/@597uvhwa・2026-10-31 作成） | Webhook `https://mosaic.tamago-ai-world.com/line/webhook/2`（2026-10-30 複数運用・定員 5） |
 | Messaging API チャネル（③・no=3） | らくらくモザイク③ | Channel ID `2012301176`・ベーシックID `@385ywxzj`（友だち追加 https://line.me/R/ti/p/@385ywxzj・2026-10-31 作成） | Webhook `https://mosaic.tamago-ai-world.com/line/webhook/3`（定員 5・予備＝登録後に「使う」OFF で待機） |
 | Messaging API チャネル（④・no=4） | らくらくモザイク④ | Channel ID `2012301206`・ベーシックID `@618jvbkn`（友だち追加 https://line.me/R/ti/p/@618jvbkn・2026-10-31 作成） | Webhook `https://mosaic.tamago-ai-world.com/line/webhook/4`（定員 5・予備＝登録後に「使う」OFF で待機） |
+| Messaging API チャネル（⑤・no=5） | らくらくモザイク⑤ | Channel ID `（未記入）`・ベーシックID `@702akmkh`（友だち追加 https://line.me/R/ti/p/@702akmkh・2026-10-31 作成） | Webhook `https://mosaic.tamago-ai-world.com/line/webhook/5`（定員 5・予備＝登録後に「使う」OFF で待機） |
 
 ## Stripe（アカウント Tetraris・**テスト環境（サンドボックス）**・2026-10-28 までの控え）
 
