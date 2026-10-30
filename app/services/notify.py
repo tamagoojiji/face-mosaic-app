@@ -55,7 +55,9 @@ def push_user(kind, user, job=None, reason=None, text=None, link=None):
     jid = job["id"] if job else "-"
     uid = user["id"] if user else (job or {}).get("user_id")
     skip = None
-    if not config.LINE_MSG_CHANNEL_ACCESS_TOKEN:
+    if kind == "done" and quota.setting("notify_done") != "1":
+        skip = "完成通知OFF"
+    elif not config.LINE_MSG_CHANNEL_ACCESS_TOKEN:
         skip = "LINE_MSG未設定"
     elif not user or not user.get("line_user_id"):
         skip = "line_user_idなし"

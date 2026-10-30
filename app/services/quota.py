@@ -34,7 +34,8 @@ SETTING_DEFAULTS = {"launch_price_until": "",  # リリース記念価格の申�
                     "idle_delete_hours": f"{config.IDLE_DELETE_HOURS:g}",
                     "mosaic_default": "block",  # block（ブロック粗め）| glass（すりガラス）
                     "signup_remaining": "",  # 新規登録の残り枠（空=制限なし・登録のたびに1減る・0で受付停止）
-                    "signup_tester_days": "0"}  # 新規登録した人をテスターにする日数（登録日を含む・0=通常の登録）
+                    "signup_tester_days": "0",  # 新規登録した人をテスターにする日数（登録日を含む・0=通常の登録）
+                    "notify_done": "1"}  # 完成（できました）の LINE 通知 1=送る / 0=送らない
 
 
 def setting(key):

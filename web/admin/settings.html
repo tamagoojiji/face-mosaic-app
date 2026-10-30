@@ -60,6 +60,9 @@ legend{font-size:13px;font-weight:600;padding:0;margin-bottom:4px}
         <div class="fld"><label for="signup_tester_days">新規登録した人をテスターにする日数（0=通常の登録）</label>
           <div class="unit"><input class="a-in n" type="number" min="0" step="1" id="signup_tester_days"><span>日</span></div>
           <span class="hint" data-k="signup_tester_days"></span></div>
+        <div class="fld"><span>完成の LINE 通知（できました）</span>
+          <label class="sw2"><input type="checkbox" id="notify_done"><span class="track" aria-hidden="true"></span><span id="notify_done_s">ON</span></label>
+          <span class="hint" data-k="notify_done"></span></div>
       </div>
     </section>
     <section class="a-box a-pad" style="margin-top:16px">
@@ -93,12 +96,14 @@ legend{font-size:13px;font-weight:600;padding:0;margin-bottom:4px}
 <script src="/static/admin.js"></script>
 <script>
 const UNIT = { campaign_images: ' 枚', campaign_videos: ' 本', source_retention_hours: ' 時間', output_retention_days: ' 日', idle_warn_hours: ' 時間', idle_delete_hours: ' 時間', signup_remaining: ' 人', signup_tester_days: ' 日' };
-const SHOW = { launch_price_until: v => v || '指定なし', campaign_on: v => v === '1' ? 'ON' : 'OFF', mosaic_default: v => v === 'glass' ? 'すりガラス' : 'ブロック粗め', campaign_from: v => v || '指定なし', signup_remaining: v => v === '' ? '制限なし' : v + ' 人' };
+const SHOW = { launch_price_until: v => v || '指定なし', campaign_on: v => v === '1' ? 'ON' : 'OFF', notify_done: v => v === '1' ? 'ON' : 'OFF', mosaic_default: v => v === 'glass' ? 'すりガラス' : 'ブロック粗め', campaign_from: v => v || '指定なし', signup_remaining: v => v === '' ? '制限なし' : v + ' 人' };
 const fmt = (k, v) => (SHOW[k] ? SHOW[k](v) : v + (UNIT[k] || ''));
 function render(d) {
   const s = d.settings;
   $('campaign_on').checked = s.campaign_on.value === '1';
   $('campaign_on_s').textContent = $('campaign_on').checked ? 'ON' : 'OFF';
+  $('notify_done').checked = s.notify_done.value === '1';
+  $('notify_done_s').textContent = $('notify_done').checked ? 'ON' : 'OFF';
   ['launch_price_until', 'campaign_from', 'campaign_to', 'campaign_images', 'campaign_videos', 'source_retention_hours', 'output_retention_days', 'idle_warn_hours', 'idle_delete_hours', 'signup_remaining', 'signup_tester_days']
     .forEach(k => $(k).value = s[k].value);
   document.querySelector('input[name=mosaic_default][value=' + (s.mosaic_default.value === 'glass' ? 'glass' : 'block') + ']').checked = true;
@@ -119,10 +124,11 @@ function render(d) {
   });
 }
 $('campaign_on').addEventListener('change', () => { $('campaign_on_s').textContent = $('campaign_on').checked ? 'ON' : 'OFF'; });
+$('notify_done').addEventListener('change', () => { $('notify_done_s').textContent = $('notify_done').checked ? 'ON' : 'OFF'; });
 $('f').addEventListener('submit', async ev => {
   ev.preventDefault();
   $('msg').textContent = ''; $('save').disabled = true;
-  const body = { campaign_on: $('campaign_on').checked ? '1' : '0', mosaic_default: document.querySelector('input[name=mosaic_default]:checked').value };
+  const body = { campaign_on: $('campaign_on').checked ? '1' : '0', notify_done: $('notify_done').checked ? '1' : '0', mosaic_default: document.querySelector('input[name=mosaic_default]:checked').value };
   ['launch_price_until', 'campaign_from', 'campaign_to', 'campaign_images', 'campaign_videos', 'source_retention_hours', 'output_retention_days', 'idle_warn_hours', 'idle_delete_hours', 'signup_remaining', 'signup_tester_days']
     .forEach(k => body[k] = $(k).value);
   try {

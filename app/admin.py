@@ -455,6 +455,7 @@ SETTING_LABELS = {
     "mosaic_default": "モザイクの標準",
     "signup_remaining": "新規登録の残り枠（空=制限なし・登録のたびに1減る・0で受付停止）",
     "signup_tester_days": "新規登録した人をテスターにする日数（0=通常の登録）",
+    "notify_done": "完成の LINE 通知",
 }
 
 
@@ -466,7 +467,7 @@ def _settings_view():
 
 
 def _check_setting(k, v):
-    if k == "campaign_on":
+    if k in ("campaign_on", "notify_done"):
         return v in ("0", "1")
     if k in ("campaign_from", "campaign_to", "launch_price_until"):
         return v == "" or bool(DATE_RE.match(v))
