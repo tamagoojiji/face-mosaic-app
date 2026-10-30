@@ -36,9 +36,15 @@ footer{margin-top:32px;font-size:14px;color:var(--sub)}
   .step figure{grid-column:2;grid-row:1 / span 3}
   .step figure img{width:100%}
 }
+html{scroll-padding-top:72px}
+.topbar{position:sticky;top:0;z-index:10;background:var(--paper);border-bottom:1px solid var(--line)}
+.topbar-in{max-width:720px;margin:0 auto;padding:8px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.topbar-t{font-size:14px;font-weight:700;color:var(--sub)}
+.tohome{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 20px;border-radius:10px;background:var(--pri);color:var(--paper);font-size:16px;font-weight:700;text-decoration:none;white-space:nowrap}
 @page{size:A4 portrait;margin:12mm}
 .howto{margin:16px auto 0;max-width:360px}.howto video{display:block;width:100%;height:auto;border-radius:12px;background:#000}.howto figcaption{font-size:14px;color:var(--sub);text-align:center;margin-top:6px}
 @media print{
+  .topbar{display:none}
   .howto{display:none}
   body{font-size:10.5pt;line-height:1.55;background:#fff}
   .wrap{max-width:none;padding:0}
@@ -60,6 +66,7 @@ footer{margin-top:32px;font-size:14px;color:var(--sub)}
 }
 </style>
 </head><body>
+<nav class="topbar" aria-label="アプリへ戻る"><div class="topbar-in"><span class="topbar-t">かんたん使い方</span><a class="tohome" href="/home">メイン画面へ</a></div></nav>
 <main class="wrap">
   <header>
     <p class="kicker">らくらくモザイク（アプリ内の表示は「顔モザイク」）</p>
@@ -83,8 +90,8 @@ footer{margin-top:32px;font-size:14px;color:var(--sub)}
     </li>
     <li class="step">
       <h2><span class="n">2</span>規約を確認して同意する</h2>
-      <p>Instagram のユーザー名を聞かれます（入れなくても使えます）。次に約束ごとを読み、チェックを入れて「同意してはじめる」。</p>
-      <figure><img src="img/03-agree.png" alt="利用規約とプライバシーポリシーの確認画面。同意のチェックが入っている" width="780" height="1339"></figure>
+      <p>Instagram のユーザー名を聞かれます（入れなくても使えます）。次に約束ごとを読み、チェックを入れて「同意して使い方を見る」。この説明書が開くので、読み終えたら上の「メイン画面へ」でホームに移ります。</p>
+      <figure><img src="img/03-agree.png" alt="利用規約とプライバシーポリシーの確認画面。同意のチェックが入っている" width="780" height="1231"></figure>
     </li>
     <li class="step">
       <h2><span class="n">3</span>ホームで「動画を送る」</h2>

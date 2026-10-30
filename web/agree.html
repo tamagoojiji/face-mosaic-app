@@ -25,7 +25,7 @@
     <p class="note">全文：<a href="/legal/terms" target="_blank" rel="noopener">利用規約</a>／<a href="/legal/privacy" target="_blank" rel="noopener">プライバシーポリシー</a>／<a href="/legal/tokushoho" target="_blank" rel="noopener">特定商取引法に基づく表記</a>（別のタブで開きます）</p>
   </div>
   <label class="choice"><input type="checkbox" id="ok">利用規約とプライバシーポリシーに同意します</label>
-  <button class="btn btn-pri" id="go" disabled>同意してはじめる</button>
+  <button class="btn btn-pri" id="go" disabled>同意して使い方を見る</button>
   <p class="note" id="hint">同意のチェックを入れると押せるようになります。</p>
   <p class="err" id="err" role="alert" hidden></p>
 </main>
@@ -36,7 +36,7 @@ api('/api/me').then(m => { $('sh').textContent = m.source_hours; $('od').textCon
 $('ok').addEventListener('change', () => { $('go').disabled = !$('ok').checked; $('hint').hidden = $('ok').checked; });
 $('go').addEventListener('click', async () => {
   $('go').disabled = true;
-  try { await api('/api/me/agree', { method: 'POST' }); location.href = '/home'; }
+  try { await api('/api/me/agree', { method: 'POST' }); location.href = '/manual/quick'; }
   catch (e) { $('err').textContent = e.message; $('err').hidden = false; $('go').disabled = false; }
 });
 </script>
