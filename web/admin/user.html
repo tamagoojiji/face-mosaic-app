@@ -7,7 +7,7 @@
 </head><body>
 <header class="a-top">
   <a class="brand" href="/admin">顔モザイク 運営</a>
-  <nav aria-label="管理メニュー"><a href="/admin">ダッシュボード</a><a href="/admin/users" aria-current="page">利用者</a><a href="/admin/jobs">ジョブ</a><a href="/admin/reports">通報</a><a href="/admin/settings">設定</a></nav>
+  <nav aria-label="管理メニュー"><a href="/admin">ダッシュボード</a><a href="/admin/users" aria-current="page">利用者</a><a href="/admin/jobs">ジョブ</a><a href="/admin/reports">通報</a><a href="/admin/line">公式 LINE</a><a href="/admin/settings">設定</a></nav>
   <a class="out" href="/home">利用者画面へ</a>
 </header>
 <main class="a-main">
@@ -30,6 +30,7 @@
             <span class="hint" id="hqhint">動画A・動画B のときだけ付けられます</span></div>
           <div class="fld"><label for="role">権限</label><select class="a-sel" id="role"><option value="user">user（利用者）</option><option value="tester">tester（テスター・上限なし）</option><option value="admin">admin（運営）</option></select></div>
           <div class="fld" id="tufld" hidden><label for="tester_until">テスターの期限（この日まで）</label><input class="a-sel" type="date" id="tester_until"></div>
+          <div class="fld"><label for="line_channel_no">公式 LINE の番号</label><select class="a-sel" id="line_channel_no"></select><span class="hint">通知はこの番号の公式 LINE から届きます</span></div>
           <div class="fld"><label for="status">状態</label><select class="a-sel" id="status"><option value="active">active（利用中）</option><option value="stopped">stopped（停止・ログインできない）</option></select></div>
         </div>
         <p class="hint" style="margin:12px 0 0">ここでの変更は Stripe の契約や請求を変えません（記録と画面の上限だけが変わります）。</p>
@@ -50,6 +51,7 @@
 const uid = location.pathname.split('/').filter(Boolean).pop();
 const CT = { active: '契約中', canceling: '解約処理中', past_due: 'お支払い未確認', free: '無料' };
 let hqPlans = [];
+function chName(d, no) { const c = d.line_channels.find(x => x.no === no); return no + (c ? ' ' + c.name : '（登録なし）'); }
 function lim(v, unit) { return v == null ? '無制限' : v + unit; }
 function render(d) {
   const u = d.user;
@@ -65,6 +67,7 @@ function render(d) {
     ['お試しの期限', u.plan !== 'free' ? '—（有料プランのため対象外）' : u.trial_ends_at ? day(u.trial_ends_at) : '—'],
     ['今月の使用量', '動画 ' + u.usage_videos + ' 本・' + mmss(u.usage_video_sec) + '（上限 ' + (u.limits.video_sec_month == null ? '無制限' : mmss(u.limits.video_sec_month)) + '）／写真 ' + u.usage_images + ' 枚（上限 ' + lim(u.limits.images, ' 枚') + '）'],
     ['LINE 連携', u.has_line ? 'あり' : 'なし'],
+    ['公式 LINE', u.line_channel_no == null ? '—' : chName(d, u.line_channel_no)],
     ['LINE 通知', u.notify ? 'オン' : 'オフ'],
     ['Stripe 顧客', u.has_stripe_customer ? 'あり' : 'なし'],
     ['Stripe 購読', u.has_subscription ? 'あり' : 'なし'],
@@ -73,10 +76,13 @@ function render(d) {
   if (u.withdrawn_at) rows.push(['退会', dt(u.withdrawn_at) + '・' + (u.withdraw_reason || '') + (u.withdraw_note ? '「' + u.withdraw_note + '」' : '')]);
   fill($('info'), rows.map(r => [h('dt', {}, r[0]), h('dd', {}, r[1])]));
   if (!$('plan').options.length) d.plans.forEach(p => $('plan').append(h('option', { value: p.key }, p.label)));
+  fill($('line_channel_no'), u.line_channel_no == null ? h('option', { value: '' }, '—（未割り当て）') : null,
+    d.line_channels.map(c => h('option', { value: String(c.no) }, c.no + ' ' + c.name)));
+  $('line_channel_no').value = u.line_channel_no == null ? '' : String(u.line_channel_no);
   $('plan').value = u.plan; $('hq').checked = u.hq; $('role').value = u.role; $('tester_until').value = u.tester_until_date || ''; syncTester(); $('status').value = u.status === 'stopped' ? 'stopped' : 'active';
   syncHq();
   const locked = u.status === 'withdrawn';
-  ['plan', 'hq', 'role', 'status', 'save'].forEach(k => $(k).disabled = locked || (k === 'hq' && !hqPlans.includes($('plan').value)));
+  ['plan', 'hq', 'role', 'line_channel_no', 'status', 'save'].forEach(k => $(k).disabled = locked || (k === 'hq' && !hqPlans.includes($('plan').value)));
   if (locked) { $('msg').className = 'msg'; $('msg').textContent = '退会済みのため変更できません'; }
 
   fill($('jobs'), d.jobs.length ? table(
@@ -108,7 +114,8 @@ $('f').addEventListener('submit', async ev => {
   $('msg').textContent = ''; $('save').disabled = true;
   try {
     const d = await api('/admin/api/users/' + uid, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plan: $('plan').value, hq: $('hq').checked, role: $('role').value, tester_until_date: $('role').value === 'tester' ? $('tester_until').value : '', status: $('status').value }) });
+      body: JSON.stringify({ plan: $('plan').value, hq: $('hq').checked, role: $('role').value, tester_until_date: $('role').value === 'tester' ? $('tester_until').value : '', status: $('status').value,
+        line_channel_no: $('line_channel_no').value === '' ? null : Number($('line_channel_no').value) }) });
     render(d);
     $('msg').className = 'msg ok';
     $('msg').textContent = d.changed.length ? '保存しました（' + d.changed.length + ' 項目・記録に残しました）' : '変更はありませんでした';

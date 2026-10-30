@@ -23,7 +23,10 @@
 | 11 | registered | LINE ログインで新規登録した／退会後に再登録した | 登録ありがとうございます。{お試し終了日}まで無料で試せます（写真5枚と1分までの動画1本まで）。リリース記念中は（ ）内が「写真{記念の枚数}枚・1分までの動画{記念の本数}本」。再登録でお試し期間が終わっている人には「おかえりなさい。お試し期間は終了しているため、プランを選ぶと使えます。」（リンク /plans）。友だち追加していない人には届かない（LINE API がエラー → warning ログのみ） | /home（再登録・期限切れは /plans） | `app/main.py` _notify_registered() |
 
 reply（Webhook 応答）
-- 公式アカウントの Webhook（`POST /line/webhook`）は受けるだけで、reply は一切しない（2026-10-30 に廃止。あいさつが要るなら LINE Official Account Manager の「あいさつメッセージ」で）
+- 通知用の公式アカウントの Webhook（`POST /line/webhook`・`/line/webhook/{no}`）は受けるだけで、reply は一切しない（2026-10-30 に廃止。あいさつが要るなら LINE Official Account Manager の「あいさつメッセージ」で）
+- 受付用の公式アカウント（`kind=reception`・2026-10-30 複数運用）だけ、友だち追加（follow）とテキストのメッセージに reply する（定義場所 `app/services/notify.py` RECEPTION_ASSIGNED・RECEPTION_FULL）
+  - 割り当てあり: あなたは{名前}（{番号}番）です。／①通知を受け取る公式アカウントを友だち追加 {https://line.me/R/ti/p/ベーシックID}／②アプリに登録（LINEでログイン）{アプリの URL}
+  - 満員: ただいま新しい登録の受付を停止しています（満員）。空きが出たらお知らせします。
 - 友だち追加（follow）: 返信しない（友だち状態と通知 ON を記録するだけ・2026-10-30 に返信を廃止）
 - メッセージ（message）: 返信しない（Webhook は受けるが何も送らない・2026-10-30）
 - ブロック（unfollow）は返信せず、その利用者の LINE 通知を OFF にする

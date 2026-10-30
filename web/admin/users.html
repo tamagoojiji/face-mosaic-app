@@ -7,7 +7,7 @@
 </head><body>
 <header class="a-top">
   <a class="brand" href="/admin">顔モザイク 運営</a>
-  <nav aria-label="管理メニュー"><a href="/admin">ダッシュボード</a><a href="/admin/users" aria-current="page">利用者</a><a href="/admin/jobs">ジョブ</a><a href="/admin/reports">通報</a><a href="/admin/settings">設定</a></nav>
+  <nav aria-label="管理メニュー"><a href="/admin">ダッシュボード</a><a href="/admin/users" aria-current="page">利用者</a><a href="/admin/jobs">ジョブ</a><a href="/admin/reports">通報</a><a href="/admin/line">公式 LINE</a><a href="/admin/settings">設定</a></nav>
   <a class="out" href="/home">利用者画面へ</a>
 </header>
 <main class="a-main">
@@ -51,13 +51,13 @@ async function load() {
       return;
     }
     fill($('list'), table(
-      [['ID', 'num'], ['表示名'], ['Instagram名'], ['ログイン', 'nw'], ['プラン', 'nw'], ['契約', 'nw'], ['今月の動画', 'num'], ['今月の写真', 'num'], ['状態', 'nw'], ['登録日', 'nw']],
+      [['ID', 'num'], ['表示名'], ['Instagram名'], ['ログイン', 'nw'], ['公式LINE', 'num'], ['プラン', 'nw'], ['契約', 'nw'], ['今月の動画', 'num'], ['今月の写真', 'num'], ['状態', 'nw'], ['登録日', 'nw']],
       d.users.map(u => {
         const c = CT[u.contract] || [u.contract, u.contract === 'お試し終了' ? 'bad' : u.contract.startsWith('テスター（') ? 'ok' : 'warn'];
         return [String(u.id),
           [h('a', { href: '/admin/users/' + u.id }, u.display_name || 'ゲスト'), u.role === 'admin' ? h('span', { class: 'sub' }, '（運営）') : u.role === 'tester' ? h('span', { class: 'sub' }, '（テスター）') : null],
           u.instagram_username ? '@' + u.instagram_username : h('span', { class: 'sub' }, '—'),
-          u.login, [u.plan_label + (u.hq ? '＋高画質' : ''), u.launch_price ? [' ', badge('記念価格', 'run')] : null], badge(c[0], c[1]),
+          u.login, u.line_channel_no == null ? h('span', { class: 'sub' }, '—') : String(u.line_channel_no), [u.plan_label + (u.hq ? '＋高画質' : ''), u.launch_price ? [' ', badge('記念価格', 'run')] : null], badge(c[0], c[1]),
           mmss(u.usage_video_sec), u.usage_images + ' 枚', badge(u.status, ST[u.status]), day(u.created_at)];
       }),
       i => ({ class: 'link', onclick: ev => { if (ev.target.tagName !== 'A') location.href = '/admin/users/' + d.users[i].id; } })));

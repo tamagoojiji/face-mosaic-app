@@ -284,8 +284,9 @@ def reactivate_user(u, name):
     """退会後の再登録。お試しは LINE アカウントごとに1回だけなので trial_ends_at は付け直さない
     （前回が NULL のときだけ初回登録日＋7日。過去なら期限切れ＝プランを選ぶまで使えない）。"""
     trial = u["trial_ends_at"] or ((u["created_at"] or time.time()) + db.TRIAL_DAYS * 86400)
+    cols = {} if u.get("line_channel_no") is not None else {"line_channel_no": db.assign(u["line_user_id"])}
     db.update_user(u["id"], status="active", display_name=name, plan="free", hq=0, notify=1, ig_asked_at=None,
-                   agreed_at=None, trial_ends_at=trial)
+                   agreed_at=None, trial_ends_at=trial, **cols)
     u = db.get_user(u["id"])
     discord.usage(f"新規登録（退会後の再登録）: {discord.who(u)}")
     _notify_registered(u)
@@ -295,18 +296,29 @@ def reactivate_user(u, name):
 def _login_line_user(request, line_user_id, name, friend=None):
     u = db.user_by("line_user_id", line_user_id)
     if not u:
+        # 公式 LINE の番号: 受付で割り当て済みならそれ・無ければ空きを見るだけ（記録は募集枠を通ってから）
+        a = db.assignment(line_user_id)
+        if not a and db.pick_channel() is None and any(c["kind"] == "notify" for c in db.channels()):
+            discord.usage(f"満員のため新規ログインを断りました: {name}")
+            return RedirectResponse("/?e=closed", status_code=303)
         if not db.take_signup_slot():
             discord.usage(f"登録の受付停止中に新規ログイン: {name}")
             return RedirectResponse("/?e=closed", status_code=303)
+        no = db.assign(line_user_id)
         cols = {}
         days = quota.signup_tester_days()
         if days > 0:
             last = datetime.datetime.now(quota.JST).date() + datetime.timedelta(days=days - 1)
             cols = {"role": "tester", "tester_until": quota.tester_until_ts(last.isoformat())}
+        tester = bool(cols)
+        if a and a["channel_no"] == no:  # 登録前にその番号を follow 済み（Webhook で記録）
+            cols.update(line_friend=a["friend"], notify=a["friend"])
+        elif no is not None and no != 1:  # ①以外の友だち状態は、その番号の Webhook（follow）で付くまで 0
+            cols["line_friend"] = 0
         try:
-            u = db.create_user(line_user_id=line_user_id, display_name=name,
+            u = db.create_user(line_user_id=line_user_id, display_name=name, line_channel_no=no,
                                trial_ends_at=time.time() + db.TRIAL_DAYS * 86400, **cols)
-            if cols:
+            if tester:
                 discord.usage(f"新規登録（テスター・{last.month}/{last.day}まで）: {discord.who(u)}")
             else:
                 discord.usage(f"新規登録: {discord.who(u)}")
@@ -319,7 +331,7 @@ def _login_line_user(request, line_user_id, name, friend=None):
         return RedirectResponse("/?e=stopped", status_code=303)
     elif name and name != u["display_name"]:
         db.update_user(u["id"], display_name=name)
-    if friend is not None:  # 公式アカウントの友だち状態（未追加・ブロック中ならホームに案内を出す）
+    if friend is not None and u.get("line_channel_no") == 1:  # ①の友だち状態（ログインチャネルに紐づくのは①だけ）
         db.update_user(u["id"], line_friend=1 if friend else 0)
     res = RedirectResponse("/home", status_code=303)
     _set_session(request, res, {"uid": u["id"]})
@@ -335,10 +347,8 @@ def line_start(request: Request):
     state, nonce = secrets.token_urlsafe(16), secrets.token_urlsafe(16)
     q = urllib.parse.urlencode({"response_type": "code", "client_id": config.LINE_LOGIN_CHANNEL_ID,
                                 "redirect_uri": _redirect_uri(request), "state": state,
-                                "scope": "profile openid", "nonce": nonce,
-                                # ログインのついでに公式アカウントの友だち追加を案内（通知の経路）。
-                                # LINE Developers のログインチャネル「リンクされたボット」に Messaging API チャネルを設定しておく
-                                "bot_prompt": "aggressive"})
+                                "scope": "profile openid", "nonce": nonce})
+    # 友だち追加の誘導（bot_prompt）は付けない: ログインチャネルに紐づくのは①だけのため、番号ごとの公式 LINE は受付用で案内する
     res = RedirectResponse(LINE_AUTH_URL + "?" + q, status_code=302)
     res.set_cookie(STATE_COOKIE, _state_serializer().dumps({"s": state, "n": nonce}), max_age=600, httponly=True,
                    samesite="lax", secure=request.url.scheme == "https", path="/auth/line")
@@ -1114,6 +1124,7 @@ def _me(u):
     now = time.time()
     trial = u.get("trial_ends_at") if lim["plan"] == "free" and u.get("line_user_id") and not lim["tester"] else None
     blocked = quota.blocked(u, now)
+    ch = db.channel(u.get("line_channel_no"))
     return {"id": u["id"], "display_name": u["display_name"], "instagram_username": u["instagram_username"],
             "notify": bool(u["notify"]), "auth_mode": config.AUTH_MODE, "plan": lim["plan"], "plan_label": lim["label"],
             "hq": lim["hq"], "hq_available": lim["plan"] in quota.HQ_OPTION["plans"],
@@ -1129,7 +1140,9 @@ def _me(u):
             "trial_expired": blocked == "trial_expired", "current_period_end": u.get("current_period_end"),
             "cancel_at_period_end": bool(u.get("cancel_at_period_end")), "pending_plan": u.get("pending_plan"),
             "pending_hq": u.get("pending_hq"), "stripe_ready": billing.ready(), "blocked": blocked,
-            "line_friend": u.get("line_friend"), "line_add_url": "https://line.me/R/ti/p/" + config.LINE_OA_BASIC_ID}
+            "line_friend": u.get("line_friend"), "line_channel_no": ch["no"] if ch else u.get("line_channel_no"),
+            "line_channel_name": ch["name"] if ch else None,
+            "line_add_url": "https://line.me/R/ti/p/" + ((ch or {}).get("basic_id") or config.LINE_OA_BASIC_ID)}
 
 
 @app.get("/api/me")
@@ -1509,42 +1522,80 @@ async def stripe_webhook(request: Request):
 
 # ---------------------------------------------------------------- LINE 公式アカウントの Webhook
 
-def _line_events(events):
-    """follow → 友だち・通知 ON／unfollow → 通知 OFF。返信はしない（follow・message とも・2026-10-30）。"""
+def _line_events(events, ch):
+    """受付用: follow・message(text) → 番号を割り当てて案内を返信（満員なら受付停止）。unfollow は何もしない。
+    通知用: follow → 友だち・通知 ON（番号が無ければこの番号に）／unfollow → 通知 OFF。message には何もしない。"""
     for ev in events:
         typ = ev.get("type")
-        if typ == "follow":
-            _line_friend(ev, 1)
+        if ch["kind"] == "reception":
+            if typ == "follow" or (typ == "message" and (ev.get("message") or {}).get("type") == "text"):
+                _reception(ev, ch)
+        elif typ == "follow":
+            _line_friend(ev, 1, ch["no"])
         elif typ == "unfollow":
-            _line_friend(ev, 0)
+            _line_friend(ev, 0, ch["no"])
 
 
-def _line_friend(ev, on):
+def _reception(ev, ch):
+    uid = (ev.get("source") or {}).get("userId")
+    if not uid:
+        return
+    no = db.assign(uid)
+    target = db.channel(no) if no is not None else None
+    text = notify.reception_text(target) if target else notify.RECEPTION_FULL
+    log.info("line reception %s no=%s", ev.get("type"), no if target else "満員")
+    notify.reply(ch["access_token"], ev.get("replyToken"), text)
+
+
+def _line_friend(ev, on, no=1):
     """follow → 友だち・通知 ON／unfollow（ブロック）→ 友だちでない・通知 OFF。"""
     uid = (ev.get("source") or {}).get("userId")
     u = db.user_by("line_user_id", uid) if uid else None
+    if u and u.get("line_channel_no") not in (None, no):  # 別の番号の公式 LINE は通知先でないので触らない
+        log.info("line webhook %s 別番号 user=%s no=%s", ev.get("type"), u["id"], no)
+        return
     if u:
-        db.update_user(u["id"], line_friend=on, notify=on)
-    log.info("line webhook %s user=%s", ev.get("type"), u["id"] if u else "-")
+        cols = {"line_friend": on, "notify": on}
+        if on and u.get("line_channel_no") is None:
+            cols["line_channel_no"] = no
+        db.update_user(u["id"], **cols)
+    elif uid:  # 登録前: 割り当て行に友だち状態を記録（ログインで users に引き継ぐ）
+        db.set_assignment_friend(uid, no, on)
+    log.info("line webhook no=%s %s user=%s", no, ev.get("type"), u["id"] if u else "-")
+
+
+async def _line_webhook(request, ch):
+    """署名検証 → 処理。LINE の再送を防ぐため、署名 NG 以外は常に 200 を返す。"""
+    body = await request.body()
+    want = base64.b64encode(hmac.new(ch["channel_secret"].encode(), body, hashlib.sha256).digest()).decode()
+    if not hmac.compare_digest(want, request.headers.get("x-line-signature", "")):
+        log.warning("line webhook 署名NG no=%s", ch["no"])
+        return JSONResponse({"detail": "invalid signature"}, status_code=400)
+    try:
+        events = json.loads(body).get("events") or []
+        await asyncio.to_thread(_line_events, events, ch)
+    except Exception as e:  # 応答に失敗しても 200（再送させない）
+        log.warning("line webhook 処理失敗 no=%s: %s", ch["no"], type(e).__name__)
+    return JSONResponse({"ok": True})
 
 
 @app.post("/line/webhook")
 async def line_webhook(request: Request):
-    """LINE からの通知（署名検証 → 応答）。LINE の再送を防ぐため、署名 NG 以外は常に 200 を返す。"""
-    if not config.LINE_MSG_CHANNEL_SECRET:
-        log.info("line webhook(skip) reason=LINE_MSG_CHANNEL_SECRET未設定")
+    """①の別名（DB の no=1 のシークレットで検証）。"""
+    ch = db.channel(1)
+    if not ch or not ch.get("channel_secret"):
+        log.info("line webhook(skip) reason=①のチャネルシークレット未設定")
         return JSONResponse({"ok": True})
-    body = await request.body()
-    want = base64.b64encode(hmac.new(config.LINE_MSG_CHANNEL_SECRET.encode(), body, hashlib.sha256).digest()).decode()
-    if not hmac.compare_digest(want, request.headers.get("x-line-signature", "")):
-        log.warning("line webhook 署名NG")
-        return JSONResponse({"detail": "invalid signature"}, status_code=400)
-    try:
-        events = json.loads(body).get("events") or []
-        await asyncio.to_thread(_line_events, events)
-    except Exception as e:  # 応答に失敗しても 200（再送させない）
-        log.warning("line webhook 処理失敗: %s", type(e).__name__)
-    return JSONResponse({"ok": True})
+    return await _line_webhook(request, ch)
+
+
+@app.post("/line/webhook/{no}")
+async def line_webhook_no(request: Request, no: int):
+    """番号ごとの公式 LINE（その番号のシークレットで署名検証）。無い・止めている番号は 404。"""
+    ch = db.channel(no)
+    if not ch or not ch["active"] or not ch.get("channel_secret"):
+        raise HTTPException(404, "Not Found")
+    return await _line_webhook(request, ch)
 
 
 # ---------------------------------------------------------------- 運営の管理画面（/admin）

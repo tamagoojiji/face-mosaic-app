@@ -36,6 +36,13 @@ def env(monkeypatch):
     monkeypatch.setattr(config, "LINE_MSG_CHANNEL_SECRET", LINE_SECRET)
     monkeypatch.setattr(config, "LINE_MSG_CHANNEL_ACCESS_TOKEN", "line-token-test")
     monkeypatch.setattr(config, "APP_BASE_URL", "https://example.test")
+    # Webhook・通知は DB の ①（no=1）の値を使う（2026-10-30 複数運用）
+    db.upsert_channel(1, name="らくらくモザイク①", kind="notify", basic_id=config.LINE_OA_BASIC_ID, capacity=1000,
+                      active=1, access_token="line-token-test", channel_secret=LINE_SECRET)
+    yield
+    with db.connect() as con:
+        con.execute("DELETE FROM line_channels")
+        con.execute("DELETE FROM line_assignments")
 
 
 def sign(body):
@@ -77,6 +84,7 @@ def test_webhook_bad_signature():
 
 def test_webhook_secret_unset(monkeypatch):
     monkeypatch.setattr(config, "LINE_MSG_CHANNEL_SECRET", "")
+    db.upsert_channel(1, channel_secret="")
     c = TestClient(main.app)
     assert post(c, [{"type": "follow", "replyToken": "rt"}], signature="bad").status_code == 200
 

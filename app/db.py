@@ -90,6 +90,23 @@ CREATE TABLE IF NOT EXISTS reports (
   image_count INTEGER NOT NULL DEFAULT 0,  -- 添付のスクリーンショット（DATA_DIR/reports/<id>/<n>.jpg）
   video_name TEXT                          -- 添付の画面録画（DATA_DIR/reports/<id>/video.<ext>・NULL=なし）
 );
+CREATE TABLE IF NOT EXISTS line_channels (
+  no INTEGER PRIMARY KEY,          -- 公式 LINE の番号（①=1・受付用は 0 推奨）
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'notify',   -- reception（受付用・返信だけ）| notify（通知用）
+  basic_id TEXT,                   -- ベーシック ID（友だち追加リンク）
+  access_token TEXT,               -- チャネルアクセストークン（画面・ログに出さない）
+  channel_secret TEXT,             -- チャネルシークレット（同上）
+  capacity INTEGER NOT NULL DEFAULT 5,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at REAL
+);
+CREATE TABLE IF NOT EXISTS line_assignments (
+  line_user_id TEXT PRIMARY KEY,   -- 受付・ログインで割り当てた番号（登録前の人も定員に数える）
+  channel_no INTEGER NOT NULL,
+  created_at REAL,
+  friend INTEGER NOT NULL DEFAULT 0  -- 登録前にその番号を follow 済み（1）／unfollow（0）
+);
 CREATE TABLE IF NOT EXISTS billing_events (
   event_id TEXT PRIMARY KEY,       -- Stripe の event.id（Webhook の重複処理よけ）
   type TEXT,
@@ -164,6 +181,9 @@ def init():
         if "launch_price" not in ucols:  # リリース記念価格（定価を入れる前からの有料利用者は記念価格のまま）
             con.execute("ALTER TABLE users ADD COLUMN launch_price INTEGER NOT NULL DEFAULT 0")
             con.execute("UPDATE users SET launch_price=1 WHERE stripe_subscription_id IS NOT NULL")
+        if "line_channel_no" not in ucols:  # 公式 LINE の番号（複数運用・2026-10-30）。それまでの利用者は全員 ①
+            con.execute("ALTER TABLE users ADD COLUMN line_channel_no INTEGER")
+            con.execute("UPDATE users SET line_channel_no=1")
         # LINE の無料利用者にお試し期限（登録＋7日）。合言葉・運営は対象外
         con.execute("UPDATE users SET trial_ends_at=created_at+? WHERE plan='free' AND line_user_id IS NOT NULL "
                     "AND role!='admin' AND trial_ends_at IS NULL AND created_at IS NOT NULL", (TRIAL_DAYS * 86400,))
@@ -193,6 +213,7 @@ def init():
         con.execute("UPDATE jobs SET src_expires_at=expires_at, out_expires_at=expires_at+?, expires_at=NULL "
                     "WHERE status='done' AND out_expires_at IS NULL AND expires_at IS NOT NULL",
                     (config.OUTPUT_RETENTION_DAYS * 86400 - config.SOURCE_RETENTION_HOURS * 3600,))
+    ensure_channel_from_env()
 
 
 def insert_job(job_id, **cols):
@@ -479,3 +500,114 @@ def take_signup_slot():
 def all_settings():
     with connect() as con:
         return {r["key"]: r["value"] for r in con.execute("SELECT key, value FROM settings ORDER BY key")}
+
+
+# ---------------------------------------------------------------- 公式 LINE（複数運用・2026-10-30）
+
+CHANNEL_COLS = ("name", "kind", "basic_id", "access_token", "channel_secret", "capacity", "active")
+
+
+def ensure_channel_from_env():
+    """① が DB に無く env にトークンがあれば、env から no=1 として取り込む（DB に行があれば env は使わない）。"""
+    if not config.LINE_MSG_CHANNEL_ACCESS_TOKEN:
+        return
+    with connect() as con:
+        con.execute("INSERT OR IGNORE INTO line_channels (no, name, kind, basic_id, access_token, channel_secret, created_at) "
+                    "VALUES (1, 'らくらくモザイク①', 'notify', ?, ?, ?, ?)",
+                    (config.LINE_OA_BASIC_ID, config.LINE_MSG_CHANNEL_ACCESS_TOKEN, config.LINE_MSG_CHANNEL_SECRET or None,
+                     time.time()))
+
+
+def channels(active_only=False):
+    with connect() as con:
+        rows = con.execute("SELECT * FROM line_channels" + (" WHERE active=1" if active_only else "") + " ORDER BY no")
+        return [dict(r) for r in rows]
+
+
+def channel(no):
+    if no is None:
+        return None
+    with connect() as con:
+        r = con.execute("SELECT * FROM line_channels WHERE no=?", (no,)).fetchone()
+    return dict(r) if r else None
+
+
+def upsert_channel(no, **cols):
+    """追加・更新。access_token・channel_secret は渡されたとき（None 以外）だけ更新する。"""
+    bad = set(cols) - set(CHANNEL_COLS)
+    assert not bad, bad
+    cols = {k: v for k, v in cols.items() if v is not None or k not in ("access_token", "channel_secret")}
+    with connect() as con:
+        if con.execute("SELECT 1 FROM line_channels WHERE no=?", (no,)).fetchone():
+            if cols:
+                con.execute(f"UPDATE line_channels SET {','.join(f'{k}=?' for k in cols)} WHERE no=?",
+                            [*cols.values(), no])
+        else:
+            cols.update(no=no, created_at=time.time())
+            con.execute(f"INSERT INTO line_channels ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})",
+                        list(cols.values()))
+
+
+def _used(con, no):
+    return con.execute(
+        "SELECT (SELECT COUNT(*) FROM users WHERE status!='withdrawn' AND line_channel_no=?) + "
+        "(SELECT COUNT(*) FROM line_assignments a WHERE a.channel_no=? AND NOT EXISTS "
+        "(SELECT 1 FROM users u WHERE u.line_user_id=a.line_user_id))", (no, no)).fetchone()[0]
+
+
+def channel_used(no):
+    """定員に数える人数: その番号の利用者（退会除く）＋未登録の割り当て。"""
+    with connect() as con:
+        return _used(con, no)
+
+
+def _pick(con):
+    for r in con.execute("SELECT no, capacity FROM line_channels WHERE active=1 AND kind='notify' ORDER BY no").fetchall():
+        if _used(con, r["no"]) < r["capacity"]:
+            return r["no"]
+    return None
+
+
+def pick_channel():
+    """空きのある最小番号（active・通知用）。全部満員なら None。"""
+    with connect() as con:
+        return _pick(con)
+
+
+def assign(line_user_id):
+    """その人の番号。利用者の番号か既存の割り当てがあればそれ、無ければ空きの最小番号を割り当てて記録（満員なら None）。"""
+    with connect() as con:
+        con.execute("BEGIN IMMEDIATE")
+        r = con.execute("SELECT line_channel_no FROM users WHERE line_user_id=?", (line_user_id,)).fetchone()
+        if r and r["line_channel_no"] is not None:
+            return r["line_channel_no"]
+        r = con.execute("SELECT channel_no FROM line_assignments WHERE line_user_id=?", (line_user_id,)).fetchone()
+        if r:
+            return r["channel_no"]
+        no = _pick(con)
+        if no is not None:
+            con.execute("INSERT INTO line_assignments (line_user_id, channel_no, created_at) VALUES (?,?,?)",
+                        (line_user_id, no, time.time()))
+        return no
+
+
+def assignment(line_user_id):
+    """割り当て行（channel_no・friend）。無ければ None（記録はしない）。"""
+    with connect() as con:
+        r = con.execute("SELECT * FROM line_assignments WHERE line_user_id=?", (line_user_id,)).fetchone()
+    return dict(r) if r else None
+
+
+def set_assignment_friend(line_user_id, no, on):
+    """登録前の人の follow/unfollow を記録（行が無ければ no で作る・あれば channel_no はそのまま）。"""
+    with connect() as con:
+        con.execute("INSERT INTO line_assignments (line_user_id, channel_no, created_at, friend) VALUES (?,?,?,?) "
+                    "ON CONFLICT(line_user_id) DO UPDATE SET friend=excluded.friend",
+                    (line_user_id, no, time.time(), 1 if on else 0))
+
+
+def reception_channel():
+    """受付用（active な reception の最小番号）。"""
+    with connect() as con:
+        r = con.execute("SELECT * FROM line_channels WHERE active=1 AND kind='reception' ORDER BY no LIMIT 1").fetchone()
+    return dict(r) if r else None

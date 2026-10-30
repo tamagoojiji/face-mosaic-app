@@ -262,6 +262,19 @@ audit_log    id, actor_id, action, target, detail, created_at                   
 ### DB のバックアップ（2026-10-27）
 毎晩3時（VPS ホストの cron）に `scripts/backup-to-gas.sh` が SQLite を `.backup` でコピー→整合性チェック→gzip→**age で暗号化（公開鍵は VPS・復号鍵は運営の Mac の Keychain `face-mosaic-backup-age` にだけ）**→ GAS Web アプリ（`~/dev/gas-tools/face-mosaic-backup`）へ POST → Google ドライブのフォルダ `face-mosaic-backup` に30日分。VPS にも暗号化済みの控えを7件。失敗は Discord #mosaic-alerts。GAS との合言葉は VPS が作って初回だけ登録（`enroll`・以後は拒否）。復元は Mac で `scripts/restore-from-backup.sh`。Contabo の Auto Backup は使わない（動画・写真は期限付きデータのため対象外・サーバーは GitHub から作り直す）
 
+### 公式 LINE 複数運用（2026-10-30）
+通知用の公式 LINE 1 つにつき利用者 5 人（無料枠 月200通に収める）。①=`@606cuvoe`、②以降は手作業で作って管理画面 `/admin/line`（または `scripts/line_channels.py`）で登録。計画: `~/Tech-Notes/face-mosaic-app/plan-line-multi-oa-2026-10-30.md`
+```
+line_channels     no(PK・受付用は0推奨), name, kind(reception|notify), basic_id, access_token, channel_secret,
+                  capacity(既定5), active, created_at   ← トークン・シークレットは画面・ログ・Discord に出さない
+line_assignments  line_user_id(PK), channel_no, created_at, friend   ← 受付・ログインで割り当てた番号（登録前も定員に数える）・登録前の follow 状態
+users.line_channel_no                                        ← その人の番号（移行時に既存の全員を 1）
+```
+- 振り分け: 空きのある最小番号（active な通知用。人数＝その番号の利用者（退会除く）＋未登録の割り当て）。受付用を友だち追加・メッセージ → 番号を割り当てて案内を返信（replyToken・無料）。満員なら受付停止の返信。受付を通らずログインした人も同じ規則で割り当て、満員なら `/?e=closed`。通知用の公式 LINE が 1 つも無い環境（開発・テスト）は割り当てなしで登録する
+- ① は起動時に env（`LINE_MSG_CHANNEL_ACCESS_TOKEN`・`LINE_MSG_CHANNEL_SECRET`・`LINE_OA_BASIC_ID`）から no=1 として取り込む（DB に無いときだけ。以後は DB が正）
+- 通知（push）はその人の番号のトークン。Webhook は `POST /line/webhook/{no}`（その番号のシークレットで署名検証・無い／止めた番号は 404）。`POST /line/webhook` は ① の別名
+- LINE ログインの `bot_prompt` は外した（ログインチャネルに紐づくのは ① だけ）。①以外の人の友だち状態は、その番号の Webhook（follow）で付くまで 0
+
 ### 保存しないもの
 - 元動画・元画像と解析データ（場面写真・顔の切り抜き・追跡結果）は24時間で削除。完成品（モザイク済み）だけ30日保存
 - 顔の特徴ベクトル（SFace）・服の色ヒストグラムはジョブ完了時に削除（判定にだけ使う）

@@ -98,6 +98,11 @@ def settings_page(request: Request):
     return _page(request, "settings.html")
 
 
+@router.get("/line")
+def line_page(request: Request):
+    return _page(request, "line.html")
+
+
 # ---------------------------------------------------------------- 共通の形
 
 def _contract(u, now):
@@ -130,7 +135,8 @@ def _user_row(u, usage, now):
             "hq": bool(u["hq"]), "launch_price": bool(u["launch_price"]), "role": u["role"], "status": u["status"], "contract": _contract(u, now),
             "tester_until": u.get("tester_until"), "tester_until_date": _tester_until_date(u),
             "usage_video_sec": (usage or {}).get("video_seconds_used") or 0,
-            "usage_images": (usage or {}).get("image_count") or 0, "created_at": u["created_at"]}
+            "usage_images": (usage or {}).get("image_count") or 0, "created_at": u["created_at"],
+            "line_channel_no": u.get("line_channel_no")}
 
 
 def _job_row(j, users=None):
@@ -227,7 +233,8 @@ def _user_detail(u):
     return {"user": d, "jobs": [_job_row(j) for j in jobs],
             "reports": [_report_row(r, {}, {j["id"]: j for j in jobs}) for r in reports], "audit": audit,
             "plans": [{"key": k, "label": quota.PLANS[k]["label"]} for k in quota.PLAN_ORDER],
-            "hq_plans": list(quota.HQ_OPTION["plans"])}
+            "hq_plans": list(quota.HQ_OPTION["plans"]),
+            "line_channels": [{"no": c["no"], "name": c["name"]} for c in db.channels() if c["kind"] == "notify"]}
 
 
 def _target_user(uid):
@@ -251,7 +258,11 @@ async def api_user_update(request: Request, uid: int):
     if u["status"] == "withdrawn":
         raise HTTPException(400, "退会済みの利用者は変更できません")
     new = {"plan": b.get("plan", u["plan"]), "hq": 1 if b.get("hq", u["hq"]) else 0,
-           "role": b.get("role", u["role"]), "status": b.get("status", u["status"])}
+           "role": b.get("role", u["role"]), "status": b.get("status", u["status"]),
+           "line_channel_no": b.get("line_channel_no", u["line_channel_no"])}
+    notify_nos = {c["no"] for c in db.channels() if c["kind"] == "notify"}
+    if new["line_channel_no"] != u["line_channel_no"] and new["line_channel_no"] not in notify_nos:
+        raise HTTPException(400, "公式 LINE の番号を選び直してください")
     if new["plan"] not in quota.PLANS:
         raise HTTPException(400, "プランを選び直してください")
     if new["hq"] and new["plan"] not in quota.HQ_OPTION["plans"]:
@@ -511,3 +522,64 @@ async def api_settings_update(request: Request):
     if diff:
         db.audit(admin["id"], "admin.settings", "settings", json.dumps(diff, ensure_ascii=False))
     return _ok(dict(_settings_view(), changed=list(diff)))
+
+
+# ---------------------------------------------------------------- 公式 LINE（複数運用・トークン・シークレットは返さない）
+
+KINDS = ("reception", "notify")
+
+
+def _channel_row(c):
+    tok = c.get("access_token") or ""
+    return {"no": c["no"], "name": c["name"], "kind": c["kind"], "basic_id": c["basic_id"],
+            "capacity": c["capacity"], "active": bool(c["active"]),
+            "used": db.channel_used(c["no"]) if c["kind"] == "notify" else None,
+            "token_tail": tok[-4:] if tok else None, "secret_set": bool(c.get("channel_secret")),
+            "webhook_url": f"{config.APP_BASE_URL}/line/webhook/{c['no']}"}
+
+
+def _line_view():
+    return {"channels": [_channel_row(c) for c in db.channels()]}
+
+
+@router.get("/api/line")
+def api_line(request: Request):
+    require_admin(request, api=True)
+    return _ok(_line_view())
+
+
+@router.post("/api/line/{no}")
+async def api_line_update(request: Request, no: int):
+    admin = require_admin(request, api=True)
+    if no < 0:
+        raise HTTPException(400, "番号は 0 以上にしてください")
+    b = await core._json_body(request)
+    old = db.channel(no)
+    cols = {}
+    for k in ("name", "kind", "basic_id"):
+        if b.get(k) is not None:
+            cols[k] = str(b[k]).strip()
+    for k in ("capacity", "active"):
+        if b.get(k) is not None:
+            try:
+                cols[k] = int(b[k])
+            except (TypeError, ValueError):
+                raise HTTPException(400, "定員は数字で入れてください")
+    if "active" in cols:
+        cols["active"] = 1 if cols["active"] else 0
+    if not (cols.get("name") if "name" in cols else (old or {}).get("name")):
+        raise HTTPException(400, "名前を入れてください")
+    if cols.get("kind", (old or {}).get("kind", "notify")) not in KINDS:
+        raise HTTPException(400, "種別を選び直してください")
+    if cols.get("capacity", 0) < 0:
+        raise HTTPException(400, "定員は 0 以上にしてください")
+    if "basic_id" in cols and cols["basic_id"] and not cols["basic_id"].startswith("@"):
+        cols["basic_id"] = "@" + cols["basic_id"]
+    secrets_ = {k: str(b[k]).strip() for k in ("access_token", "channel_secret") if str(b.get(k) or "").strip()}
+    diff = {k: [(old or {}).get(k), v] for k, v in cols.items() if (old or {}).get(k) != v}
+    db.upsert_channel(no, **cols, **secrets_)
+    detail = dict(diff, **{k: "更新" for k in secrets_})  # トークン・シークレットの値は記録しない
+    if detail or not old:
+        db.audit(admin["id"], "admin.line_channel" + ("" if old else "_add"), f"line:{no}",
+                 json.dumps(detail, ensure_ascii=False))
+    return _ok(dict(_line_view(), changed=list(detail)))

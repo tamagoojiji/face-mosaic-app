@@ -1,6 +1,6 @@
 """LINE 通知4種（Messaging API の push）。DESIGN 3節「LINE通知の一覧」。
 
-送れないとき（LINE_MSG_* 未設定・line_user_id なし・通知 OFF）は送らずに notify(skip) を1行ログに出す。
+送れないとき（その人の番号の公式 LINE が未設定・line_user_id なし・通知 OFF）は送らずに notify(skip) を1行ログに出す。
 送れない人にも同じ内容がホームの一覧に出る（選択待ち・放置の警告・失敗の理由・完成）。
 """
 
@@ -57,10 +57,10 @@ def push_user(kind, user, job=None, reason=None, text=None, link=None):
     skip = None
     if kind == "done" and quota.setting("notify_done") != "1":
         skip = "完成通知OFF"
-    elif not config.LINE_MSG_CHANNEL_ACCESS_TOKEN:
-        skip = "LINE_MSG未設定"
     elif not user or not user.get("line_user_id"):
         skip = "line_user_idなし"
+    elif not (ch := db.channel(user.get("line_channel_no"))) or not ch.get("access_token"):
+        skip = f"公式LINE未設定(no={user.get('line_channel_no')})"
     elif not user.get("notify"):
         skip = "通知OFF"
     elif user.get("status") != "active":
@@ -71,11 +71,42 @@ def push_user(kind, user, job=None, reason=None, text=None, link=None):
     body = json.dumps({"to": user["line_user_id"],
                        "messages": [{"type": "text", "text": message(kind, job, reason, text, link)}]}).encode()
     req = urllib.request.Request(PUSH_URL, data=body, method="POST", headers={
-        "Content-Type": "application/json", "Authorization": "Bearer " + config.LINE_MSG_CHANNEL_ACCESS_TOKEN})
+        "Content-Type": "application/json", "Authorization": "Bearer " + ch["access_token"]})
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
             log.info("notify(sent) kind=%s job=%s user=%s status=%s", kind, jid, user["id"], r.status)
         return True
     except Exception as e:  # 通知の失敗で処理は止めない（画面にも同じ内容が出る）
         log.warning("notify 失敗 kind=%s job=%s: %s", kind, jid, type(e).__name__)
+        return False
+
+
+# ---------------------------------------------------------------- 受付用公式 LINE の返信（replyToken・無料）
+
+REPLY_URL = "https://api.line.me/v2/bot/message/reply"
+RECEPTION_ASSIGNED = ("あなたは{name}（{no}番）です。\n\n①通知を受け取る公式アカウントを友だち追加\n{add_url}\n\n"
+                      "②アプリに登録（LINEでログイン）\n{app_url}")
+RECEPTION_FULL = "ただいま新しい登録の受付を停止しています（満員）。空きが出たらお知らせします。"
+
+
+def reception_text(ch):
+    """割り当てた番号の案内（ch=その番号の line_channels 行）。"""
+    return RECEPTION_ASSIGNED.format(name=ch["name"], no=ch["no"], add_url="https://line.me/R/ti/p/" + (ch["basic_id"] or ""),
+                                     app_url=_link("/").strip())
+
+
+def reply(token, reply_token, text):
+    """Webhook の応答（受付用）。token=受付用のチャネルアクセストークン。"""
+    if not token or not reply_token:
+        log.info("line reply(skip) reason=%s", "replyTokenなし" if token else "受付用のトークン未設定")
+        return False
+    body = json.dumps({"replyToken": reply_token, "messages": [{"type": "text", "text": text}]}).encode()
+    req = urllib.request.Request(REPLY_URL, data=body, method="POST", headers={
+        "Content-Type": "application/json", "Authorization": "Bearer " + token})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            log.info("line reply(sent) status=%s", r.status)
+        return True
+    except Exception as e:
+        log.warning("line reply 失敗: %s", type(e).__name__)
         return False
