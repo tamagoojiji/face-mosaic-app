@@ -81,25 +81,11 @@ def test_webhook_secret_unset(monkeypatch):
     assert post(c, [{"type": "follow", "replyToken": "rt"}], signature="bad").status_code == 200
 
 
-def test_webhook_follow_reply(monkeypatch):
-    calls = []
-
-    def fake(req, timeout=None):
-        calls.append(req)
-        return FakeResp()
-
-    monkeypatch.setattr(urllib.request, "urlopen", fake)
+def test_webhook_follow_no_reply(monkeypatch):
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: pytest.fail("follow では返信しない"))
     c = TestClient(main.app)
     r = post(c, [{"type": "follow", "replyToken": "rt-1", "source": {"type": "user", "userId": "Ufollow"}}])
     assert r.status_code == 200
-    assert len(calls) == 1
-    req = calls[0]
-    assert req.full_url == "https://api.line.me/v2/bot/message/reply"
-    sent = json.loads(req.data)
-    assert sent["replyToken"] == "rt-1"
-    text = sent["messages"][0]["text"]
-    assert text.startswith("友だち追加ありがとうございます。")
-    assert text.endswith("https://example.test/?openExternalBrowser=1")
 
 
 def test_webhook_follow_friend_on(monkeypatch):

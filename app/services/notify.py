@@ -79,25 +79,3 @@ def push_user(kind, user, job=None, reason=None, text=None, link=None):
     except Exception as e:  # 通知の失敗で処理は止めない（画面にも同じ内容が出る）
         log.warning("notify 失敗 kind=%s job=%s: %s", kind, jid, type(e).__name__)
         return False
-
-
-REPLY_URL = "https://api.line.me/v2/bot/message/reply"
-REPLY_TEXT = {"follow": "友だち追加ありがとうございます。アプリはこちらから使えます。"}
-
-
-def reply(kind, token):
-    """Webhook の応答（follow）。アプリのリンクを付ける（会話はしない）。"""
-    if not config.LINE_MSG_CHANNEL_ACCESS_TOKEN or not token:
-        log.info("line reply(skip) kind=%s reason=%s", kind, "LINE_MSG未設定" if token else "replyTokenなし")
-        return False
-    body = json.dumps({"replyToken": token,
-                       "messages": [{"type": "text", "text": REPLY_TEXT[kind] + _link("/")}]}).encode()
-    req = urllib.request.Request(REPLY_URL, data=body, method="POST", headers={
-        "Content-Type": "application/json", "Authorization": "Bearer " + config.LINE_MSG_CHANNEL_ACCESS_TOKEN})
-    try:
-        with urllib.request.urlopen(req, timeout=10) as r:
-            log.info("line reply(sent) kind=%s status=%s", kind, r.status)
-        return True
-    except Exception as e:
-        log.warning("line reply 失敗 kind=%s: %s", kind, type(e).__name__)
-        return False

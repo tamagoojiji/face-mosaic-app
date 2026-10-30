@@ -23,8 +23,8 @@
 | 11 | registered | LINE ログインで新規登録した／退会後に再登録した | 登録ありがとうございます。{お試し終了日}まで無料で試せます（写真5枚と1分までの動画1本まで）。リリース記念中は（ ）内が「写真{記念の枚数}枚・1分までの動画{記念の本数}本」。再登録でお試し期間が終わっている人には「おかえりなさい。お試し期間は終了しているため、プランを選ぶと使えます。」（リンク /plans）。友だち追加していない人には届かない（LINE API がエラー → warning ログのみ） | /home（再登録・期限切れは /plans） | `app/main.py` _notify_registered() |
 
 reply（Webhook 応答）
-- 公式アカウントの Webhook（`POST /line/webhook`）に届いたイベントへ、reply（`replyToken`）で1回だけ返す。末尾に `APP_BASE_URL/?openExternalBrowser=1` を自動で付ける。定義場所は `app/services/notify.py` の REPLY_TEXT
-- 友だち追加（follow）: 友だち追加ありがとうございます。アプリはこちらから使えます。
+- 公式アカウントの Webhook（`POST /line/webhook`）は受けるだけで、reply は一切しない（2026-10-30 に廃止。あいさつが要るなら LINE Official Account Manager の「あいさつメッセージ」で）
+- 友だち追加（follow）: 返信しない（友だち状態と通知 ON を記録するだけ・2026-10-30 に返信を廃止）
 - メッセージ（message）: 返信しない（Webhook は受けるが何も送らない・2026-10-30）
 - ブロック（unfollow）は返信せず、その利用者の LINE 通知を OFF にする
 

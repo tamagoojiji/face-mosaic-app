@@ -1510,12 +1510,11 @@ async def stripe_webhook(request: Request):
 # ---------------------------------------------------------------- LINE 公式アカウントの Webhook
 
 def _line_events(events):
-    """follow → あいさつ＋アプリのリンク／unfollow → 通知 OFF（message には返信しない）。"""
+    """follow → 友だち・通知 ON／unfollow → 通知 OFF。返信はしない（follow・message とも・2026-10-30）。"""
     for ev in events:
         typ = ev.get("type")
         if typ == "follow":
             _line_friend(ev, 1)
-            notify.reply("follow", ev.get("replyToken"))
         elif typ == "unfollow":
             _line_friend(ev, 0)
 
