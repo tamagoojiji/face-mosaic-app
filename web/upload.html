@@ -41,6 +41,7 @@
       <span class="big" id="vbig">動画を選ぶ</span>
       <span class="small" id="vlimit">1本1.5GBまで</span>
     </label>
+    <p class="note" id="vest" hidden></p>
     <p class="notice" id="vpending" hidden></p>
     <div class="prog" id="vprog" hidden>
       <div class="label" id="vlabel" aria-live="polite">送信しています…</div>
@@ -129,6 +130,7 @@ function vpct(p, label, sub) {
   if (label) $('vlabel').textContent = label;
   if (sub !== undefined) $('vsub').textContent = sub;
 }
+const ceilMin = sec => Math.max(1, Math.round(sec / 60));  // home.html と同じ丸め
 function mb(n) { return n >= 1073741824 ? (n / 1073741824).toFixed(2) + 'GB' : Math.round(n / 1048576) + 'MB'; }
 function readDuration(file) {
   return new Promise(res => {
@@ -228,7 +230,10 @@ $('vfile').addEventListener('change', async () => {
     store.set(key, up.id);
   }
   cur = { file: f, key, up };
-  $('vlead').textContent = (dur ? mmss(dur) + '・' : '') + mb(f.size) + ' の動画を送ります。';
+  const est = CFG.est;
+  $('vlead').textContent = (dur ? mmss(dur) + '・' : '') + mb(f.size) + ' の動画を送ります。' + (est && dur
+    ? '届いてから顔を選べるまで 約' + ceilMin(est.prep_per_min * dur / 60 + est.queue_sec) + '分'
+      + (est.queue_count > 0 ? '（順番待ち' + est.queue_count + '件を含む）' : '') + 'です。' : '');
   sendParts();
 });
 if (TYPE === 'photo') {  // 今月の写真を使いきっていたら、選ぶ前に理由と次の一歩を出す
@@ -240,6 +245,16 @@ if (TYPE === 'video') {
       CFG = await api('/api/config');
       if (CFG.video_block) { vfail(CFG.video_block, false, true); $('vdrop').hidden = true; return; }
       $('vlimit').textContent = limitText(CFG.max_video_sec) + 'まで・1本1.5GBまで';
+      const est = CFG.est;
+      if (est) {
+        $('vest').textContent = '目安: 1分の動画なら、届いてから顔を選べるまで約' + ceilMin(est.prep_per_min) + '分。3分なら約'
+          + ceilMin(est.prep_per_min * 3) + '分です。書き出し（1080p）は1分の動画で約' + ceilMin(est.export_per_min) + '分。'
+          + (est.queue_count > 0 ? 'いま順番待ちが' + est.queue_count + '件あり、さらに約' + ceilMin(est.queue_sec) + '分かかります。' : '');
+        const sp = document.createElement('span');
+        sp.textContent = '4K30 や 1080p で撮った動画は、送るのも処理も速く終わります。';
+        $('vest').append(document.createElement('br'), sp);
+        $('vest').hidden = false;
+      }
     } catch (e) { }
     for (const k of store.keys()) {  // 途中で止まった送信があれば案内する
       try {

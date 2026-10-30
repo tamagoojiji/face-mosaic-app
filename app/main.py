@@ -839,9 +839,18 @@ async def _json_body(request):
 def api_config(request: Request):
     u = require_api(request)
     lim = quota.limits(u)
+    try:  # 送る画面の処理時間の目安（いま送ったら前に並ぶ動画の残りも足す）
+        rates, now = _rates(), time.time()
+        ahead = db.queue_before({"id": "", "updated_at": now, "created_at": now})
+        est = {"prep_per_min": rates["prepare"] + rates["track"], "export_per_min": rates["export_pixel"],
+               "queue_sec": sum(_remaining(a, rates, now)[0] for a in ahead), "queue_count": len(ahead)}
+    except Exception as e:
+        log.warning("config est failed: %s", e)
+        est = None
     return JSONResponse({"max_video_sec": lim["video_len"], "max_video_bytes": config.MAX_VIDEO_BYTES,
                          "part_size": config.PART_SIZE, "plan_label": lim["label"],
-                         "video_block": quota.check_video(u, 0), "image_block": quota.check_image(u)},
+                         "video_block": quota.check_video(u, 0), "image_block": quota.check_image(u),
+                         "est": est},
                         headers=NO_STORE)
 
 
