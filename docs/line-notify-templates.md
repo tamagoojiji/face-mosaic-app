@@ -20,7 +20,7 @@
 | 8 | withdrawn | 退会した（本人の退会／更新日の自動退会 `sub_ended`・`past_due_expired`）。退会処理で status を変える前に送る | 本人: 退会が完了しました。保存していた動画・写真は削除しました。ご利用ありがとうございました。／自動: 更新日になったため退会となりました。保存していた動画・写真は削除しました。ご利用ありがとうございました。 | なし（退会後は開ける画面がないためリンクを付けない） | `app/main.py` withdraw_user() |
 | 9 | cancel_resumed | 設定の「解約を取り消す」を押した | 解約を取り消しました。これまでどおり {更新日} に更新されます。 | /settings | `app/services/billing.py` resume() |
 | 10 | subscribed | 有料プランの申し込みが完了した（Stripe の checkout.session.completed） | お申し込みありがとうございます。{プラン名}が使えるようになりました。次回の更新日は {更新日}、月{月額}円です。（更新日が取れないときは「次回の更新日は設定画面で確認できます。」） | /settings | `app/services/billing.py` _on_checkout() |
-| 11 | registered | LINE ログインで新規登録した／退会後に再登録した | 登録ありがとうございます。{お試し終了日}まで無料で試せます（写真5枚まで。動画はプランを選ぶと送れます）。リリース記念中は（ ）内が「写真{記念の枚数}枚・1分までの動画{記念の本数}本」。再登録でお試し期間が終わっている人には「おかえりなさい。お試し期間は終了しているため、プランを選ぶと使えます。」（リンク /plans）。友だち追加していない人には届かない（LINE API がエラー → warning ログのみ） | /home（再登録・期限切れは /plans） | `app/main.py` _notify_registered() |
+| 11 | registered | LINE ログインで新規登録した／退会後に再登録した | 登録ありがとうございます。{お試し終了日}まで無料で試せます（写真5枚と1分までの動画1本まで）。リリース記念中は（ ）内が「写真{記念の枚数}枚・1分までの動画{記念の本数}本」。再登録でお試し期間が終わっている人には「おかえりなさい。お試し期間は終了しているため、プランを選ぶと使えます。」（リンク /plans）。友だち追加していない人には届かない（LINE API がエラー → warning ログのみ） | /home（再登録・期限切れは /plans） | `app/main.py` _notify_registered() |
 
 reply（Webhook 応答）
 - 公式アカウントの Webhook（`POST /line/webhook`）に届いたイベントへ、reply（`replyToken`）で1回だけ返す。末尾に `APP_BASE_URL/?openExternalBrowser=1` を自動で付ける。定義場所は `app/services/notify.py` の REPLY_TEXT

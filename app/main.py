@@ -267,7 +267,7 @@ def _notify_registered(u):
     if quota.campaign_active():
         what = f"写真{quota.setting('campaign_images')}枚・1分までの動画{quota.setting('campaign_videos')}本"
     else:
-        what = f"写真{quota.PLANS['free']['images']}枚まで。動画はプランを選ぶと送れます"
+        what = f"写真{quota.PLANS['free']['images']}枚と1分までの動画1本まで"
     kw = {"text": f"登録ありがとうございます。{billing._md(u['trial_ends_at'])}まで無料で試せます（{what}）。"}
     if u.get("trial_ends_at") and u["trial_ends_at"] <= time.time():  # 再登録でお試しが終わっている
         kw = {"text": "おかえりなさい。お試し期間は終了しているため、プランを選ぶと使えます。", "link": "/plans"}

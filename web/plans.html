@@ -108,7 +108,7 @@ const ymd = s => { const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(s || ''); return m ?
   $('cur').textContent = me.plan_label + (me.campaign ? '（リリース記念で増量中）' : '');
   $('curs').textContent = quotaLine(me);
   $('mine').hidden = !lp.mine;
-  if (me.campaign) { $('free').textContent = '無料プラン: リリース記念の期間は 写真が月' + me.limits.images + '枚・1分までの動画が月' + me.limits.video_count_month + '本 使えます（ふだんは写真5枚・動画なし）。'; $('free').hidden = false; }
+  if (me.campaign) { $('free').textContent = '無料プラン: リリース記念の期間は 写真が月' + me.limits.images + '枚・1分までの動画が月' + me.limits.video_count_month + '本 使えます（ふだんは写真5枚・1分までの動画1本）。'; $('free').hidden = false; }
   for (const p of d.plans) {
     const li = document.createElement('li'); li.className = 'plan' + (p.key === me.plan ? ' cur' : '');
     const head = document.createElement('div'); head.className = 'head';
@@ -124,8 +124,8 @@ const ymd = s => { const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(s || ''); return m ?
     head.append(nm, pr);
     const dl = document.createElement('dl');
     const row = (k, v) => { const dt = document.createElement('dt'); dt.textContent = k; const dd = document.createElement('dd'); dd.textContent = v; dl.append(dt, dd); };
-    row('動画（1か月）', p.video_sec_month ? len(p.video_sec_month) + 'まで' : 'なし');
-    row('1本の長さ', p.video_sec_month && p.video_len ? len(p.video_len) + 'まで' : '—');
+    row('動画（1か月）', p.video_sec_month ? len(p.video_sec_month) + 'まで' : p.video_count_month ? p.video_count_month + '本まで' : 'なし');
+    row('1本の長さ', (p.video_sec_month || p.video_count_month) && p.video_len ? len(p.video_len) + 'まで' : '—');
     row('写真（1か月）', p.images === null ? '無制限' : p.images + '枚まで');
     row('書き出しの画質', p.quality);
     li.append(head);

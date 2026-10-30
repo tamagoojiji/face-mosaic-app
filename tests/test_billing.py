@@ -301,6 +301,18 @@ def test_blocked():
     assert quota.check_image(dict(base, id=999, trial_ends_at=now - 1)).startswith("お試し期間が終わりました")
 
 
+def test_free_plan_one_video():
+    db.set_setting("campaign_on", "0")
+    u = db.create_user(line_user_id="Ufree1v", display_name="x", trial_ends_at=time.time() + 3600)
+    assert quota.check_video(u, 30) is None
+    assert "1本1分までです" in quota.check_video(u, 90)
+    db.add_usage(u["id"], quota.month_of(), seconds=30, videos=1)
+    assert "使いきりました" in quota.check_video(u, 30)
+    assert quota.check_video(dict(u, plan="image"), 30) == "画像のみプランでは動画は送れません"
+    lim = quota.limits({"plan": "free"})
+    assert lim["video_allowed"] is True and lim["video_len"] == 60
+    assert lim["video_count_month"] == 1 and lim["video_sec_month"] == 0
+
 def test_trial_migration():
     with db.connect() as con:
         con.execute("INSERT INTO users (line_user_id, display_name, plan, created_at) VALUES ('Umig', 'x', 'free', ?)",
