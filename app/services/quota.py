@@ -32,7 +32,9 @@ SETTING_DEFAULTS = {"launch_price_until": "",  # リリース記念価格の申�
                     "output_retention_days": f"{config.OUTPUT_RETENTION_DAYS:g}",
                     "idle_warn_hours": f"{config.IDLE_WARN_HOURS:g}",
                     "idle_delete_hours": f"{config.IDLE_DELETE_HOURS:g}",
-                    "mosaic_default": "block"}  # block（ブロック粗め）| glass（すりガラス）
+                    "mosaic_default": "block",  # block（ブロック粗め）| glass（すりガラス）
+                    "signup_remaining": "",  # 新規登録の残り枠（空=制限なし・登録のたびに1減る・0で受付停止）
+                    "signup_tester_days": "0"}  # 新規登録した人をテスターにする日数（登録日を含む・0=通常の登録）
 
 
 def setting(key):
@@ -62,6 +64,14 @@ def idle_warn_hours():
 
 def idle_delete_hours():
     return setting_num("idle_delete_hours")
+
+
+def signup_tester_days():
+    """新規登録した人をテスターにする日数（不正な値は 0＝通常の登録）。"""
+    try:
+        return max(0, int(setting("signup_tester_days")))
+    except (TypeError, ValueError):
+        return 0
 
 
 def default_style():

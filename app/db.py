@@ -464,6 +464,18 @@ def set_setting(key, value):
                     (key, value))
 
 
+def take_signup_slot():
+    """新規登録の枠を1つ使う。signup_remaining が空・非数字なら制限なしで True、0 なら False（受付停止）。"""
+    with connect() as con:
+        r = con.execute("SELECT value FROM settings WHERE key='signup_remaining'").fetchone()
+        v = (r["value"] or "").strip() if r else ""
+        if not v.isdigit():
+            return True
+        cur = con.execute("UPDATE settings SET value=CAST(CAST(value AS INTEGER)-1 AS TEXT) "
+                          "WHERE key='signup_remaining' AND CAST(value AS INTEGER)>0")
+        return cur.rowcount == 1
+
+
 def all_settings():
     with connect() as con:
         return {r["key"]: r["value"] for r in con.execute("SELECT key, value FROM settings ORDER BY key")}

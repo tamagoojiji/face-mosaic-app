@@ -453,6 +453,8 @@ SETTING_LABELS = {
     "source_retention_hours": "元データを消すまで（時間）", "output_retention_days": "完成品の保存（日）",
     "idle_warn_hours": "放置の再通知まで（時間）", "idle_delete_hours": "放置で削除するまで（時間）",
     "mosaic_default": "モザイクの標準",
+    "signup_remaining": "新規登録の残り枠（空=制限なし・登録のたびに1減る・0で受付停止）",
+    "signup_tester_days": "新規登録した人をテスターにする日数（0=通常の登録）",
 }
 
 
@@ -470,6 +472,10 @@ def _check_setting(k, v):
         return v == "" or bool(DATE_RE.match(v))
     if k == "mosaic_default":
         return v in ("block", "glass")
+    if k == "signup_remaining":
+        return v == "" or v.isdigit()
+    if k == "signup_tester_days":
+        return v.isdigit()
     try:
         n = float(v)
     except ValueError:

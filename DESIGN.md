@@ -253,6 +253,8 @@ jobs         id, user_id, kind(video|image), status(uploading|queued|preparing|a
              hq_export(bool・高画質で書き出す/書き出した), out_width, out_height, out_fps（完成品の実測）
 upload_parts job_id, part_no, bytes, received_at                                        ← 再開用
 settings     key, value   （プラン上限・元動画の削除までの時間(24h)・完成品の保存日数(30)・放置の再通知/削除時間・標準モザイク・リリース記念 ON/OFF と期間）
+             signup_remaining   新規登録の残り枠（空=制限なし・LINE の新規登録のたびに1減る・0で受付停止＝/?e=closed）
+             signup_tester_days 新規登録した人をテスターにする日数（登録日を含む・0=通常の登録）
 audit_log    id, actor_id, action, target, detail, created_at                          ← 通報対応用の記録
 ```
 

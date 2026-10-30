@@ -52,6 +52,17 @@ legend{font-size:13px;font-weight:600;padding:0;margin-bottom:4px}
       </div>
     </section>
     <section class="a-box a-pad" style="margin-top:16px">
+      <h2 style="margin-top:0">新規登録</h2>
+      <div class="form-grid">
+        <div class="fld"><label for="signup_remaining">新規登録の残り枠（空=制限なし・登録のたびに1減る・0で受付停止）</label>
+          <div class="unit"><input class="a-in n" type="number" min="0" step="1" id="signup_remaining"><span>人</span></div>
+          <span class="hint" data-k="signup_remaining"></span></div>
+        <div class="fld"><label for="signup_tester_days">新規登録した人をテスターにする日数（0=通常の登録）</label>
+          <div class="unit"><input class="a-in n" type="number" min="0" step="1" id="signup_tester_days"><span>日</span></div>
+          <span class="hint" data-k="signup_tester_days"></span></div>
+      </div>
+    </section>
+    <section class="a-box a-pad" style="margin-top:16px">
       <h2 style="margin-top:0">保存期間と放置</h2>
       <div class="form-grid">
         <div class="fld"><label for="source_retention_hours">元動画・元画像・解析データを消すまで</label>
@@ -81,14 +92,14 @@ legend{font-size:13px;font-weight:600;padding:0;margin-bottom:4px}
 <script src="/static/common.js"></script>
 <script src="/static/admin.js"></script>
 <script>
-const UNIT = { campaign_images: ' 枚', campaign_videos: ' 本', source_retention_hours: ' 時間', output_retention_days: ' 日', idle_warn_hours: ' 時間', idle_delete_hours: ' 時間' };
-const SHOW = { launch_price_until: v => v || '指定なし', campaign_on: v => v === '1' ? 'ON' : 'OFF', mosaic_default: v => v === 'glass' ? 'すりガラス' : 'ブロック粗め', campaign_from: v => v || '指定なし' };
+const UNIT = { campaign_images: ' 枚', campaign_videos: ' 本', source_retention_hours: ' 時間', output_retention_days: ' 日', idle_warn_hours: ' 時間', idle_delete_hours: ' 時間', signup_remaining: ' 人', signup_tester_days: ' 日' };
+const SHOW = { launch_price_until: v => v || '指定なし', campaign_on: v => v === '1' ? 'ON' : 'OFF', mosaic_default: v => v === 'glass' ? 'すりガラス' : 'ブロック粗め', campaign_from: v => v || '指定なし', signup_remaining: v => v === '' ? '制限なし' : v + ' 人' };
 const fmt = (k, v) => (SHOW[k] ? SHOW[k](v) : v + (UNIT[k] || ''));
 function render(d) {
   const s = d.settings;
   $('campaign_on').checked = s.campaign_on.value === '1';
   $('campaign_on_s').textContent = $('campaign_on').checked ? 'ON' : 'OFF';
-  ['launch_price_until', 'campaign_from', 'campaign_to', 'campaign_images', 'campaign_videos', 'source_retention_hours', 'output_retention_days', 'idle_warn_hours', 'idle_delete_hours']
+  ['launch_price_until', 'campaign_from', 'campaign_to', 'campaign_images', 'campaign_videos', 'source_retention_hours', 'output_retention_days', 'idle_warn_hours', 'idle_delete_hours', 'signup_remaining', 'signup_tester_days']
     .forEach(k => $(k).value = s[k].value);
   document.querySelector('input[name=mosaic_default][value=' + (s.mosaic_default.value === 'glass' ? 'glass' : 'block') + ']').checked = true;
   document.querySelectorAll('.hint[data-k]').forEach(el => {
@@ -112,7 +123,7 @@ $('f').addEventListener('submit', async ev => {
   ev.preventDefault();
   $('msg').textContent = ''; $('save').disabled = true;
   const body = { campaign_on: $('campaign_on').checked ? '1' : '0', mosaic_default: document.querySelector('input[name=mosaic_default]:checked').value };
-  ['launch_price_until', 'campaign_from', 'campaign_to', 'campaign_images', 'campaign_videos', 'source_retention_hours', 'output_retention_days', 'idle_warn_hours', 'idle_delete_hours']
+  ['launch_price_until', 'campaign_from', 'campaign_to', 'campaign_images', 'campaign_videos', 'source_retention_hours', 'output_retention_days', 'idle_warn_hours', 'idle_delete_hours', 'signup_remaining', 'signup_tester_days']
     .forEach(k => body[k] = $(k).value);
   try {
     const d = await api('/admin/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import datetime
 import hashlib
 import hmac
 import json
@@ -269,6 +270,10 @@ def _notify_registered(u):
     else:
         what = f"写真{quota.PLANS['free']['images']}枚と1分までの動画1本まで"
     kw = {"text": f"登録ありがとうございます。{billing._md(u['trial_ends_at'])}まで無料で試せます（{what}）。"}
+    if quota.is_tester(u) and u.get("tester_until"):  # 新規登録でテスターになった人
+        kw = {"text": f"登録ありがとうございます。{billing._md(u['tester_until'] - 1)}までテスターとして、"
+                      "写真・動画の枚数と本数の上限なく使えます（動画は1本1分まで）。"
+                      "気になったことは 設定 →「問題を報告する」から教えてください。"}
     if u.get("trial_ends_at") and u["trial_ends_at"] <= time.time():  # 再登録でお試しが終わっている
         kw = {"text": "おかえりなさい。お試し期間は終了しているため、プランを選ぶと使えます。", "link": "/plans"}
     # ログインの画面遷移を LINE API の応答で待たせない
@@ -290,10 +295,21 @@ def reactivate_user(u, name):
 def _login_line_user(request, line_user_id, name, friend=None):
     u = db.user_by("line_user_id", line_user_id)
     if not u:
+        if not db.take_signup_slot():
+            discord.usage(f"登録の受付停止中に新規ログイン: {name}")
+            return RedirectResponse("/?e=closed", status_code=303)
+        cols = {}
+        days = quota.signup_tester_days()
+        if days > 0:
+            last = datetime.datetime.now(quota.JST).date() + datetime.timedelta(days=days - 1)
+            cols = {"role": "tester", "tester_until": quota.tester_until_ts(last.isoformat())}
         try:
             u = db.create_user(line_user_id=line_user_id, display_name=name,
-                               trial_ends_at=time.time() + db.TRIAL_DAYS * 86400)
-            discord.usage(f"新規登録: {discord.who(u)}")
+                               trial_ends_at=time.time() + db.TRIAL_DAYS * 86400, **cols)
+            if cols:
+                discord.usage(f"新規登録（テスター・{last.month}/{last.day}まで）: {discord.who(u)}")
+            else:
+                discord.usage(f"新規登録: {discord.who(u)}")
             _notify_registered(u)
         except sqlite3.IntegrityError:
             u = db.user_by("line_user_id", line_user_id)

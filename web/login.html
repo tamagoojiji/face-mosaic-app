@@ -16,6 +16,7 @@
 const e = new URLSearchParams(location.search).get('e'), el = document.getElementById('e');
 if (e) {
   el.textContent = e === 'stopped' ? 'このアカウントはいま使えません。運営にお問い合わせください'
+    : e === 'closed' ? '新しい登録の受付はいま停止しています。すでに登録した人はそのままログインできます'
     : 'LINE でのログインができませんでした。もう一度「LINEでログインする」を押してください';
   el.hidden = false;
 }
