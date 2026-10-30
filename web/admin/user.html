@@ -29,6 +29,7 @@
             <label class="sw2"><input type="checkbox" id="hq"><span class="track" aria-hidden="true"></span><span id="hqs">OFF</span></label>
             <span class="hint" id="hqhint">動画A・動画B のときだけ付けられます</span></div>
           <div class="fld"><label for="role">権限</label><select class="a-sel" id="role"><option value="user">user（利用者）</option><option value="tester">tester（テスター・上限なし）</option><option value="admin">admin（運営）</option></select></div>
+          <div class="fld" id="tufld" hidden><label for="tester_until">テスターの期限（この日まで）</label><input class="a-sel" type="date" id="tester_until"></div>
           <div class="fld"><label for="status">状態</label><select class="a-sel" id="status"><option value="active">active（利用中）</option><option value="stopped">stopped（停止・ログインできない）</option></select></div>
         </div>
         <p class="hint" style="margin:12px 0 0">ここでの変更は Stripe の契約や請求を変えません（記録と画面の上限だけが変わります）。</p>
@@ -72,7 +73,7 @@ function render(d) {
   if (u.withdrawn_at) rows.push(['退会', dt(u.withdrawn_at) + '・' + (u.withdraw_reason || '') + (u.withdraw_note ? '「' + u.withdraw_note + '」' : '')]);
   fill($('info'), rows.map(r => [h('dt', {}, r[0]), h('dd', {}, r[1])]));
   if (!$('plan').options.length) d.plans.forEach(p => $('plan').append(h('option', { value: p.key }, p.label)));
-  $('plan').value = u.plan; $('hq').checked = u.hq; $('role').value = u.role; $('status').value = u.status === 'stopped' ? 'stopped' : 'active';
+  $('plan').value = u.plan; $('hq').checked = u.hq; $('role').value = u.role; $('tester_until').value = u.tester_until_date || ''; syncTester(); $('status').value = u.status === 'stopped' ? 'stopped' : 'active';
   syncHq();
   const locked = u.status === 'withdrawn';
   ['plan', 'hq', 'role', 'status', 'save'].forEach(k => $(k).disabled = locked || (k === 'hq' && !hqPlans.includes($('plan').value)));
@@ -98,6 +99,8 @@ function syncHq() {
   $('hqs').textContent = $('hq').checked ? 'ON' : 'OFF';
   $('hqhint').textContent = ok ? '元の解像度・fps で書き出します' : '動画A・動画B のときだけ付けられます';
 }
+function syncTester() { $('tufld').hidden = $('role').value !== 'tester'; }
+$('role').addEventListener('change', syncTester);
 $('plan').addEventListener('change', syncHq);
 $('hq').addEventListener('change', syncHq);
 $('f').addEventListener('submit', async ev => {
@@ -105,7 +108,7 @@ $('f').addEventListener('submit', async ev => {
   $('msg').textContent = ''; $('save').disabled = true;
   try {
     const d = await api('/admin/api/users/' + uid, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plan: $('plan').value, hq: $('hq').checked, role: $('role').value, status: $('status').value }) });
+      body: JSON.stringify({ plan: $('plan').value, hq: $('hq').checked, role: $('role').value, tester_until_date: $('role').value === 'tester' ? $('tester_until').value : '', status: $('status').value }) });
     render(d);
     $('msg').className = 'msg ok';
     $('msg').textContent = d.changed.length ? '保存しました（' + d.changed.length + ' 項目・記録に残しました）' : '変更はありませんでした';

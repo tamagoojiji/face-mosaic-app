@@ -1101,7 +1101,7 @@ def _me(u):
     return {"id": u["id"], "display_name": u["display_name"], "instagram_username": u["instagram_username"],
             "notify": bool(u["notify"]), "auth_mode": config.AUTH_MODE, "plan": lim["plan"], "plan_label": lim["label"],
             "hq": lim["hq"], "hq_available": lim["plan"] in quota.HQ_OPTION["plans"],
-            "campaign": lim["campaign"], "tester": lim["tester"], "video_allowed": lim["video_allowed"], "video_len": lim["video_len"],
+            "campaign": lim["campaign"], "tester": lim["tester"], "tester_until": u.get("tester_until"), "video_allowed": lim["video_allowed"], "video_len": lim["video_len"],
             "limits": {"images": lim["images"], "video_sec_month": lim["video_sec_month"],
                        "video_count_month": lim["video_count_month"]},
             "usage": {"images": st["usage"]["image_count"], "videos": st["usage"]["video_count"],

@@ -3,12 +3,14 @@
   python scripts/users.py list
   python scripts/users.py set-plan <id> free|image|video_a|video_b
   python scripts/users.py set-hq <id> 0|1          # 高画質オプション（動画A・B だけ有効）
-  python scripts/users.py set-role <id> user|tester|admin # tester=枚数・本数の月上限なし（長さ・容量はプランのまま）
+  python scripts/users.py set-role <id> user|tester|admin [YYYY-MM-DD]  # tester=枚数・本数の月上限なし（長さ・容量はプランのまま）。
+                                                   # 日付=テスターの期限（その日まで・過ぎたら通常扱い）。省略・user/admin は期限なし
 
 VPS では: docker exec face-mosaic-app python scripts/users.py list
 LINE の userId は表示しない（ログイン方法だけ LINE／合言葉 と出す）。
 """
 
+import datetime
 import os
 import sys
 import time
@@ -24,7 +26,10 @@ ROLES = ("user", "tester", "admin")
 def show(u):
     via = "LINE" if u["line_user_id"] else "合言葉" if u["device_id"] else "-"
     made = time.strftime("%Y-%m-%d", time.localtime(u["created_at"])) if u["created_at"] else "-"
-    print(f"id={u['id']}  表示名={u['display_name'] or '-'}  plan={u['plan']}  hq={u['hq']}  role={u['role']}  "
+    until = ""
+    if u["role"] == "tester" and u.get("tester_until"):
+        until = "  期限=" + datetime.datetime.fromtimestamp(u["tester_until"] - 1, quota.JST).date().isoformat()
+    print(f"id={u['id']}  表示名={u['display_name'] or '-'}  plan={u['plan']}  hq={u['hq']}  role={u['role']}{until}  "
           f"status={u['status']}  ログイン={via}  作成日={made}")
 
 
@@ -44,7 +49,8 @@ def main(argv):
             show(u)
         print(f"→ {len(rows)} 人")
         return 0
-    if len(argv) == 3 and argv[0] in ("set-plan", "set-hq", "set-role"):
+    if (len(argv) == 3 and argv[0] in ("set-plan", "set-hq", "set-role")) or \
+            (len(argv) == 4 and argv[0] == "set-role" and argv[2] == "tester"):
         u = target(argv[1])
         if not u:
             return 2
@@ -59,7 +65,14 @@ def main(argv):
             print(f"知らない権限です: {val}（使える権限: {', '.join(ROLES)}）", file=sys.stderr)
             return 2
         col = {"set-plan": "plan", "set-hq": "hq", "set-role": "role"}[cmd]
-        db.update_user(u["id"], **{col: int(val) if col == "hq" else val})
+        extra = {}
+        if cmd == "set-role":
+            try:
+                extra["tester_until"] = quota.tester_until_ts(argv[3]) if len(argv) == 4 else None
+            except ValueError:
+                print("テスターの期限は YYYY-MM-DD で入れてください", file=sys.stderr)
+                return 2
+        db.update_user(u["id"], **{col: int(val) if col == "hq" else val}, **extra)
         u = db.get_user(u["id"])
         show(u)
         if u["hq"] and u["plan"] not in quota.HQ_OPTION["plans"]:

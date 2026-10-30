@@ -103,6 +103,11 @@ def settings_page(request: Request):
 def _contract(u, now):
     """契約状態の表示: free / お試し残り n 日 / お試し終了 / active / canceling / past_due。"""
     if u.get("role") == "tester":
+        if not quota.is_tester(u, now):
+            return "テスター終了"
+        if u.get("tester_until"):
+            d = datetime.datetime.fromtimestamp(u["tester_until"] - 1, quota.JST)
+            return f"テスター（{d.month}/{d.day}まで）"
         return "テスター"
     if u.get("sub_status") in ("active", "canceling", "past_due"):
         return u["sub_status"]
@@ -112,11 +117,18 @@ def _contract(u, now):
     return "free"
 
 
+def _tester_until_date(u):
+    """tester_until（期限日の翌日 0:00 JST）→ 期限日 "YYYY-MM-DD"（JST）。"""
+    t = u.get("tester_until")
+    return datetime.datetime.fromtimestamp(t - 1, quota.JST).date().isoformat() if t else None
+
+
 def _user_row(u, usage, now):
     return {"id": u["id"], "display_name": u["display_name"], "instagram_username": u["instagram_username"],
             "login": "LINE" if u["line_user_id"] else "合言葉" if u["device_id"] else "-",
             "plan": u["plan"], "plan_label": quota.PLANS.get(u["plan"], {}).get("label", u["plan"]),
             "hq": bool(u["hq"]), "launch_price": bool(u["launch_price"]), "role": u["role"], "status": u["status"], "contract": _contract(u, now),
+            "tester_until": u.get("tester_until"), "tester_until_date": _tester_until_date(u),
             "usage_video_sec": (usage or {}).get("video_seconds_used") or 0,
             "usage_images": (usage or {}).get("image_count") or 0, "created_at": u["created_at"]}
 
@@ -248,6 +260,12 @@ async def api_user_update(request: Request, uid: int):
         raise HTTPException(400, "権限・状態を選び直してください")
     if u["id"] == admin["id"] and (new["role"] != "admin" or new["status"] != "active"):
         raise HTTPException(400, "自分の権限と状態は変えられません（ほかの運営に頼んでください）")
+    try:
+        new["tester_until"] = quota.tester_until_ts(b.get("tester_until_date", _tester_until_date(u)) or "")
+    except ValueError:
+        raise HTTPException(400, "テスターの期限は YYYY-MM-DD で入れてください")
+    if new["role"] != "tester":
+        new["tester_until"] = None
     diff = {k: [u[k], v] for k, v in new.items() if u[k] != v}
     if diff:
         db.update_user(u["id"], **{k: v[1] for k, v in diff.items()})

@@ -83,3 +83,54 @@ def test_admin_set_role_tester(monkeypatch):
     assert r.status_code == 200, r.text
     assert db.get_user(target["id"])["role"] == "tester"
     assert admin["role"] == "admin"
+
+
+def test_tester_until_expiry():
+    u = expired_user("Utester4", "tester")
+    db.update_user(u["id"], tester_until=time.time() + 3600)
+    u = db.get_user(u["id"])
+    assert quota.is_tester(u) is True and quota.limits(u)["images"] is None
+    db.update_user(u["id"], tester_until=time.time() - 60)
+    u = db.get_user(u["id"])
+    assert quota.is_tester(u) is False
+    assert quota.limits(u)["images"] == 5 and quota.limits(u)["tester"] is False
+    assert quota.blocked(u) == "trial_expired"
+
+
+def test_tester_until_ts():
+    import datetime
+    want = datetime.datetime(2026, 11, 7, 0, 0, tzinfo=quota.JST).timestamp()
+    assert quota.tester_until_ts("2026-11-06") == want
+    assert quota.tester_until_ts("") is None and quota.tester_until_ts(None) is None
+    with pytest.raises(ValueError):
+        quota.tester_until_ts("2026/11/06")
+
+
+def test_admin_tester_until(monkeypatch):
+    monkeypatch.setattr(discord, "send", lambda *a, **k: True)
+    monkeypatch.setattr(config, "AUTH_MODE", "passcode")
+    db.user_by("device_id", "dev-admin-tester") or db.create_user(device_id="dev-admin-tester",
+                                                                  display_name="運営", role="admin")
+    a = TestClient(main.app)
+    a.cookies.set(config.COOKIE_NAME, main._serializer().dumps({"t": int(time.time())}))
+    a.cookies.set(config.OWNER_COOKIE, main._owner_serializer().dumps("dev-admin-tester"))
+    target = db.create_user(device_id="dev-tester-until", display_name="対象")
+    url = f"/admin/api/users/{target['id']}"
+    r = a.post(url, json={"role": "tester", "tester_until_date": "2026-11-06"})
+    assert r.status_code == 200, r.text
+    assert r.json()["user"]["tester_until_date"] == "2026-11-06"
+    assert db.get_user(target["id"])["tester_until"] == quota.tester_until_ts("2026-11-06")
+    r = a.post(url, json={"role": "user"})
+    assert r.status_code == 200, r.text
+    assert r.json()["user"]["tester_until_date"] is None and db.get_user(target["id"])["tester_until"] is None
+    r = a.post(url, json={"role": "tester", "tester_until_date": "2026/11/06"})
+    assert r.status_code == 400
+
+
+def test_script_set_role_tester_until():
+    from scripts import users as users_cli
+    u = db.create_user(device_id="dev-tester-cli", display_name="CLI")
+    assert users_cli.main(["set-role", str(u["id"]), "tester", "2026-11-06"]) == 0
+    assert db.get_user(u["id"])["tester_until"] == quota.tester_until_ts("2026-11-06")
+    assert users_cli.main(["set-role", str(u["id"]), "user"]) == 0
+    assert db.get_user(u["id"])["tester_until"] is None

@@ -149,7 +149,7 @@ api('/api/me').then(m => {
     $('qsub').classList.add('cancel'); $('qsub').hidden = false;
   }
   if (m.campaign) { const c = document.createElement('span'); c.className = 'camp'; c.textContent = 'リリース記念で増量中'; $('qpl').append(' ', c); }
-  if (m.tester) { const c = document.createElement('span'); c.className = 'camp'; c.textContent = 'テスター（枚数・本数の上限なし）'; $('qpl').append(' ', c); }
+  if (m.tester) { const c = document.createElement('span'); c.className = 'camp'; c.textContent = m.tester_until ? 'テスター（' + md(m.tester_until - 1) + 'まで・枚数と本数の上限なし）' : 'テスター（枚数・本数の上限なし）'; $('qpl').append(' ', c); }
   if (!m.video_allowed) { $('qv').textContent = 'なし'; $('qvs').textContent = 'プランを変えると送れます'; }
   else if (r.video_count !== null) { $('qv').textContent = 'あと' + r.video_count + '本'; $('qvs').textContent = '1本' + limitLen(m.video_len) + 'まで'; }
   else if (r.video_sec !== null) { $('qv').textContent = 'あと' + mmss(r.video_sec); $('qvs').textContent = '1本' + limitLen(m.video_len) + 'まで'; }

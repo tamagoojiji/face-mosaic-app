@@ -1,5 +1,5 @@
 """プランと月の上限（DESIGN 2節 料金プラン表）。リリース記念は settings の campaign_* で切り替える。
-role=tester は枚数・本数の月上限なし・お試し期限なし（1本の長さ・容量はプランのまま）。"""
+role=tester は枚数・本数の月上限なし・お試し期限なし（1本の長さ・容量はプランのまま）。tester_until を過ぎたら通常扱い。"""
 
 import datetime
 import time
@@ -120,11 +120,25 @@ def _campaign_for(user):
     return campaign_active(today=datetime.datetime.fromtimestamp(created, JST).date().isoformat())
 
 
+def tester_until_ts(date_str):
+    """"YYYY-MM-DD" → 日本時間のその日の翌日 0:00 の epoch（その日を含む）。空・None は None、形式不正は ValueError。"""
+    if not date_str:
+        return None
+    d = datetime.datetime.strptime(date_str, "%Y-%m-%d").date() + datetime.timedelta(days=1)
+    return datetime.datetime(d.year, d.month, d.day, tzinfo=JST).timestamp()
+
+
+def is_tester(user, now=None):
+    """テスターとして扱うか（role=tester かつ期限なし or 期限前）。"""
+    until = user.get("tester_until")
+    return user.get("role") == "tester" and (until is None or (now or time.time()) < until)
+
+
 def limits(user):
     """プランの上限。記念増量は登録日で判定（期間中に登録した人はお試し終了まで増量のまま）。"""
     plan = user.get("plan") if user.get("plan") in PLANS else "free"
     p = dict(PLANS[plan], plan=plan, campaign=False, hq=bool(user.get("hq")) and plan in HQ_OPTION["plans"],
-             tester=(user.get("role") == "tester"))
+             tester=is_tester(user))
     if plan == "free" and _campaign_for(user):
         p.update(campaign=True, images=int(setting("campaign_images") or 10),
                  video_count_month=int(setting("campaign_videos") or 3))
@@ -161,7 +175,7 @@ def blocked(user, now=None):
         return "past_due"
     t = user.get("trial_ends_at")
     if (user.get("plan") or "free") == "free" and user.get("line_user_id") and t is not None \
-            and t < (now or time.time()) and user.get("role") != "tester":
+            and t < (now or time.time()) and not is_tester(user, now):
         return "trial_expired"
     return None
 

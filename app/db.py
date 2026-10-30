@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS users (
   display_name TEXT,
   instagram_username TEXT,         -- 任意・自己申告
   role TEXT NOT NULL DEFAULT 'user',
+  tester_until REAL,               -- テスターの期限（期限日の翌日 0:00 JST・NULL=期限なし）
   plan TEXT NOT NULL DEFAULT 'free',          -- free | image | video_a | video_b
   hq INTEGER NOT NULL DEFAULT 0,               -- 高画質オプション（動画A/Bだけ有効）
   stripe_customer_id TEXT,
@@ -130,6 +131,7 @@ ADD_USER_COLUMNS = {
     "stripe_price_plan": "TEXT",                           # いまのプランの価格ID
     "pending_plan": "TEXT",                                # 次の更新日から変わるプラン（下位変更）
     "pending_hq": "INTEGER",                               # 次の更新日から変わる高画質（外す）
+    "tester_until": "REAL",                               # テスターの期限（期限日の翌日 0:00 JST・NULL=期限なし）
     "line_friend": "INTEGER",                              # 公式アカウントの友だち（NULL=未確認・0/1）
 }
 TRIAL_DAYS = 7

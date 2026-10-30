@@ -241,7 +241,7 @@ LINE公式を友だち追加（QR／リンク）
 - 通報の動画: `/data/reports/<id>/video.<ext>`（画面録画1本・100MBまで・mp4/mov/m4v/webm）。`reports.video_name`（NULL=なし）。画像と同じく90日・退会で削除
 
 ```
-users        id, line_user_id, display_name, instagram_username(任意・自己申告), role(user|tester|admin・運営の判定は admin・tester は枚数・本数の月上限なし＋お試し期限なし・2026-10-30), plan(free|image|video_a|video_b), hq(0/1・高画質オプション・動画A/Bのときだけ有効),
+users        id, line_user_id, display_name, instagram_username(任意・自己申告), role(user|tester|admin・運営の判定は admin・tester は枚数・本数の月上限なし＋お試し期限なし・2026-10-30・tester_until（期限日の翌日 0:00 JST・NULL=期限なし・過ぎたら通常扱い）), plan(free|image|video_a|video_b), hq(0/1・高画質オプション・動画A/Bのときだけ有効),
              stripe_customer_id, stripe_subscription_id, sub_status, notify(bool), status(active|stopped|withdrawn),
              withdraw_reason, withdraw_note, withdrawn_at, created_at
 usage        user_id, month(YYYY-MM), video_seconds_used, video_count, image_count      ← 月次カウンタ
