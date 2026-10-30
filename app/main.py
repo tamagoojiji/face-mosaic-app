@@ -1254,6 +1254,9 @@ def job_label(j):
 REPORT_IMAGES_MAX = 3
 REPORT_IMAGE_BYTES = 10 * 1024 * 1024
 REPORT_IMAGE_SIDE = 2000
+REPORT_VIDEO_BYTES = 100 * 1024 * 1024
+REPORT_VIDEO_EXT = ("mp4", "mov", "m4v", "webm")
+REPORT_CONSENT_MSG = "対象を選んだときは、運営が確認することへの同意にチェックしてください"
 
 
 def _report_image(raw):
@@ -1273,10 +1276,37 @@ def _report_image(raw):
     return out.getvalue()
 
 
+async def _report_video(f):
+    """画面録画1本 → DATA_DIR/reports/tmp-<uuid>.<ext> に書く。返すのは (一時ファイル, 拡張子, バイト数)。"""
+    import uuid
+    name = (f.filename or "").lower()
+    ext = name.rsplit(".", 1)[1] if "." in name else "mp4"
+    if ext not in REPORT_VIDEO_EXT:
+        raise HTTPException(400, "動画は mp4・mov・webm で送ってください")
+    d = os.path.join(config.DATA_DIR, "reports")
+    os.makedirs(d, exist_ok=True)
+    tmp = os.path.join(d, f"tmp-{uuid.uuid4().hex}.{ext}")
+    size, ok = 0, False
+    try:
+        with open(tmp, "wb") as out:
+            while chunk := await f.read(1024 * 1024):
+                size += len(chunk)
+                if size > REPORT_VIDEO_BYTES:
+                    raise HTTPException(400, "動画は1本100MBまでです")
+                out.write(chunk)
+        ok = True
+    finally:
+        if not ok and os.path.exists(tmp):
+            os.remove(tmp)
+    return tmp, ext, size
+
+
 async def _report_form(request):
-    """JSON か multipart/form-data（画像つき）。返すのは (項目の dict, 画像の生バイト列のリスト)。"""
+    """JSON か multipart/form-data（画像・動画つき）。返すのは (項目の dict, 画像の生バイト列のリスト, 動画)。
+    動画は (一時ファイル, 拡張子, バイト数) か None。"""
     if not request.headers.get("content-type", "").startswith("multipart/form-data"):
-        return await _json_body(request), []
+        b = await _json_body(request)
+        return {k: b.get(k) for k in ("category", "body", "job_id", "consent")}, [], None
     form = await request.form()
     files = [f for f in form.getlist("images") if hasattr(f, "read") and (f.filename or f.size)]
     if len(files) > REPORT_IMAGES_MAX:
@@ -1287,13 +1317,23 @@ async def _report_form(request):
         if len(raw) > REPORT_IMAGE_BYTES:
             raise HTTPException(400, "画像は1枚10MBまでです")
         raws.append(raw)
-    return {k: form.get(k) for k in ("category", "body", "job_id")}, raws
+    v = form.get("video")
+    video = await _report_video(v) if hasattr(v, "read") and (v.filename or v.size) else None
+    return {k: form.get(k) for k in ("category", "body", "job_id", "consent")}, raws, video
 
 
 @app.post("/api/reports")
 async def api_report(request: Request):
     u = require_api(request)
-    b, raws = await _report_form(request)
+    b, raws, video = await _report_form(request)
+    try:
+        return await _add_report(u, b, raws, video)
+    finally:
+        if video and os.path.exists(video[0]):  # 400 で落ちたとき（受け付けたら移動済み）
+            os.remove(video[0])
+
+
+async def _add_report(u, b, raws, video):
     cat = b.get("category")
     if cat not in REPORT_CATEGORIES:
         raise HTTPException(400, "あてはまるものを1つ選んでください")
@@ -1308,6 +1348,8 @@ async def api_report(request: Request):
         j = db.get_job(str(jid)) if JOB_ID_RE.match(str(jid)) else None
         if not j or j["user_id"] != u["id"]:
             raise HTTPException(400, "対象の動画・写真が見つかりません。選び直してください")
+        if str(b.get("consent") or "") not in ("1", "true", "on"):
+            raise HTTPException(400, REPORT_CONSENT_MSG)
     images = [await asyncio.to_thread(_report_image, raw) for raw in raws]  # 全部読めてから記録する
     rid = db.add_report(u["id"], cat, body, j["id"] if j else None)
     if images:
@@ -1317,12 +1359,20 @@ async def api_report(request: Request):
             with open(os.path.join(d, f"{n}.jpg"), "wb") as f:
                 f.write(data)
         db.update_report(rid, image_count=len(images))
+    if video:
+        d = retention.report_dir(rid)
+        os.makedirs(d, exist_ok=True)
+        os.replace(video[0], os.path.join(d, f"video.{video[1]}"))
+        db.update_report(rid, video_name=f"video.{video[1]}")
     target = f"{job_label(j)}（job={j['id']}）" if j else "なし"
     stage, label = REPORT_CATEGORIES[cat]
     discord.report(f"#{rid} {stage} › {label}\n通報者: {discord.who(u)}\n対象: {target}\n"
-                   f"内容: {body[:200] if body else '（なし）'}" + (f"\n画像 {len(images)} 枚" if images else ""),
+                   f"内容: {body[:200] if body else '（なし）'}" + (f"\n画像 {len(images)} 枚" if images else "")
+                   + (f"\n動画 1本（{video[2] / 1048576:.0f}MB）" if video else "")
+                   + ("\n対象の確認: 同意あり" if j else "")
+                   + (f"\n{config.APP_BASE_URL}/admin/reports" if config.APP_BASE_URL else ""),
                    files=[(f"report{rid}_{n}.jpg", data) for n, data in enumerate(images, 1)])
-    log.info("report #%s user=%s category=%s 画像 %d 枚", rid, u["id"], cat, len(images))
+    log.info("report #%s user=%s category=%s 画像 %d 枚 動画 %s", rid, u["id"], cat, len(images), "あり" if video else "なし")
     return JSONResponse({"id": rid}, status_code=201, headers=NO_STORE)
 
 

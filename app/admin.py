@@ -322,6 +322,25 @@ def api_job_delete(request: Request, job_id: str):
 
 # ---------------------------------------------------------------- 通報
 
+REPORT_MEDIA_TYPES = {"mp4": "video/mp4", "m4v": "video/mp4", "mov": "video/quicktime", "webm": "video/webm",
+                      "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png"}
+
+
+def _media_type(path):
+    return REPORT_MEDIA_TYPES.get(path.rsplit(".", 1)[-1].lower(), "application/octet-stream")
+
+
+def _report_job_file(j, which):
+    """報告の対象ジョブの元ファイル（source）・完成品（output）。無ければ None。"""
+    if not j:
+        return None
+    if which == "source":
+        p = os.path.join(core.job_dir(j["id"]), "src.mp4" if j["kind"] == "video" else "src.jpg")
+    else:
+        p = j.get("out_path")
+    return p if p and os.path.exists(p) else None
+
+
 def _report_row(r, users, jobs):
     u = users.get(r["user_id"]) or {}
     j = jobs.get(r["job_id"]) if r["job_id"] else None
@@ -331,7 +350,8 @@ def _report_row(r, users, jobs):
             "stage": core.REPORT_CATEGORIES.get(r["category"], ("（旧分類）", ""))[0],
             "category_label": core.REPORT_CATEGORIES.get(r["category"], ("", r["category"]))[1], "body": r["body"],
             "status": r["status"], "admin_note": r["admin_note"], "created_at": r["created_at"],
-            "updated_at": r["updated_at"], "image_count": r["image_count"]}
+            "updated_at": r["updated_at"], "image_count": r["image_count"], "video_name": r["video_name"],
+            "job_files": {w: bool(_report_job_file(j, w)) for w in ("source", "output")}}
 
 
 @router.get("/api/reports")
@@ -365,6 +385,27 @@ def api_report_image(request: Request, rid: int, n: int):
     if not r or not 1 <= n <= r["image_count"] or not os.path.exists(p):
         raise HTTPException(404, "画像が見つかりません（作成から90日たったか、退会で削除済みです）")
     return FileResponse(p, media_type="image/jpeg", headers=core.NO_STORE)
+
+
+@router.get("/api/reports/{rid}/video")
+def api_report_video(request: Request, rid: int):
+    require_admin(request, api=True)
+    r = db.get_report(rid)
+    p = os.path.join(retention.report_dir(rid), r["video_name"]) if r and r["video_name"] else None
+    if not p or not os.path.exists(p):
+        raise HTTPException(404, "動画が見つかりません（作成から90日たったか、退会で削除済みです）")
+    return FileResponse(p, media_type=_media_type(p), headers=core.NO_STORE)
+
+
+@router.get("/api/reports/{rid}/job/{which}")
+def api_report_job_file(request: Request, rid: int, which: str):
+    require_admin(request, api=True)
+    r = db.get_report(rid)
+    j = db.get_job(r["job_id"]) if r and r["job_id"] and which in ("source", "output") else None
+    p = _report_job_file(j, which)
+    if not p:
+        raise HTTPException(404, "元の動画・写真は24時間、完成品は30日で削除されます（削除済み）")
+    return FileResponse(p, media_type=_media_type(p), headers=core.NO_STORE)
 
 
 @router.post("/api/reports/{rid}")

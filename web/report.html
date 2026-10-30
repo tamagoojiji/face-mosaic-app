@@ -71,11 +71,15 @@
     <p class="cnt" id="rpn" aria-live="polite">あと500文字</p>
     <label class="lbl" for="rpj">対象の動画・写真（任意）</label>
     <select id="rpj"><option value="">選ばない</option></select>
+    <label class="opt" id="rpconsentl" style="margin-top:var(--s2)" hidden><input type="checkbox" id="rpconsent">選んだ動画・写真とその完成品を、この報告の調査のために運営が確認することに同意します</label>
     <p class="note" id="rpjnone" hidden>送った動画・写真はまだありません。送ったあとは、ここで選べます。</p>
     <span class="lbl" id="rpil">スクリーンショット（任意・3枚まで）</span>
     <p class="note" id="rpinote" style="margin:0 0 8px">エラー画面や、顔が隠れていない場面の画面写真があると調べやすくなります（1枚10MBまで）。</p>
     <label class="btn btn-sec pick" id="rpipick"><input type="file" id="rpi" accept="image/*" multiple aria-labelledby="rpil rpipick" aria-describedby="rpinote">画像を選ぶ</label>
     <ul class="thumbs" id="rpthumbs" aria-label="選んだ画像"></ul>
+    <span class="lbl" id="rpvl">画面録画を付ける（1本・100MBまで）</span>
+    <label class="btn btn-sec pick" id="rpvpick"><input type="file" id="rpv" accept="video/*" aria-labelledby="rpvl rpvpick">動画を選ぶ</label>
+    <ul class="thumbs" id="rpvsel" aria-label="選んだ動画"></ul>
     <p class="err" id="rpierr" role="alert" hidden></p>
     <button class="btn btn-pri save" type="submit" id="rps">運営に報告を送る</button>
     <div id="rpdone" role="status" hidden><p class="ok" id="rpok"></p><a class="btn btn-ter" href="/home">ホームに戻る</a></div>
@@ -141,6 +145,39 @@ $('rpi').addEventListener('change', () => {
   rpFiles = rpFiles.concat(ok);
   rpRender();
 });
+// 対象を選んだら、運営が確認することへの同意（選ばないときは隠して外す）
+$('rpj').addEventListener('change', () => {
+  const on = !!$('rpj').value;
+  $('rpconsentl').hidden = !on;
+  if (!on) $('rpconsent').checked = false;
+});
+// 画面録画（1本・100MB）
+const RP_VID_BYTES = 100 * 1024 * 1024;
+let rpVideo = null;
+function rpVidRender() {
+  const ul = $('rpvsel');
+  ul.replaceChildren();
+  if (rpVideo) {
+    const li = document.createElement('li');
+    const fn = document.createElement('span'); fn.className = 'fn'; fn.title = rpVideo.name;
+    fn.textContent = rpVideo.name + '（' + Math.max(1, Math.round(rpVideo.size / 1048576)) + 'MB）';
+    const rm = document.createElement('button'); rm.type = 'button'; rm.textContent = '×';
+    rm.setAttribute('aria-label', rpVideo.name + ' を外す');
+    rm.addEventListener('click', () => { rpVideo = null; rpImgErr(''); rpVidRender(); });
+    li.style.width = 'auto'; li.style.flexDirection = 'row';
+    li.append(fn, rm); ul.append(li);
+  }
+  $('rpvpick').lastChild.textContent = rpVideo ? '別の動画に選び直す' : '動画を選ぶ';
+}
+$('rpv').addEventListener('change', () => {
+  const f = $('rpv').files[0];
+  $('rpv').value = '';
+  rpImgErr('');
+  if (!f) return;
+  if (f.size > RP_VID_BYTES) { rpImgErr('動画は1本100MBまでです'); return; }
+  rpVideo = f;
+  rpVidRender();
+});
 document.querySelectorAll('input[name=rpc]').forEach(r => r.addEventListener('change', () => { $('rpcerr').hidden = true; }));
 $('rpf').addEventListener('submit', async ev => {
   ev.preventDefault();
@@ -151,21 +188,29 @@ $('rpf').addEventListener('submit', async ev => {
     $('rpcerr').scrollIntoView({ block: 'center' }); document.querySelector('input[name=rpc]').focus({ preventScroll: true }); return;
   }
   if (picked.value === 'other' && !body) { $('rperr').textContent = '内容を書いてください'; $('rperr').hidden = false; $('rpb').focus(); return; }
+  if ($('rpj').value && !$('rpconsent').checked) {
+    $('rperr').textContent = '対象を選んだときは、運営が確認することへの同意にチェックしてください'; $('rperr').hidden = false; $('rpconsent').focus(); return;
+  }
   $('rps').disabled = true;
+  const sendLabel = $('rps').textContent;
+  if (rpVideo) $('rps').textContent = '送信中…';
   try {
     const fd = new FormData();
     fd.append('category', picked.value);
     fd.append('body', body);
     fd.append('job_id', $('rpj').value);
+    if ($('rpj').value && $('rpconsent').checked) fd.append('consent', '1');
     rpFiles.forEach(f => fd.append('images', f, f.name));
+    if (rpVideo) fd.append('video', rpVideo, rpVideo.name);
     await api('/api/reports', { method: 'POST', body: fd });
-    $('rpb').value = ''; $('rpj').value = ''; picked.checked = false; rpCount();
-    rpFiles = []; rpImgErr(''); rpRender();
+    $('rpb').value = ''; $('rpj').value = ''; $('rpconsent').checked = false; $('rpconsentl').hidden = true; picked.checked = false; rpCount();
+    rpFiles = []; rpImgErr(''); rpRender(); rpVideo = null; rpVidRender();
     const what = picked.closest('label').textContent.trim();
     $('rpok').textContent = '報告を受け付けました（' + what + '）。運営が確認します';
     $('rpdone').hidden = false;
   } catch (e) { $('rperr').textContent = e.message; $('rperr').hidden = false; }
   $('rps').disabled = false;
+  $('rps').textContent = sendLabel;
 });
 </script>
 </body></html>

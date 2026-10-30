@@ -49,6 +49,11 @@ function detail(r) {
       const src = '/admin/api/reports/' + r.id + '/images/' + (i + 1);
       return h('a', { href: src, target: '_blank', rel: 'noopener', title: '原寸を新しいタブで開く' }, h('img', { src, alt: '添付画像 ' + (i + 1), loading: 'lazy' }));
     })) : null,
+    r.video_name ? h('div', { style: 'margin:0 0 12px' }, h('p', { class: 'hint', style: 'margin:0 0 4px' }, '画面録画'),
+      h('video', { src: '/admin/api/reports/' + r.id + '/video', controls: true, preload: 'none', style: 'max-width:100%;max-height:360px;border-radius:8px;border:1px solid var(--line);background:#000' })) : null,
+    r.job_id ? h('p', { class: 'hint', style: 'margin:0 0 12px' }, [['source', '対象の元ファイル'], ['output', '完成品']].map(([w, label], i) => [
+      i ? '・' : '', label + ': ',
+      r.job_files && r.job_files[w] ? h('a', { href: '/admin/api/reports/' + r.id + '/job/' + w, target: '_blank', rel: 'noopener' }, '開く') : '削除済み'])) : null,
     h('p', { class: 'hint', style: 'margin:0 0 12px' }, '通報者 ' + (r.instagram_username ? '@' + r.instagram_username + '・' : '') + '#' + r.user_id + (r.job_id ? '・対象ジョブ ' + r.job_id : '') + '・最終更新 ' + dt(r.updated_at)),
     h('div', { class: 'form-grid' },
       h('div', { class: 'fld' }, h('label', { for: 'note' + r.id }, '対応メモ（運営だけが見ます）'), ta),

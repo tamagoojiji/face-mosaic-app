@@ -62,7 +62,8 @@ def test_post_report(monkeypatch):
     monkeypatch.setattr(discord, "send", lambda ch, text, wait=False, files=None: sent.append((ch, text)))
     c, u = login("dev-rep1")
     db.insert_job("jobREP000001", kind="video", status="done", user_id=u["id"], duration_sec=83.0)
-    r = c.post("/api/reports", json={"category": "out_uncovered", "body": "  0:42 で顔が見えます  ", "job_id": "jobREP000001"})
+    r = c.post("/api/reports", json={"category": "out_uncovered", "body": "  0:42 で顔が見えます  ", "job_id": "jobREP000001",
+                                          "consent": "1"})
     assert r.status_code == 201
     rep = db.get_report(r.json()["id"])
     assert rep["user_id"] == u["id"] and rep["category"] == "out_uncovered" and rep["body"] == "0:42 で顔が見えます"

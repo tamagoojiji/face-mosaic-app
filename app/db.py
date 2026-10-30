@@ -86,7 +86,8 @@ CREATE TABLE IF NOT EXISTS reports (
   admin_note TEXT,
   created_at REAL,
   updated_at REAL,
-  image_count INTEGER NOT NULL DEFAULT 0   -- 添付のスクリーンショット（DATA_DIR/reports/<id>/<n>.jpg）
+  image_count INTEGER NOT NULL DEFAULT 0,  -- 添付のスクリーンショット（DATA_DIR/reports/<id>/<n>.jpg）
+  video_name TEXT                          -- 添付の画面録画（DATA_DIR/reports/<id>/video.<ext>・NULL=なし）
 );
 CREATE TABLE IF NOT EXISTS billing_events (
   event_id TEXT PRIMARY KEY,       -- Stripe の event.id（Webhook の重複処理よけ）
@@ -170,11 +171,13 @@ def init():
         if any(r["name"] == "body" and r["notnull"] for r in con.execute("PRAGMA table_info(reports)")):
             con.execute("ALTER TABLE reports RENAME TO reports_old")
             con.executescript(SCHEMA)
-            con.execute("INSERT INTO reports SELECT id, user_id, job_id, category, body, status, admin_note, created_at, "
-                        "updated_at FROM reports_old")
+            con.execute("INSERT INTO reports (id, user_id, job_id, category, body, status, admin_note, created_at, updated_at) "
+                        "SELECT id, user_id, job_id, category, body, status, admin_note, created_at, updated_at FROM reports_old")
             con.execute("DROP TABLE reports_old")
         if "image_count" not in {r["name"] for r in con.execute("PRAGMA table_info(reports)")}:
             con.execute("ALTER TABLE reports ADD COLUMN image_count INTEGER NOT NULL DEFAULT 0")
+        if "video_name" not in {r["name"] for r in con.execute("PRAGMA table_info(reports)")}:
+            con.execute("ALTER TABLE reports ADD COLUMN video_name TEXT")
         con.execute("CREATE INDEX IF NOT EXISTS jobs_owner ON jobs(owner, created_at)")
         con.execute("CREATE INDEX IF NOT EXISTS jobs_user ON jobs(user_id, created_at)")
         now = time.time()
@@ -432,9 +435,10 @@ def reports_of(user_id):
 
 
 def old_report_images(before):
-    """画像の保存期限（作成から90日）を過ぎた通報。"""
+    """画像・動画の保存期限（作成から90日）を過ぎた通報。"""
     with connect() as con:
-        return [dict(r) for r in con.execute("SELECT * FROM reports WHERE image_count>0 AND created_at<?", (before,))]
+        return [dict(r) for r in con.execute(
+            "SELECT * FROM reports WHERE (image_count>0 OR video_name IS NOT NULL) AND created_at<?", (before,))]
 
 
 def update_report(report_id, **cols):

@@ -238,6 +238,7 @@ LINE公式を友だち追加（QR／リンク）
 ### 保存先: SQLite（VPS内・WAL）＋ ローカルディスク（元動画・解析データは24時間、完成品は30日）
 10人規模ならSQLiteで十分（biz-kaikei・フォトリレーと同じ運用）。元動画と解析データは **専用VPSのディスクだけ**（預かる時間を最小にするため）。完成品（モザイク済み・1分で約94MB）は30日保存するので容量が要る: 動画B 90分/月 ≒ 8.5GB/人/月、10人で最大 85GB。**VPS 6 のディスクで足りなければ完成品だけ Cloudflare R2 に置く**（フォトリレーと同じ・10GB まで無料）（確定: まず VPS 6 のディスクに置き、契約時の容量で足りなければ R2 へ）。高画質オプションの完成品は4倍の容量になるため R2 前提
 - 通報の画像: `/data/reports/<id>/<n>.jpg`（スクショ3枚まで・長辺2000px JPEG・EXIF なし）。作成から90日で削除・退会で削除（通報の文字は残す）
+- 通報の動画: `/data/reports/<id>/video.<ext>`（画面録画1本・100MBまで・mp4/mov/m4v/webm）。`reports.video_name`（NULL=なし）。画像と同じく90日・退会で削除
 
 ```
 users        id, line_user_id, display_name, instagram_username(任意・自己申告), role(user|tester|admin・運営の判定は admin・tester は枚数・本数の月上限なし＋お試し期限なし・2026-10-30), plan(free|image|video_a|video_b), hq(0/1・高画質オプション・動画A/Bのときだけ有効),

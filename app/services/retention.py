@@ -24,7 +24,7 @@ def report_dir(report_id):
 
 def delete_report_images(r):
     shutil.rmtree(report_dir(r["id"]), ignore_errors=True)
-    db.update_report(r["id"], image_count=0)
+    db.update_report(r["id"], image_count=0, video_name=None)
 
 
 def cleanup_report_images(now=None):
@@ -34,7 +34,7 @@ def cleanup_report_images(now=None):
     for r in rs:
         delete_report_images(r)
     if rs:
-        log.info("retention: 通報の画像 %d 件を削除（作成から%d日）: %s", len(rs), REPORT_IMAGE_DAYS,
+        log.info("retention: 通報の画像・動画 %d 件を削除（作成から%d日）: %s", len(rs), REPORT_IMAGE_DAYS,
                  ",".join(f"#{r['id']}" for r in rs))
     return len(rs)
 
