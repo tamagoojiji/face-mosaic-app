@@ -169,6 +169,19 @@ section.ch{scroll-margin-top:110px}
       <li>元の画質（4K など）での書き出しは高画質オプションの方だけです。確認画面で 1080p と選べます。</li>
       <li>送る画面でも、選んだ動画の長さから「顔を選べるまで約 n 分」の目安が出ます。</li>
     </ul>
+    <h3>撮るときの画質で変わること（1080p と 4K）</h3>
+    <p>同じ3分の動画でも、撮った設定で送る容量と処理の時間が変わります。ふだんの書き出しは 1080p・30fps なので、<b>1080p で撮っても仕上がりはほぼ同じ</b>です。4K で撮る意味があるのは、高画質オプションで元の画質のまま書き出すときです。</p>
+    <div class="tbl"><table id="res-table">
+      <tr><th>撮る設定</th><th>送る容量<br>（3分）</th><th>送信完了→完成<br>（1080p で書き出し）</th><th>高画質オプションの書き出し</th></tr>
+      <tr><td>4K・60fps</td><td class="num">約1.2〜1.4GB</td><td class="num">約17分</td><td>4K・60fps のまま（3分で約45分）</td></tr>
+      <tr><td>4K・30fps</td><td class="num">約0.6GB</td><td class="num">約13分</td><td>4K・30fps のまま</td></tr>
+      <tr><td>1080p・30fps</td><td class="num">約0.2GB</td><td class="num">約9分</td><td>1080p のまま（ふだんの書き出しと同じ）</td></tr>
+    </table></div>
+    <ul>
+      <li>容量は iPhone の HEVC（高効率）での目安です。送る時間は回線によって変わりますが、容量に比例します。</li>
+      <li>撮る設定は、iPhone なら「設定」→「カメラ」→「ビデオ撮影」、Android ならカメラアプリの設定で変えられます。</li>
+      <li>高画質オプションは「撮った画質のまま」書き出す機能なので、1080p で撮った動画は 1080p のままです。4K で保存したい動画だけ 4K で撮ってください。</li>
+    </ul>
     <figure class="vid"><video src="img/quality-compare.mp4" poster="img/quality-compare-poster.png" controls muted loop playsinline preload="metadata" width="1080" height="1272">お使いのブラウザでは動画を再生できません</video><figcaption>上が 1080p、下が元の画質（4K・60fps）。同じ動画の同じ10秒です。スマホの画面ではほとんど差が分かりません。PC やテレビで拡大すると、衣装の柄や文字の輪郭に差が出ます</figcaption></figure>
     <div class="figs">
       <figure><img src="img/05-send-video.png" alt="動画を送る画面" loading="lazy"><figcaption>送る</figcaption></figure>
@@ -236,7 +249,7 @@ section.ch{scroll-margin-top:110px}
       <tr><td>高画質オプション</td><td class="num">＋500円</td><td class="num">＋500円</td><td colspan="3">動画A・Bに付けられます</td></tr>
     </table></div>
     <p>リリース記念価格は、運営が告知する期限までのお申し込みに適用し、契約を続けている間は記念価格のままです。期限のあとのお申し込み（解約・退会のあとの再契約を含みます）は通常価格です。</p>
-    <p>ふだんの書き出しは 1080p・30fps です。高画質オプションを付けると、元の解像度と fps（4K・60fps など）のまま書き出します（HDR の動画は通常の色に変換します）。スマホで見るだけなら差はほとんど分かりません。</p>
+    <p>ふだんの書き出しは 1080p・30fps です。高画質オプションを付けると、元の解像度と fps（4K・60fps など）のまま書き出します（HDR の動画は通常の色に変換します）。スマホで見るだけなら差はほとんど分かりません。1080p で撮った動画は、高画質オプションを付けても 1080p のままです（3章「撮るときの画質で変わること」）。</p>
     <h3>申し込み</h3>
     <p>ホームの「プランを比較する」→ プランを選ぶ → カード情報を入れて支払うと、すぐ使えるようになります。お支払いはクレジットカード（Stripe）です。カード番号はこのアプリには保存されません。</p>
     <div class="figs">
