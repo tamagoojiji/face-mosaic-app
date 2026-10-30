@@ -10,6 +10,7 @@
 | Messaging API チャネル | — | 未作成 | LINE Developers から直接作成不可。LINE Official Account Manager で公式アカウント作成→Messaging API 有効化が必要 |
 | Messaging API チャネル（受付用・no=0） | らくらくモザイク 受付 | Channel ID `2012301058`・ベーシックID `@907hcztm`（友だち追加 https://line.me/R/ti/p/@907hcztm・2026-10-31 作成） | Webhook `https://mosaic.tamago-ai-world.com/line/webhook/0`（2026-10-30 複数運用。返信だけ・通知には使わない） |
 | Messaging API チャネル（②・no=2） | らくらくモザイク② | Channel ID `2012301111`・ベーシックID `@597uvhwa`（友だち追加 https://line.me/R/ti/p/@597uvhwa・2026-10-31 作成） | Webhook `https://mosaic.tamago-ai-world.com/line/webhook/2`（2026-10-30 複数運用・定員 5） |
+| Messaging API チャネル（③・no=3） | らくらくモザイク③ | Channel ID `2012301176`・ベーシックID `@385ywxzj`（友だち追加 https://line.me/R/ti/p/@385ywxzj・2026-10-31 作成） | Webhook `https://mosaic.tamago-ai-world.com/line/webhook/3`（定員 5・予備＝登録後に「使う」OFF で待機） |
 
 ## Stripe（アカウント Tetraris・**テスト環境（サンドボックス）**・2026-10-28 までの控え）
 
