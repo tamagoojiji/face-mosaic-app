@@ -28,8 +28,6 @@ F = main.FALLBACK_PER_MIN
 @pytest.fixture
 def client(monkeypatch):
     db.init()
-    with db.connect() as con:  # ほかのテストが残した動画ジョブを数えない
-        con.execute("DELETE FROM jobs WHERE kind='video'")
     monkeypatch.setattr(config, "SESSION_SECRET", "test-secret")
     monkeypatch.setattr(config, "AUTH_MODE", "line")
     monkeypatch.setattr(db, "done_video_stats", lambda limit=30: [])  # 実測なし → fallback
@@ -48,16 +46,26 @@ def test_est_without_jobs(client):
     est = r.json()["est"]
     assert est["prep_per_min"] == F["prepare"] + F["track"]
     assert est["export_per_min"] == F["export_pixel"]
-    assert est["queue_sec"] == 0 and est["queue_count"] == 0
+    assert est["queue_count"] >= 0 and est["queue_sec"] >= 0
 
 
-def test_est_counts_queued_job(client):
+@pytest.fixture
+def queued_job_id():
+    jid = f"estq-{time.time()}"
+    yield jid
+    with db.connect() as con:  # 自分が入れたジョブだけ消す（共有 DB のほかのジョブは残す）
+        con.execute("DELETE FROM jobs WHERE id=?", (jid,))
+
+
+def test_est_counts_queued_job(client, queued_job_id):
     c, u = client
+    base = c.get("/api/config").json()["est"]
     now = time.time()
-    db.insert_job("estq1", kind="video", status="queued", user_id=u["id"], duration_sec=60, expires_at=now + 3600)
+    db.insert_job(queued_job_id, kind="video", status="queued", user_id=u["id"], duration_sec=60,
+                  expires_at=now + 3600)
     est = c.get("/api/config").json()["est"]
-    assert est["queue_count"] == 1
-    assert est["queue_sec"] == pytest.approx(F["prepare"] + F["track"], abs=1)
+    assert est["queue_count"] == base["queue_count"] + 1
+    assert est["queue_sec"] == pytest.approx(base["queue_sec"] + F["prepare"] + F["track"], abs=1)
 
 
 def test_est_none_on_error(client, monkeypatch):

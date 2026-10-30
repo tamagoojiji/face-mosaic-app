@@ -247,8 +247,9 @@ if (TYPE === 'video') {
       $('vlimit').textContent = limitText(CFG.max_video_sec) + 'まで・1本1.5GBまで';
       const est = CFG.est;
       if (est) {
-        $('vest').textContent = '目安: 1分の動画なら、届いてから顔を選べるまで約' + ceilMin(est.prep_per_min) + '分。3分なら約'
-          + ceilMin(est.prep_per_min * 3) + '分です。書き出し（1080p）は1分の動画で約' + ceilMin(est.export_per_min) + '分。'
+        $('vest').textContent = '目安: 1分の動画なら、届いてから顔を選べるまで約' + ceilMin(est.prep_per_min) + '分'
+          + (CFG.max_video_sec >= 180 ? '。3分なら約' + ceilMin(est.prep_per_min * 3) + '分' : '')
+          + 'です。書き出し（1080p）は1分の動画で約' + ceilMin(est.export_per_min) + '分。'
           + (est.queue_count > 0 ? 'いま順番待ちが' + est.queue_count + '件あり、さらに約' + ceilMin(est.queue_sec) + '分かかります。' : '');
         const sp = document.createElement('span');
         sp.textContent = '4K30 や 1080p で撮った動画は、送るのも処理も速く終わります。';
