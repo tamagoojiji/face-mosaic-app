@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>らくらくモザイク 登録導線</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@700&family=M+PLUS+1+Code:wght@400;500&display=swap">
+<style>
+/* 縦1本の導線＋右に分岐の注記。番号はステップ順なので意味がある */
+:root {
+  --bg: #f6f7f5; --surface: #ffffff; --ink: #1d2a27; --muted: #5d6b67; --line: #d6dcd9;
+  --oc: #2f6f5e;      /* オプチャ・LINE側 */
+  --app: #c4572b;     /* アプリ側 */
+  --warn-bg: #fdf1e7; --warn: #9a4a17;
+  --stop-bg: #f3e9e9; --stop: #8c2f2f;
+  --f-disp: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", sans-serif;
+  --f-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --f-mono: "M PLUS 1 Code", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #151b1a; --surface: #1d2523; --ink: #e6ece9; --muted: #9aa8a3; --line: #34403d;
+  --oc: #6cc1a6; --app: #ee8a5e; --warn-bg: #33261b; --warn: #f0b48a; --stop-bg: #352222; --stop: #f0a3a3; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #151b1a; --surface: #1d2523; --ink: #e6ece9; --muted: #9aa8a3; --line: #34403d;
+  --oc: #6cc1a6; --app: #ee8a5e; --warn-bg: #33261b; --warn: #f0b48a; --stop-bg: #352222; --stop: #f0a3a3; color-scheme: dark }
+
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.75; }
+.wrap { max-width: 860px; margin: 0 auto; padding-block: 32px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 36px; }
+h1 { font-family: var(--f-disp); font-size: 1.75rem; line-height: 1.35; margin: 0; text-wrap: balance; }
+h2 { font-family: var(--f-disp); font-size: 1.15rem; margin: 0 0 12px; }
+.lead { color: var(--muted); margin: 8px 0 0; }
+code, .mono { font-family: var(--f-mono); font-size: .88em; }
+.tag { display: inline-block; font-size: .72rem; letter-spacing: .06em; padding: 1px 8px; border-radius: 99px; font-weight: 500; }
+.tag.oc { background: color-mix(in srgb, var(--oc) 14%, transparent); color: var(--oc); }
+.tag.app { background: color-mix(in srgb, var(--app) 14%, transparent); color: var(--app); }
+
+/* 投稿の時系列 */
+.posts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.post { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 4px; align-content: start; }
+.post .d { font-family: var(--f-mono); font-size: .8rem; color: var(--muted); }
+.post b { font-size: .95rem; }
+.post .to { font-size: .85rem; }
+.post.now { border-color: var(--oc); box-shadow: inset 0 0 0 1px var(--oc); }
+
+/* 導線 */
+.flow { display: grid; gap: 0; }
+.step { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 0 14px; }
+.rail { display: flex; flex-direction: column; align-items: center; }
+.num { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-family: var(--f-disp); font-weight: 700; color: var(--bg); background: var(--oc); flex: none; }
+.step.app .num { background: var(--app); }
+.rail::after { content: ""; flex: 1; width: 2px; background: var(--line); margin: 4px 0; }
+.step:last-child .rail::after { display: none; }
+.body { padding-bottom: 26px; min-width: 0; display: grid; gap: 8px; }
+.body h3 { margin: 4px 0 0; font-size: 1.05rem; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.body p { margin: 0; }
+.msg { background: var(--surface); border: 1px solid var(--line); border-radius: 4px 14px 14px 14px; padding: 10px 14px; white-space: pre-wrap; font-size: .9rem; max-width: 520px; }
+.msg-label { font-size: .75rem; color: var(--muted); letter-spacing: .04em; }
+.branch { border-radius: 8px; padding: 10px 14px; font-size: .9rem; display: grid; gap: 2px; }
+.branch.stop { background: var(--stop-bg); color: var(--stop); }
+.branch.note { background: var(--warn-bg); color: var(--warn); }
+.branch strong { font-weight: 700; }
+
+/* 状態表 */
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-size: .78rem; color: var(--muted); font-weight: 500; letter-spacing: .04em; }
+.src { font-size: .8rem; color: var(--muted); margin-top: 8px; }
+
+.issues { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.issues li { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: 6px; padding: 10px 14px; }
+.issues b { display: block; }
+a { color: var(--oc); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>オープンチャット → らくらくモザイク 登録導線</h1>
+    <p class="lead">2026-10-31 時点。導線の動きは本番コード（<code>app/main.py</code>・<code>app/services/notify.py</code>・<code>app/db.py</code>）から、人数と設定値は HANDOFF の記録から起こしています。</p>
+  </header>
+
+  <section>
+    <h2>オープンチャットの投稿と行き先</h2>
+    <div class="posts">
+      <div class="post"><span class="d">10/29（木）</span><b>⓪ 予告</b><span class="to">リンクなし</span></div>
+      <div class="post"><span class="d">10/30（金）</span><b>① 先行公開</b><span class="to"><span class="tag app">アプリURL直</span></span></div>
+      <div class="post now"><span class="d">10/31（土）12:00</span><b>①' テスター追加募集</b><span class="to"><span class="tag oc">受付用LINE経由</span></span></div>
+      <div class="post"><span class="d">11/6（金）12:00</span><b>② 感想＋明日一般公開</b><span class="to"><span class="tag app">アプリURL直</span></span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>①' 募集からの流れ</h2>
+    <div class="flow">
+      <div class="step">
+        <div class="rail"><span class="num">1</span></div>
+        <div class="body">
+          <h3>オプチャ投稿を見る <span class="tag oc">OpenChat</span></h3>
+          <p>「応募のしかた」に受付用公式LINEの友だち追加リンク <code>line.me/R/ti/p/@907hcztm</code>。</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="rail"><span class="num">2</span></div>
+        <div class="body">
+          <h3>受付用公式LINE（らくらくモザイク 受付・no=0）を友だち追加 <span class="tag oc">LINE</span></h3>
+          <p>follow を受けたアプリが、使える通知用LINEのうち空きのある一番小さい番号をこの人に割り当て、返信で案内します（返信なので無料枠外）。メッセージを送った場合も同じ案内が返ります。</p>
+          <span class="msg-label">返信（空きあり）</span>
+          <div class="msg">あなたはらくらくモザイク②（2番）です。
+
+①通知を受け取る公式アカウントを友だち追加
+https://line.me/R/ti/p/@597uvhwa
+
+②アプリに登録（LINEでログイン）
+https://mosaic.tamago-ai-world.com/</div>
+          <div class="branch stop"><strong>満員のとき</strong>「ただいま新しい登録の受付を停止しています（満員）。空きが出たらお知らせします。」を返信</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="rail"><span class="num">3</span></div>
+        <div class="body">
+          <h3>割り当てられた番号の公式LINE（いまは② <code>@597uvhwa</code>）を友だち追加 <span class="tag oc">LINE</span></h3>
+          <p>②の Webhook が follow を受け、登録前の割り当てに「友だち済み」を記録。登録後の通知はこのLINEから届きます。</p>
+          <div class="branch note"><strong>飛ばした場合</strong>登録はできるが通知が届かない。アプリのホームに「公式アカウントを追加する」（その人の番号のLINE）が出る</div>
+        </div>
+      </div>
+
+      <div class="step app">
+        <div class="rail"><span class="num">4</span></div>
+        <div class="body">
+          <h3>アプリで「LINEでログイン」 <span class="tag app">アプリ</span></h3>
+          <p>受付での割り当てを引き継いで新規登録。<code>signup_tester_days=7</code> なので自動でテスター（7日間・写真と動画の上限なし・動画は1本1分まで）。登録ごとに <code>signup_remaining</code> が1減ります。</p>
+          <div class="branch stop"><strong>止まるとき</strong>割り当てが無く全番号が満員、または <code>signup_remaining</code> が0 → ログイン画面に「新しい登録の受付はいま停止しています」</div>
+        </div>
+      </div>
+
+      <div class="step app">
+        <div class="rail"><span class="num">5</span></div>
+        <div class="body">
+          <h3>登録完了のLINEが②から届く <span class="tag app">通知</span></h3>
+          <div class="msg">登録ありがとうございます。M/Dまでテスターとして、写真・動画の枚数と本数の上限なく使えます（動画は1本1分まで）。気になったことは 設定 →「問題を報告する」から教えてください。</div>
+        </div>
+      </div>
+
+      <div class="step app">
+        <div class="rail"><span class="num">6</span></div>
+        <div class="body">
+          <h3>1週間後に通常プランへ自動で戻る <span class="tag app">アプリ</span></h3>
+          <p>12/1（火）までの申し込みはリリース記念価格（画像のみ 500円・動画A 980円・動画B 1,480円／月）。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>受付LINEを通らずアプリURLから来た人（①・②の p.s.）</h2>
+    <p>LINEログインの時点で、空きのある一番小さい番号に自動で割り当て。通知用LINEは友だちになっていないので、ホームの「公式アカウントを追加する」から追加してもらう形です。満員・残り枠0なら手順4と同じく受付停止の画面になります。</p>
+  </section>
+
+  <section>
+    <h2>公式LINEの状態（記録値）</h2>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>番号</th><th>ID</th><th>用途</th><th>人数／定員</th><th>状態</th></tr></thead>
+        <tbody>
+          <tr><td>受付</td><td class="mono">@907hcztm</td><td>案内の返信だけ</td><td>—</td><td>稼働</td></tr>
+          <tr><td>①</td><td class="mono">@606cuvoe</td><td>先行テスター4人＋運営</td><td>7／5</td><td>満員（新規は入らない）</td></tr>
+          <tr><td>②</td><td class="mono">@597uvhwa</td><td>追加募集の5人</td><td>0／5</td><td>稼働</td></tr>
+          <tr><td>③④⑤</td><td class="mono">@385ywxzj ほか</td><td>予備</td><td>0／5</td><td>「使う」OFFで待機</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="src">人数は 10/31 0:38 の記録で、12:00 の募集後の実数は未確認です（<code>/admin/line</code> で見られます）。③を開けるときは <code>/admin/line</code> で「使う」を ON にするだけ。11/7 に受付を一般に戻す予定。</p>
+  </section>
+
+  <section>
+    <h2>コードを読んで気づいた点</h2>
+    <ul class="issues">
+      <li><b>受付LINEを追加しただけの人も②の定員を使う</b>定員は「登録済み＋未登録の割り当て」で数えるため、追加して登録しない人が出ると、登録が5人に届かないうちに受付停止の返信になることがあります。</li>
+      <li><b>①・②投稿のアプリURL直の人も同じ枠を使う</b>受付を通らずにログインした人も②に入り、<code>signup_remaining</code> も1減ります。テスター募集の5枠とは分けて数えていません。</li>
+    </ul>
+  </section>
+</div>
+</body>
+</html>

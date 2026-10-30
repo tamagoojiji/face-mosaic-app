@@ -103,6 +103,18 @@ def line_page(request: Request):
     return _page(request, "line.html")
 
 
+@router.get("/zukai")
+def zukai_page(request: Request):
+    return _page(request, "zukai.html")
+
+
+@router.get("/zukai/{name}")
+def zukai_file(request: Request, name: str):
+    if name not in ("overview", "flow"):
+        raise HTTPException(404, NOT_FOUND)
+    return _page(request, f"zukai/{name}.html")
+
+
 # ---------------------------------------------------------------- 共通の形
 
 def _contract(u, now):

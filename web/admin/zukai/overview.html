@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>らくらくモザイク 全体像</title>
+<style>
+:root{
+  --bg:#F6F3EC;        /* ベース 紙色 */
+  --card:#FCFAF6;      /* カード */
+  --band:#EDE8DE;      /* 薄い帯 */
+  --ink:#1E2836;       /* 本文 */
+  --sub:#4F5866;       /* 補足 */
+  --line:#D9D2C4;
+  --pri:#0E62BC;       /* メイン（アプリと同じ青） */
+  --pri-ink:#0B4F99;
+  --pri-soft:#E3ECF6;
+  --acc:#B23E0E;       /* アクセント（本日・D公開・最優先だけ） */
+  --acc-soft:#F7E6DC;
+  --on-pri:#FAFBFC;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",sans-serif;
+  font-size:15px;line-height:1.7;word-break:normal;overflow-wrap:anywhere;line-break:strict}
+.wrap{max-width:1200px;margin:0 auto;padding:24px 16px 48px}
+header{border-bottom:3px solid var(--pri);padding-bottom:14px;margin-bottom:8px}
+.kicker{font-size:13px;color:var(--sub);margin:0}
+h1{font-size:24px;line-height:1.4;margin:4px 0 8px}
+.hero-line{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;font-size:14px;color:var(--sub)}
+.dday{display:inline-block;background:var(--acc);color:#FCF8F5;font-weight:700;border-radius:6px;padding:3px 10px;font-size:15px}
+section{margin-top:36px}
+h2{font-size:21px;line-height:1.4;margin:0 0 12px;display:flex;align-items:baseline;gap:10px}
+h2 .no{font-size:14px;color:var(--pri);font-weight:700;border:1.5px solid var(--pri);border-radius:50%;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;flex:none;transform:translateY(-2px)}
+h3{font-size:16px;margin:0 0 6px}
+p{margin:0 0 8px}
+.small{font-size:13px;color:var(--sub)}
+.nowrap{white-space:nowrap}
+b,strong{font-weight:700}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+
+/* 1. 流れ */
+.flow{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:0;align-items:stretch}
+.step{position:relative;background:var(--card);border:1px solid var(--line);border-top:4px solid var(--pri);border-radius:8px;padding:10px 12px;margin-right:22px}
+.step:last-child{margin-right:0}
+.step:not(:last-child)::after{content:"";position:absolute;right:-18px;top:50%;width:0;height:0;border-left:12px solid var(--pri);border-top:9px solid transparent;border-bottom:9px solid transparent;transform:translateY(-50%)}
+.step .tag{font-size:12px;color:var(--pri-ink);font-weight:700;letter-spacing:.05em}
+.step h3{font-size:17px;margin:2px 0 6px}
+.step ul{margin:0;padding-left:1.1em;font-size:13.5px;line-height:1.6}
+.step li{margin-bottom:3px}
+.subflow{display:flex;flex-direction:column;gap:2px;font-size:13.5px;margin:0;padding:0;list-style:none}
+.subflow li{padding-left:16px;position:relative}
+.subflow li::before{content:"↓";position:absolute;left:0;color:var(--pri);font-size:12px}
+.subflow li:first-child::before{content:"・"}
+.link-note{margin-top:10px;font-size:13px;color:var(--sub);background:var(--band);border-radius:6px;padding:6px 10px}
+.ops{margin-top:12px;display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--sub);border-top:1px dashed var(--line);padding-top:10px}
+.ops strong{color:var(--ink)}
+
+/* 表 */
+.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:8px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{background:var(--pri-soft);color:var(--pri-ink);font-size:13px;font-weight:700;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+td.num b{color:var(--pri-ink)}
+.price td:first-child{white-space:nowrap;font-weight:700}
+.price{min-width:640px}
+.bench{min-width:460px}
+.bench td:first-child{font-weight:700;white-space:nowrap}
+
+.grid2{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:14px;align-items:start}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.stack{min-width:0}
+.stack>*+*{margin-top:12px}
+.cond{list-style:none;margin:0;padding:0;counter-reset:c}
+.cond li{counter-increment:c;padding:6px 0 6px 30px;position:relative;border-bottom:1px dashed var(--line);font-size:14px}
+.cond li:last-child{border-bottom:0}
+.cond li::before{content:counter(c);position:absolute;left:0;top:7px;width:20px;height:20px;border-radius:50%;background:var(--pri);color:var(--on-pri);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.big{font-size:22px;font-weight:700;color:var(--pri-ink);line-height:1.3}
+.trial .row{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;margin-bottom:6px}
+.trial .lab{font-size:13px;color:var(--sub);min-width:7em}
+.priority{border:2px solid var(--acc);background:var(--acc-soft);border-radius:10px;padding:12px 14px}
+.priority .ptag{display:inline-block;background:var(--acc);color:#FCF8F5;font-size:12px;font-weight:700;border-radius:4px;padding:1px 8px;margin-right:6px}
+
+/* 3. タイムライン */
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;margin:0 0 10px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.mk{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:12px;font-weight:700;flex:none;line-height:1}
+.mk.done{background:var(--pri);color:var(--on-pri)}
+.mk.today{background:var(--acc);color:#FCF8F5}
+.mk.need{background:var(--card);color:var(--ink);border:2px solid var(--ink)}
+.mk.plan{background:var(--card);color:var(--sub);border:1.5px dashed var(--sub)}
+.tl-frame{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;background:var(--card);scroll-snap-type:x proximity}
+.tl{display:flex;gap:0;padding:14px 14px 16px;width:max-content;position:relative}
+.day{width:178px;flex:none;scroll-snap-align:start;padding:0 8px;position:relative}
+.day .date{font-size:14px;font-weight:700;padding-bottom:8px;border-bottom:3px solid var(--line);margin-bottom:10px;position:relative;white-space:nowrap}
+.day .date::after{content:"";position:absolute;left:0;bottom:-7px;width:11px;height:11px;border-radius:50%;background:var(--card);border:3px solid var(--pri)}
+.day.d .date{color:var(--acc);border-bottom-color:var(--acc)}
+.day.d .date::after{border-color:var(--acc);background:var(--acc)}
+.day.d{background:var(--acc-soft);border-radius:8px}
+.day.today .date{color:var(--acc)}
+.day.today .date::after{border-color:var(--acc)}
+.ev{display:flex;gap:6px;margin-bottom:10px;font-size:13px;line-height:1.55}
+.ev .who{font-size:12px;color:var(--sub)}
+.ev .st{display:block;font-size:12px;color:var(--sub);margin-top:2px}
+.ev .st b{color:var(--ink)}
+.ev.today .st b{color:var(--acc)}
+.dlabel{display:inline-block;background:var(--acc);color:#FCF8F5;font-size:12px;font-weight:700;border-radius:4px;padding:0 6px;margin-left:4px}
+.hint{font-size:12px;color:var(--sub);margin-top:6px}
+
+/* 4. 宣伝 */
+.media{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.m{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px;border-left:5px solid var(--pri)}
+.m.todo{border-left:5px dashed var(--ink);background:var(--band)}
+.m .st{font-size:12px;font-weight:700;display:inline-block;padding:0 8px;border-radius:4px;margin-bottom:4px}
+.m .st.ok{background:var(--pri-soft);color:var(--pri-ink)}
+.m .st.no{background:var(--ink);color:var(--bg)}
+.m h3{font-size:15px;margin:0 0 2px}
+.m .f{font-size:12px;color:var(--sub);font-family:ui-monospace,Menlo,monospace;overflow-wrap:anywhere}
+.m p{font-size:13.5px;margin:4px 0 0}
+.rules{margin-top:12px;font-size:13px;color:var(--sub);background:var(--band);border-radius:8px;padding:10px 12px}
+
+/* 5. アプリ */
+.wall{margin-top:10px;border-left:4px solid var(--ink);padding:8px 12px;background:var(--band);border-radius:0 8px 8px 0;font-size:14px}
+.facts{list-style:none;margin:0;padding:0}
+.facts li{padding:6px 0;border-bottom:1px dashed var(--line);font-size:14px}
+.facts li:last-child{border-bottom:0}
+.facts.card{padding:6px 16px}
+.facts .k{display:block;font-size:12px;color:var(--sub);font-weight:700}
+code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:var(--band);border-radius:4px;padding:0 4px;overflow-wrap:anywhere}
+
+/* 6. 取りやめ */
+.drop{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 20px}
+.drop li{padding:8px 0;border-bottom:1px solid var(--line);font-size:14px;display:grid;grid-template-columns:22px 1fr;gap:6px}
+.drop li::before{content:"×";color:var(--sub);font-weight:700}
+.drop .why{display:block;font-size:13px;color:var(--sub)}
+
+/* 7. 未完了 */
+.todo-list{list-style:none;margin:0;padding:0;counter-reset:t}
+.todo-list li{counter-increment:t;display:grid;grid-template-columns:34px 1fr;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);margin-bottom:8px;font-size:14px}
+.todo-list li::before{content:counter(t);width:28px;height:28px;border-radius:50%;border:2px solid var(--pri);color:var(--pri-ink);font-weight:700;display:flex;align-items:center;justify-content:center;font-size:14px}
+.todo-list li.top{border:2px solid var(--acc);background:var(--acc-soft)}
+.todo-list li.top::before{background:var(--acc);border-color:var(--acc);color:#FCF8F5}
+.todo-list .t{font-weight:700;display:block;font-size:15px}
+.todo-list .top .t{color:var(--acc)}
+
+/* 8. 索引 */
+.index{font-size:12.5px;color:var(--sub)}
+.index dl{display:grid;grid-template-columns:11em 1fr;gap:4px 12px;margin:0}
+.index dt{font-weight:700;color:var(--ink)}
+.index dd{margin:0}
+footer{margin-top:28px;font-size:12px;color:var(--sub);border-top:1px solid var(--line);padding-top:10px}
+
+@media (max-width:1020px){
+  .flow{grid-template-columns:repeat(3,minmax(0,1fr));row-gap:14px}
+  .step:nth-child(3n){margin-right:0}
+  .step:nth-child(3n)::after{display:none}
+  .media{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:720px){
+  body{font-size:15px}
+  h1{font-size:22px}
+  h2{font-size:20px}
+  .flow{grid-template-columns:1fr;row-gap:20px}
+  .step{margin-right:0}
+  .step:not(:last-child)::after,.step:nth-child(3n):not(:last-child)::after{display:block;right:auto;left:50%;top:auto;bottom:-17px;transform:translateX(-50%);border-left:9px solid transparent;border-right:9px solid transparent;border-top:12px solid var(--pri);border-bottom:0}
+  .grid2,.grid3{grid-template-columns:minmax(0,1fr)}
+  .media{grid-template-columns:1fr}
+  .drop{grid-template-columns:1fr}
+  .index dl{grid-template-columns:1fr;gap:0}
+  .index dd{margin-bottom:6px}
+  .day{width:160px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="kicker">宣伝 → SNS 運用 → 販売 → 利用までの 1 枚</p>
+  <h1>らくらくモザイク 全体像</h1>
+  <div class="hero-line">
+    <span>2026-10-31 深夜時点（10/30 昼版を更新）</span>
+    <span class="dday">D＝11/7（土）公開</span>
+    <span>10/30〜11/6 はテスター期間</span>
+    <span>記念価格は <b class="nowrap">12/1（火）まで</b> の申込</span>
+  </div>
+</header>
+
+<!-- 1 流れ -->
+<section id="flow">
+  <h2><span class="no">1</span>流れ（誰が・どこで・何をする）</h2>
+  <div class="flow">
+    <div class="step">
+      <div class="tag">STEP 1</div>
+      <h3>宣伝</h3>
+      <ul class="subflow">
+        <li>OpenChat（常連）</li>
+        <li>Instagram ストーリーズ 3 日（11/5〜）</li>
+        <li>リール（11/7 21:00）</li>
+        <li>X・Threads・フィード</li>
+      </ul>
+    </div>
+    <div class="step">
+      <div class="tag">STEP 2</div>
+      <h3>登録（LINE）</h3>
+      <ul>
+        <li>アプリ URL を開く</li>
+        <li>LINE ログイン</li>
+        <li>規約に同意（LINE アカウントごとに 1 回）</li>
+        <li>10/30〜11/6 は残り枠ぶんだけ（下のテスター期間）</li>
+      </ul>
+    </div>
+    <div class="step">
+      <div class="tag">STEP 3</div>
+      <h3>お試し</h3>
+      <ul>
+        <li>登録から 7 日・写真 5 枚＋1 分動画 1 本</li>
+        <li>リリース記念 10/30〜11/30 <b>に登録した人</b>は 写真 10 枚＋1 分動画 3 本（お試し終了まで）</li>
+      </ul>
+    </div>
+    <div class="step">
+      <div class="tag">STEP 4</div>
+      <h3>購入（Stripe）</h3>
+      <ul>
+        <li>アプリ内のプラン画面 → Stripe（本番カード）</li>
+        <li>月額・自動更新・返金なし</li>
+        <li>12/1 までの申込は続けている間ずっと記念価格</li>
+      </ul>
+    </div>
+    <div class="step">
+      <div class="tag">STEP 5</div>
+      <h3>利用</h3>
+      <ul class="subflow">
+        <li>動画／写真を送る</li>
+        <li>顔を自動検出 → 残したい顔をタップ</li>
+        <li>確認（画質 1080p／元の画質）</li>
+        <li>書き出し → 保存（完成品 30 日・元は 24 時間で削除）</li>
+        <li>できたら LINE で通知（その人の番号の公式 LINE から）</li>
+      </ul>
+    </div>
+    <div class="step">
+      <div class="tag">STEP 6</div>
+      <h3>継続・解約</h3>
+      <ul>
+        <li>アプリ内で解約</li>
+        <li>更新日まで使える → 更新日に自動退会</li>
+        <li>問い合わせ contact@tetraris.com</li>
+      </ul>
+    </div>
+  </div>
+  <p class="link-note">宣伝 → 登録の入口: プロフィールのリンク／ストーリーズのリンクスタンプで <b>アプリ URL に直接</b>（Instagram から公式 LINE へは誘導しない）。URL: https://mosaic.tamago-ai-world.com</p>
+  <div class="ops">
+    <strong>運営の目</strong>
+    <span>管理画面 /admin・/admin/line・/admin/reports</span>
+    <span>Discord #mosaic-usage（毎朝 7 時の集計）</span>
+    <span>Discord #mosaic-alerts（失敗・停止）</span>
+    <span>問題報告の通知</span>
+    <span>DB バックアップ 毎晩 3:00（GAS→Google ドライブ 30 日）</span>
+  </div>
+
+  <h3 style="margin-top:20px">テスター期間と公式 LINE の振り分け（10/30〜31 決定・本番反映済み）</h3>
+  <div class="grid2">
+    <ul class="facts card">
+      <li><span class="k">募集を一旦停止しテスター制に</span>先行登録の 4 人（id 5〜8）は <code>role=tester</code>・期限 11/6（金）。10/31 12:00 OpenChat で追加 5 人を募集（受付用 LINE を友だち追加→案内どおり②を追加→アプリ登録。先着 5 人が自動で 7 日間テスター。設定 <code>signup_remaining=5</code>・<code>signup_tester_days=7</code>）。残り枠 0 で受付停止・ログイン画面に案内</li>
+      <li><span class="k">テスターの扱い</span>写真の枚数・動画の本数の月上限なし・お試し期限なし（1 本の長さと容量はプランのまま）。期限が来たら自動で通常扱い</li>
+      <li><span class="k">LINE 無料枠</span>月 200 通／アカウント。動画 1 本につき 2 通（選択の準備・できました）、写真 0 通。「できました」は設定 <code>notify_done</code> で OFF にできる（いまは ON）</li>
+      <li><span class="k">廃止したもの</span>LINE ログイン時の友だち追加の誘導（bot_prompt）。①での友だち追加・メッセージへの返信（Webhook はメッセージに自動返信しない）</li>
+    </ul>
+    <div class="stack">
+      <div class="tscroll">
+        <table class="bench">
+          <thead><tr><th>公式 LINE</th><th>ID</th><th>状態</th></tr></thead>
+          <tbody>
+            <tr><td>受付用（no=0）</td><td><code>@907hcztm</code></td><td>友だち追加／メッセージに「あなたは◯番」と専用 URL を返信（返信は無料枠外）。満員なら受付停止中</td></tr>
+            <tr><td>①</td><td><code>@606cuvoe</code></td><td>既存 7 人・満員</td></tr>
+            <tr><td>②</td><td><code>@597uvhwa</code></td><td>0/5・ON（10/31 の 5 人）</td></tr>
+            <tr><td>③ ④ ⑤</td><td><code>@385ywxzj</code> <code>@618jvbkn</code> <code>@702akmkh</code></td><td>登録済み・「使う」OFF で待機</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">5 人で 1 アカウント。通知はその人の番号のトークンで送信。Webhook <code>/line/webhook/{no}</code>・管理画面 <code>/admin/line</code>。11/7 に受付を一般に戻す（募集枠を外す・テスター日数 0・③④⑤を ON）。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 2 価格 -->
+<section id="price">
+  <h2><span class="no">2</span>価格と条件（確定・変更しない）</h2>
+  <div class="grid2">
+    <div class="stack">
+      <div class="tscroll">
+        <table class="price">
+          <thead><tr><th>プラン</th><th style="text-align:right">定価（月額）</th><th style="text-align:right">記念価格</th><th>中身</th></tr></thead>
+          <tbody>
+            <tr><td>画像のみ</td><td class="num">1,000円</td><td class="num"><b>500円</b></td><td>写真 月100枚</td></tr>
+            <tr><td>動画A</td><td class="num">1,480円</td><td class="num"><b>980円</b></td><td>動画 月10分（1本1分まで）＋写真 月100枚</td></tr>
+            <tr><td>動画B</td><td class="num">1,980円</td><td class="num"><b>1,480円</b></td><td>動画 月90分（1本3分まで）＋写真 無制限</td></tr>
+            <tr><td>高画質オプション</td><td class="num">＋500円</td><td class="num"><b>＋500円</b></td><td>動画A・Bに追加。元の解像度・fps（4K60 など）のまま書き出し。確認画面で毎回 1080p と選べる</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">記念価格＝<b class="nowrap">12/1（火）まで</b>の申込・続けている間ずっと。記念価格を書くときは必ず「12/1（火）まで」を併記。期限後は記念価格の投稿を出さず、ハイライト・固定から外す（11/30 までに）。</p>
+      <div class="card trial">
+        <h3>お試し（LINE アカウントごとに 1 回）</h3>
+        <div class="row"><span class="lab">通常</span><span class="big">7 日・写真 5 枚＋1 分動画 1 本</span><span class="small">登録から（動画 1 本は 10/30 昼に追加）</span></div>
+        <div class="row"><span class="lab">リリース記念<br>10/30（金）〜11/30（月）<br>に登録した人</span><span class="big">写真 10 枚＋1 分までの動画 3 本</span><span class="small">お試し終了まで</span></div>
+        <p class="small">判定は登録日（JST）。12/1 以降の登録は 1 本。本番 settings: campaign_on=1・from 2026-10-30・to 2026-11-30・images 10・videos 3。投稿文もすべてこの日付。公開日の変更後も記念期間・記念価格・価格は据え置き。</p>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="card">
+        <h3>契約条件 3 つ</h3>
+        <ol class="cond">
+          <li><b>月額</b>・契約日と同じ日に自動更新</li>
+          <li><b>返金なし</b>（日割りなし）</li>
+          <li><b>解約後は更新日まで使える</b> → 自動退会。上位変更は差額をその場で請求</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h3>上限</h3>
+        <p><span class="big">動画 1 本 1.5GB</span></p>
+        <p class="small">10/30 に 1GB から変更（4K60 の 3 分が通るように）。長さはプランどおり。写真は長辺 4000px。</p>
+      </div>
+      <div class="priority">
+        <p style="margin:0"><span class="ptag">完了</span><b>お試しの 1 分動画 1 本（10/30 昼・本番反映）</b></p>
+        <p style="margin:6px 0 0;font-size:14px">コード <code>62753a2</code>（PLANS.free 動画 1 本）・<code>6ea5a8b</code>（記念増量は登録日で判定）。プラン画面・説明書・DESIGN・BRIEF・schedule・HANDOFF の表記も更新。注意: 上限は月単位なので、お試し 7 日が月をまたぐ人は翌月にもう 1 本。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 スケジュール -->
+<section id="schedule">
+  <h2><span class="no">3</span>スケジュール 10/28〜12/1（D＝11/7・10/30〜11/6 はテスター期間）</h2>
+  <div class="legend" aria-label="状態の見方">
+    <span><i class="mk done">✓</i>完了</span>
+    <span><i class="mk today">今</i>本日（10/31）</span>
+    <span><i class="mk need">!</i>要る物・確認あり</span>
+    <span><i class="mk plan">○</i>予定（予約済み・文面済み含む）</span>
+  </div>
+  <div class="tl-frame">
+    <div class="tl">
+      <div class="day"><div class="date">10/28（水）</div>
+        <div class="ev"><i class="mk done">✓</i><div><span class="who">両方</span><br>Stripe 本番化・管理画面の設定（記念 10/30〜11/30・記念価格 12/1）・名称統一・VPS 6 移行<span class="st"><b>完了</b></span></div></div>
+        <div class="ev"><i class="mk done">✓</i><div><span class="who">Claude・10/29〜10/30</span><br>処理時間の実測と短縮（61 分→14 分）・画質 2 択・説明書の目安表＋比較動画・1.5GB<span class="st"><b>完了・本番反映済み</b></span></div></div>
+      </div>
+      <div class="day"><div class="date">10/30（金）</div>
+        <div class="ev"><i class="mk done">✓</i><div><span class="who">たまご・12:00</span><br>OpenChat① 先行公開<span class="st"><b>完了</b></span></div></div>
+        <div class="ev"><i class="mk done">✓</i><div><span class="who">Claude・10/30〜10/31</span><br>テスター制・公式 LINE 複数運用・問題報告の拡張<span class="st"><b>完了・本番反映済み</b></span></div></div>
+      </div>
+      <div class="day today"><div class="date">10/31（土）<span class="dlabel">本日</span></div>
+        <div class="ev today"><i class="mk today">今</i><div><span class="who">たまご・12:00</span><br>OpenChat で追加テスター 5 人を募集<span class="st"><b>PWA 登録済み</b></span></div></div>
+        <div class="ev today"><i class="mk today">今</i><div><span class="who">たまご／Claude・〜11/6</span><br>テスターの問題報告を見て修正・本番反映<span class="st"><b>進行中</b></span></div></div>
+      </div>
+      <div class="day"><div class="date">11/5（木）</div>
+        <div class="ev"><i class="mk plan">○</i><div><span class="who">たまご・21:00</span><br>ストーリーズ 1 日目（2 枚）<span class="st"><b>文面済み</b></span></div></div>
+      </div>
+      <div class="day"><div class="date">11/6（金）</div>
+        <div class="ev"><i class="mk plan">○</i><div><span class="who">たまご・12:00</span><br>OpenChat②（テスターへ感想＋明日一般公開）<span class="st"><b>文面済み</b></span></div></div>
+        <div class="ev"><i class="mk need">!</i><div><span class="who">たまご・21:00</span><br>ストーリーズ 2 日目（3 枚・BEFORE→AFTER・録画・カウントダウン）<span class="st"><b>画面録画が要る</b></span></div></div>
+      </div>
+      <div class="day d"><div class="date">11/7（土）<span class="dlabel">D 公開</span></div>
+        <div class="ev"><i class="mk plan">○</i><div><span class="who">Claude／たまご</span><br>受付を一般に戻す（募集枠を外す・テスター日数 0・③④⑤を ON）<span class="st"><b>コマンドは HANDOFF</b></span></div></div>
+        <div class="ev"><i class="mk need">!</i><div><span class="who">たまご・12:00</span><br>Threads①<span class="st"><b>予約の取り直し</b></span></div></div>
+        <div class="ev"><i class="mk need">!</i><div><span class="who">たまご・21:00</span><br>リール → ストーリーズ 3 日目 → X①<span class="st"><b>リール動画が要る</b></span></div></div>
+      </div>
+      <div class="day"><div class="date">11/8（日）</div>
+        <div class="ev"><i class="mk need">!</i><div><span class="who">たまご</span><br>Threads②・X②<span class="st"><b>使い方動画が要る</b></span></div></div>
+      </div>
+      <div class="day"><div class="date">11/9（月）</div>
+        <div class="ev"><i class="mk plan">○</i><div><span class="who">たまご</span><br>X③<span class="st"><b>文面済み</b></span></div></div>
+      </div>
+      <div class="day"><div class="date">11/10（火）</div>
+        <div class="ev"><i class="mk need">!</i><div><span class="who">たまご</span><br>フィード①<span class="st"><b>feed.md は下書きのまま</b></span></div></div>
+      </div>
+      <div class="day"><div class="date">11/11（水）</div>
+        <div class="ev"><i class="mk plan">○</i><div><span class="who">たまご</span><br>Threads③・X④<span class="st"><b>文面済み</b></span></div></div>
+      </div>
+      <div class="day"><div class="date">11/14（土）</div>
+        <div class="ev"><i class="mk plan">○</i><div><span class="who">Claude</span><br>1 週目の数字をまとめる<span class="st"><b>予定</b></span></div></div>
+      </div>
+      <div class="day"><div class="date">11/26（水）</div>
+        <div class="ev"><i class="mk need">!</i><div><span class="who">たまご</span><br>フィード②<span class="st"><b>下書きのまま</b></span></div></div>
+      </div>
+      <div class="day"><div class="date">11/30（月）</div>
+        <div class="ev"><i class="mk plan">○</i><div><span class="who">Claude</span><br>記念期間の終わり確認・ハイライトと固定から記念価格を外す<span class="st"><b>予定</b></span></div></div>
+      </div>
+      <div class="day"><div class="date">12/1（火）</div>
+        <div class="ev"><i class="mk plan">○</i><div><span class="who">自動</span><br>記念価格の期限（以後は定価・申込済みは記念価格のまま）<span class="st"><b>予定</b></span></div></div>
+      </div>
+    </div>
+  </div>
+  <p class="hint">← 横にスクロールできます（枠の中だけ）。投稿時間の原則: リール・ストーリーズ・フィード 21:00、OpenChat・Threads 12:00。Threads の予約は 11/7・11/8・11/11 に取り直し（たまご）。</p>
+</section>
+
+<!-- 4 宣伝 -->
+<section id="media">
+  <h2><span class="no">4</span>宣伝コンテンツの状態</h2>
+  <p class="small">置き場所: <code>~/Tech-Notes/face-mosaic-app/marketing/</code></p>
+  <div class="media">
+    <div class="m todo"><span class="st no">まだ（動画）</span><h3>リール（1 本・10 シーン・約 30 秒）</h3><div class="f">reels.md</div><p>台本は reel-critique 83 点合格。<b>動画はまだ</b>（画面録画→reel-team）</p></div>
+    <div class="m todo"><span class="st no">まだ</span><h3>使い方動画（40〜60 秒・字幕のみ）</h3><div class="f">（reels.md と同じ録画から）</div><p>説明書かんたん版の冒頭・ハイライト「使い方」・X②/Threads② に添付予定</p></div>
+    <div class="m todo"><span class="st no">まだ（仕上げ）</span><h3>フィード ①②</h3><div class="f">feed.md</div><p>下書きのまま（仕上げ未実施）</p></div>
+    <div class="m"><span class="st ok">仕上げ済み（2 日目の録画はまだ）</span><h3>ストーリーズ 3 日分</h3><div class="f">stories.md・img/story-before.png・story-after.png</div><p>文面と画像は完成。2 日目の録画はまだ</p></div>
+    <div class="m"><span class="st ok">仕上げ済み</span><h3>OpenChat ⓪①②</h3><div class="f">openchat.md</div><p>openchat-review・stance-check 済み</p></div>
+    <div class="m"><span class="st ok">仕上げ済み</span><h3>X ①〜④</h3><div class="f">x.md</div></div>
+    <div class="m"><span class="st ok">仕上げ済み</span><h3>Threads ①〜③</h3><div class="f">threads.md</div><p>予約は取り直し（たまご）</p></div>
+    <div class="m"><span class="st ok">完成</span><h3>画質比較動画（10 秒・1080p vs 元の画質）</h3><div class="f">img/quality-compare-dancer-1080p-vs-4k-10s.mp4</div><p>説明書 3 章にも埋め込み済み（本番で再生確認済み）</p></div>
+    <div class="m"><span class="st ok">完成</span><h3>素材</h3><div class="f">img/raw-before-1080.jpg・feed-before-after.png・make.py</div><p>raw-before-1080.jpg は録画の入力に使う</p></div>
+  </div>
+  <p class="rules"><b>守ること:</b> パーク名・キャラ名・パーク名のハッシュタグ 不使用（「パレード」「ショー」「テーマパーク」）。実在の顔はモザイクなしで出さない（素材はイラスト版）。利用者数・口コミは作らない。使える数字は「1 コマに観客の顔が平均 22 人」だけ（投稿では「多かったら 10 人以上」でも可）。口調は tamago-base §0。</p>
+</section>
+
+<!-- 5 アプリ -->
+<section id="app">
+  <h2><span class="no">5</span>アプリの現状（本番・VPS 6 東京・6 vCPU/12GB）</h2>
+  <div class="grid2">
+    <div>
+      <h3>処理時間の目安（4K60 HDR・観客多数）</h3>
+      <div class="tscroll">
+        <table class="bench">
+          <thead><tr><th>長さ</th><th style="text-align:right">顔を選べるまで</th><th style="text-align:right">書き出し 1080p</th><th style="text-align:right">書き出し 元の画質</th></tr></thead>
+          <tbody>
+            <tr><td>30 秒</td><td class="num">約 2〜3 分</td><td class="num">約 1 分</td><td class="num">約 7 分</td></tr>
+            <tr><td>1 分</td><td class="num">約 4〜5 分</td><td class="num">約 1 分</td><td class="num">約 15 分</td></tr>
+            <tr><td>3 分</td><td class="num">約 11〜14 分</td><td class="num">約 3 分</td><td class="num">約 45 分</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small" style="margin-top:6px">送信と操作の時間は別。説明書 3 章に掲示済み。混雑時は順番待ちの分だけ延びる（画面に件数と目安）。</p>
+      <div class="wall"><b>これ以上は 4K60 デコードが壁</b><br>短縮するなら VPS 増強（12 vCPU で 3 分 9〜10 分）／撮影設定の案内／スマホ側で 1080p 化、のどれか（保留中）。</div>
+    </div>
+    <ul class="facts card">
+      <li><span class="k">URL</span>https://mosaic.tamago-ai-world.com（/admin・/manual/quick・/manual/guide・/legal/{terms,privacy,tokushoho}）</li>
+      <li><span class="k">つながっているもの</span>LINE ログイン・Stripe 本番・LINE 通知（①選択の準備 ②できました ③失敗 ④放置 1 時間）</li>
+      <li><span class="k">送れる容量の目安（上限 1.5GB）</span>1GB≒4K60 2.5 分・4K30 5 分・1080p60 8〜11 分・1080p30 13〜17 分</li>
+      <li><span class="k">説明書</span>3 章に時間の目安表＋注記＋比較動画、FAQ「時間がかかりすぎていませんか？」。送る画面にも「約 n 分（順番待ち k 件を含む）」（<code>a650444</code> <code>b63aee4</code>）</li>
+      <li><span class="k">問題の報告（10/30〜31 拡張・本番反映）</span>対象の動画・写真を選んだら「運営が確認することへの同意」チェック必須／画面録画 1 本（100MB・mp4/mov/webm）＋画像 3 枚を添付可（90 日・退会で削除）／管理画面 <code>/admin/reports</code> から添付動画・対象の元ファイル・完成品を開ける（報告があったものだけ）／報告は Discord に通知／プライバシーポリシー・規約第8条に明記（改定日 2026-10-30）</li>
+      <li><span class="k">管理画面の設定ページ</span>新規登録（残り枠・テスター日数）と完成通知（<code>notify_done</code>）の項目。コミット <code>1039845</code>〜<code>3d562f7</code>（10/30〜31）</li>
+      <li><span class="k">運営スクリプト</span><code>scripts/{users,settings,stripe_setup,webhook-reissue,backup-to-gas,restore-from-backup}</code>。本番反映・本番 DB 書き換えはユーザーの <code>!</code> で実行（分類器が止める。ユーザー了承済み）</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 6 取りやめ -->
+<section id="dropped">
+  <h2><span class="no">6</span>取りやめ・不採用（蒸し返さない・11 件）</h2>
+  <ul class="drop">
+    <li><div>先行お試し（知り合い 10 人）<span class="why">実施しない（10/28 決定）。OpenChat 先行公開で代替</span></div></li>
+    <li><div>記念期間 11/1〜11/15<span class="why">10/28 夜に 10/30〜11/30 へ変更（先行公開日から・延長）。投稿文・settings とも一致済み</span></div></li>
+    <li><div>動画 1 本の上限を 2 分に<span class="why">動画 B「3 分まで」の条件変更になるため不採用 → 容量を 1.5GB に上げて解決</span></div></li>
+    <li><div>1080p 化で B フレームを飛ばす高速化<span class="why">30fps 出力が実質 15fps のカクつきになるため不採用（コード削除済み）</span></div></li>
+    <li><div>検出の間引き 2→3 コマおき<span class="why">速くならず、続くトラックが 20% 減るため既定 2 のまま</span></div></li>
+    <li><div>書き出し分割 3→6・検出ワーカー 4→6・高画質分割 1<span class="why">差なし／遅い。既定（3・4・2）のまま</span></div></li>
+    <li><div>Instagram から公式 LINE への誘導<span class="why">BAN リスクのため行わない（アプリ URL 直）</span></div></li>
+    <li><div>Stripe テスト環境のポータル見出し「らくちんモザイク」<span class="why">本番化で新規作成されるので放置</span></div></li>
+    <li><div>公式 LINE の作成を Playwright で自動化<span class="why">非推奨・手作業 10 分で済む</span></div></li>
+    <li><div>運営が利用者の動画をいつでも見られる形<span class="why">報告があったものだけ開ける形にした</span></div></li>
+    <li><div>友だち追加への自動返信<span class="why">①では廃止（受付用だけ番号と URL を返す）</span></div></li>
+  </ul>
+</section>
+
+<!-- 7 未完了 -->
+<section id="todo">
+  <h2><span class="no">7</span>未完了（優先順）</h2>
+  <ol class="todo-list">
+    <li class="top"><div><span class="t">テスターの問題報告を見て修正</span>10/31〜11/6。<code>/admin/reports</code>・Discord の通知から</div></li>
+    <li><div><span class="t">11/7 に受付を一般に戻す</span>募集枠を外す・テスター日数 0・③④⑤を ON。コマンドは HANDOFF</div></li>
+    <li><div><span class="t">Threads 予約の取り直し</span>たまご（11/7・11/8・11/11）</div></li>
+    <li><div><span class="t">動画の目安表のずれ確認</span>従来から</div></li>
+    <li><div><span class="t">月またぎの上限</span>従来から・未判断（2 を参照）</div></li>
+    <li><div><span class="t">LINE 無料枠が足りなくなったら</span>「できました」OFF → ライトプラン（需要が見えてから）</div></li>
+    <li><div><span class="t">VPS 増強</span>テスターの順番待ちを見て判断</div></li>
+  </ol>
+  <p class="small" style="margin-top:8px">従来から残るもの: 画面録画 → リール動画・使い方動画（11/6 ストーリーズ 2 日目・11/7 リールまで）／たまご側の確認（プロフィールのリンク・パークの撮影/投稿ルール・規約 3 ページの弁護士確認・運営アカウント id=4 の戻し）／フィード①②の仕上げ。</p>
+</section>
+
+<!-- 8 索引 -->
+<section id="index" class="index">
+  <h2 style="font-size:20px"><span class="no">8</span>場所の索引</h2>
+  <dl>
+    <dt>アプリ本体</dt><dd><code>~/dev/tamago/face-mosaic-app</code>（GitHub tamagoojiji/face-mosaic-app・master）。設計 DESIGN.md・外部 ID <code>docs/external-ids.md</code>（受付・①〜⑤）</dd>
+    <dt>管理画面</dt><dd>/admin・公式 LINE <code>/admin/line</code>・問題報告 <code>/admin/reports</code></dd>
+    <dt>宣伝・記録</dt><dd><code>~/Tech-Notes/face-mosaic-app/</code>（GitHub tamagoojiji/Tech-Notes・main）。marketing/BRIEF.md・schedule.md・各媒体 md・img/</dd>
+    <dt>計画</dt><dd>plan-line-multi-oa-2026-10-30.md（公式 LINE 複数運用）</dd>
+    <dt>引き継ぎ</dt><dd>HANDOFF-2026-10-28.md・直近の handoff <code>~/.claude/handoffs/20261030-0720-face-mosaic-app.md</code></dd>
+    <dt>計測・クレーム</dt><dd>vps6-video-bench-2026-10-28.md・処理時間_想定クレームと対策_2026-10-29.md</dd>
+    <dt>本番</dt><dd>VPS 6 <code>root@5.104.86.10</code> <code>/opt/docker/face-mosaic-app/</code>・計測用 <code>/opt/face-mosaic-bench/</code></dd>
+    <dt>画質比較の手元ファイル</dt><dd><code>~/Desktop/らくらくモザイク_画質比較/</code></dd>
+  </dl>
+</section>
+
+<footer>出典: 全体像_2026-10-30.md（本番 settings・BRIEF・schedule・HANDOFF を照合済み）。個別の正本: 商品の事実＝marketing/BRIEF.md、日程＝marketing/schedule.md、作業の引き継ぎ＝HANDOFF-2026-10-28.md、処理時間＝vps6-video-bench-2026-10-28.md。</footer>
+</div>
+</body>
+</html>

@@ -57,6 +57,17 @@ def test_require_admin_404():
     assert a.get("/admin/api/dashboard").status_code == 200
 
 
+def test_zukai_pages():
+    c, _ = login("dev-user2")
+    for path in ("/admin/zukai", "/admin/zukai/overview", "/admin/zukai/flow"):
+        assert c.get(path, follow_redirects=False).status_code == 404, path
+    a, _ = login("dev-admin2", role="admin")
+    for path in ("/admin/zukai", "/admin/zukai/overview", "/admin/zukai/flow"):
+        r = a.get(path)
+        assert r.status_code == 200 and "<title>" in r.text, path
+    assert a.get("/admin/zukai/other").status_code == 404
+
+
 def test_post_report(monkeypatch):
     sent = []
     monkeypatch.setattr(discord, "send", lambda ch, text, wait=False, files=None: sent.append((ch, text)))
