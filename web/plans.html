@@ -108,7 +108,7 @@ const ymd = s => { const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(s || ''); return m ?
   $('cur').textContent = me.plan_label + (me.campaign ? '（リリース記念で増量中）' : '');
   $('curs').textContent = quotaLine(me);
   $('mine').hidden = !lp.mine;
-  if (me.campaign) { $('free').textContent = '無料プラン: リリース記念の期間は 写真が月' + me.limits.images + '枚・1分までの動画が月' + me.limits.video_count_month + '本 使えます（ふだんは写真5枚・1分までの動画1本）。'; $('free').hidden = false; }
+  if (me.campaign) { $('free').textContent = '無料プラン: リリース記念の期間中に登録した人は、お試しの間 写真が月' + me.limits.images + '枚・1分までの動画が月' + me.limits.video_count_month + '本 使えます（期間後の登録は写真5枚・1分までの動画1本）。'; $('free').hidden = false; }
   for (const p of d.plans) {
     const li = document.createElement('li'); li.className = 'plan' + (p.key === me.plan ? ' cur' : '');
     const head = document.createElement('div'); head.className = 'head';

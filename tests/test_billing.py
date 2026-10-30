@@ -313,6 +313,28 @@ def test_free_plan_one_video():
     assert lim["video_allowed"] is True and lim["video_len"] == 60
     assert lim["video_count_month"] == 1 and lim["video_sec_month"] == 0
 
+
+def test_campaign_by_registration_date(monkeypatch):
+    import datetime
+    old = {k: quota.setting(k) for k in ("campaign_on", "campaign_from", "campaign_to")}
+    db.set_setting("campaign_on", "1")
+    db.set_setting("campaign_from", "2026-10-30")
+    db.set_setting("campaign_to", "2026-11-30")
+    try:
+        def at(*a):
+            return datetime.datetime(*a, tzinfo=quota.JST).timestamp()
+        lim = quota.limits({"plan": "free", "created_at": at(2026, 11, 28, 12, 0)})
+        assert lim["campaign"] is True and lim["video_count_month"] == 3 and lim["images"] == 10
+        lim = quota.limits({"plan": "free", "created_at": at(2026, 12, 1, 0, 30)})
+        assert lim["campaign"] is False and lim["video_count_month"] == 1 and lim["images"] == 5
+        assert quota.limits({"plan": "free", "created_at": at(2026, 11, 30, 23, 30)})["campaign"] is True
+        monkeypatch.setattr(quota, "campaign_active", lambda today=None: today is None)
+        assert quota.limits({"plan": "free", "created_at": None})["campaign"] is True
+        assert quota.limits({"plan": "free"})["campaign"] is True
+    finally:
+        for k, v in old.items():
+            db.set_setting(k, v)
+
 def test_trial_migration():
     with db.connect() as con:
         con.execute("INSERT INTO users (line_user_id, display_name, plan, created_at) VALUES ('Umig', 'x', 'free', ?)",

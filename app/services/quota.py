@@ -111,10 +111,19 @@ def fmt_sec(sec):
     return f"{sec // 60}分{sec % 60}秒" if sec % 60 else f"{sec // 60}分"
 
 
+def _campaign_for(user):
+    """その人の登録日（日本時間）が記念期間内か。登録日が無ければ今日で判定。"""
+    created = user.get("created_at")
+    if created is None:
+        return campaign_active()
+    return campaign_active(today=datetime.datetime.fromtimestamp(created, JST).date().isoformat())
+
+
 def limits(user):
+    """プランの上限。記念増量は登録日で判定（期間中に登録した人はお試し終了まで増量のまま）。"""
     plan = user.get("plan") if user.get("plan") in PLANS else "free"
     p = dict(PLANS[plan], plan=plan, campaign=False, hq=bool(user.get("hq")) and plan in HQ_OPTION["plans"])
-    if plan == "free" and campaign_active():
+    if plan == "free" and _campaign_for(user):
         p.update(campaign=True, images=int(setting("campaign_images") or 10),
                  video_count_month=int(setting("campaign_videos") or 3))
     p["video_allowed"] = bool(p["video_len"]) and (p["video_sec_month"] != 0 or p["video_count_month"] != 0)
