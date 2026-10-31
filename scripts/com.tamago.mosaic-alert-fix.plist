@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>HOME</key>
+		<string>/Users/yontsuhashikunihiko</string>
+		<key>LANG</key>
+		<string>ja_JP.UTF-8</string>
+	</dict>
+	<key>Label</key>
+	<string>com.tamago.mosaic-alert-fix</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/zsh</string>
+		<string>-l</string>
+		<string>/Users/yontsuhashikunihiko/dev/tamago/face-mosaic-app/scripts/alert-autofix.sh</string>
+	</array>
+	<key>RunAtLoad</key>
+	<false/>
+	<key>StartInterval</key>
+	<integer>900</integer>
+	<key>StandardErrorPath</key>
+	<string>/Users/yontsuhashikunihiko/Library/Logs/mosaic-alert-fix/launchd.err</string>
+	<key>StandardOutPath</key>
+	<string>/Users/yontsuhashikunihiko/Library/Logs/mosaic-alert-fix/launchd.out</string>
+</dict>
+</plist>
