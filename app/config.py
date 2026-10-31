@@ -26,6 +26,10 @@ UPLOAD_KEEP_HOURS = 24  # 送信途中のまま放置された分割データを
 # 認証: passcode（合言葉＋端末 Cookie）| line（LINE ログイン）
 AUTH_MODE_REQUESTED = (os.environ.get("AUTH_MODE") or "passcode").strip().lower()
 LINE_MOCK = os.environ.get("LINE_MOCK", "") == "1"  # 開発用: userId を手入力するログイン画面（本番の設定には入れない）
+# 公開 URL（https）では開発用ログインを使わせない（.env の書き間違いで誰にでもなりすませるため）
+LINE_MOCK_BLOCKED = LINE_MOCK and APP_BASE_URL.startswith("https://")
+if LINE_MOCK_BLOCKED:
+    LINE_MOCK = False
 LINE_LOGIN_CHANNEL_ID = os.environ.get("LINE_LOGIN_CHANNEL_ID", "")
 LINE_LOGIN_CHANNEL_SECRET = os.environ.get("LINE_LOGIN_CHANNEL_SECRET", "")
 LINE_MSG_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_MSG_CHANNEL_ACCESS_TOKEN", "")

@@ -60,6 +60,8 @@ async def retention_loop():
 @asynccontextmanager
 async def lifespan(_app):
     db.init()
+    if config.LINE_MOCK_BLOCKED:
+        log.error("LINE_MOCK=1 は公開 URL（https）では使えないため無効にしました。.env から LINE_MOCK を消してください")
     if config.AUTH_MODE_REQUESTED == "line" and config.AUTH_MODE != "line":
         log.warning("AUTH_MODE=line ですが LINE_LOGIN_CHANNEL_ID / LINE_LOGIN_CHANNEL_SECRET が未設定のため、合言葉（passcode）で動きます")
     log.info("認証モード: %s%s", config.AUTH_MODE, "（LINE_MOCK）" if config.AUTH_MODE == "line" and config.LINE_MOCK else "")
