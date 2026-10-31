@@ -50,6 +50,18 @@ def _failed(job_id, stage, msg, exc):
                   f"{discord.explain(exc)}")
 
 
+def prepare_fail_msg(e):
+    """解析の失敗で利用者に出す理由。動画そのものが読めないときだけ「撮り直し」を案内し、
+    それ以外（アプリの不具合）は同じ動画で送り直してもらう（2026-10-31: 不具合なのに撮り直しを案内していた）"""
+    if isinstance(e, nsfw.Blocked):
+        return nsfw.BLOCK_MSG
+    if "HDR(PQ)" in str(e):
+        return "この動画の HDR 形式（HDR10・Dolby Vision の一部）にはまだ対応していません。カメラの設定で HDR ビデオをオフにして撮った動画を送ってください"
+    if any(k in str(e) for k in ("ffprobe に失敗", "映像ストリームがありません")):
+        return "動画を読み込めませんでした。iPhone のカメラで撮った動画を送ってください"
+    return "こちらの不具合で処理できませんでした。運営が調べて直しますので、少し時間をおいて同じ動画をもう一度送ってください"
+
+
 def fail_prepare(job_id, msg, exc):
     """解析の失敗。続きに使えるものは無いので、元動画と途中のファイルは消す（フォルダと行は期限まで残す）。"""
     log.error("job %s 解析に失敗: %s\n%s", job_id, exc, traceback.format_exc())
@@ -188,12 +200,7 @@ def main():
             try:
                 do_prepare(j)
             except Exception as e:
-                msg = "動画を読み込めませんでした。iPhone のカメラで撮った動画を送ってください"
-                if isinstance(e, nsfw.Blocked):
-                    msg = nsfw.BLOCK_MSG
-                elif "HDR(PQ)" in str(e):
-                    msg = "この動画の HDR 形式（HDR10・Dolby Vision の一部）にはまだ対応していません。カメラの設定で HDR ビデオをオフにして撮った動画を送ってください"
-                fail_prepare(j["id"], msg, e)
+                fail_prepare(j["id"], prepare_fail_msg(e), e)
         else:
             try:
                 do_export(j)
