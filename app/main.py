@@ -1423,6 +1423,13 @@ async def _add_report(u, b, raws, video):
         os.makedirs(d, exist_ok=True)
         os.replace(video[0], os.path.join(d, f"video.{video[1]}"))
         db.update_report(rid, video_name=f"video.{video[1]}")
+    if j and j["kind"] == "video":  # 調査用に解析データを控える（失敗しても受け付けは止めない）
+        try:
+            if await asyncio.to_thread(retention.save_report_analysis, rid, j):
+                db.update_report(rid, analysis=1)
+        except Exception as e:
+            log.warning("report #%s 解析データの控えに失敗: %s", rid, e)
+            shutil.rmtree(os.path.join(retention.report_dir(rid), "analysis"), ignore_errors=True)
     target = f"{job_label(j)}（job={j['id']}）" if j else "なし"
     stage, label = REPORT_CATEGORIES[cat]
     discord.report(f"#{rid} {stage} › {label}\n通報者: {discord.who(u)}\n対象: {target}\n"

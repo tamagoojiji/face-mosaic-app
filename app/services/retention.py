@@ -1,5 +1,6 @@
 """保存期間（元データ SOURCE_RETENTION_HOURS／完成品 OUTPUT_RETENTION_DAYS）と放置の再通知。"""
 
+import json
 import logging
 import os
 import shutil
@@ -11,7 +12,7 @@ from . import notify, quota
 log = logging.getLogger("uvicorn.error")
 
 
-REPORT_IMAGE_DAYS = 90  # 通報の画像は作成から90日で消す（文字は残す）
+REPORT_IMAGE_DAYS = 90  # 通報の画像・動画・解析データの控えは作成から90日で消す（文字は残す）
 
 
 def job_dir(job_id):
@@ -24,11 +25,42 @@ def report_dir(report_id):
 
 def delete_report_images(r):
     shutil.rmtree(report_dir(r["id"]), ignore_errors=True)
-    db.update_report(r["id"], image_count=0, video_name=None)
+    db.update_report(r["id"], image_count=0, video_name=None, analysis=0)
+
+
+# 通報の調査用に控える解析データ（元動画・完成品は控えない）。判定（decide）を動画なしで再現できる組
+ANALYSIS_FILES = ("tracks.json", "features.npz", "shots.json", "shots", "thumbs")
+
+
+def save_report_analysis(rid, j):
+    """通報の対象ジョブの解析データを reports/<id>/analysis/ に控える（完成後24時間で元のほうは消えるため）。
+    控えたものが1つでもあれば True。消えていたものは meta.json の missing に残す。"""
+    src, dst = job_dir(j["id"]), os.path.join(report_dir(rid), "analysis")
+    os.makedirs(dst, exist_ok=True)
+    missing = []
+    for name in ANALYSIS_FILES:
+        p = os.path.join(src, name)
+        if os.path.isdir(p):
+            shutil.copytree(p, os.path.join(dst, name), dirs_exist_ok=True)
+        elif os.path.isfile(p):
+            shutil.copy2(p, os.path.join(dst, name))
+        else:
+            missing.append(name)
+    meta = {k: j.get(k) for k in ("id", "kind", "status", "duration_sec", "fps", "width", "height", "hdr",
+                                  "mosaic_style", "engine_ver", "hq_export", "created_at")}
+    for k in ("picks", "keep", "blur"):
+        meta[k] = json.loads(j.get(k) or "[]")
+    meta["missing"] = missing
+    if len(missing) == len(ANALYSIS_FILES):  # 何も残っていない（完成から24時間を過ぎた等）
+        shutil.rmtree(dst, ignore_errors=True)
+        return False
+    with open(os.path.join(dst, "meta.json"), "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False)
+    return True
 
 
 def cleanup_report_images(now=None):
-    """作成から90日を過ぎた通報の画像を消す。"""
+    """作成から90日を過ぎた通報の画像・動画・解析データの控えを消す。"""
     now = now or time.time()
     rs = db.old_report_images(now - REPORT_IMAGE_DAYS * 86400)
     for r in rs:

@@ -141,3 +141,37 @@ def test_report_video_expire():
 def test_privacy_mentions_review_limit():
     r = TestClient(main.app).get("/legal/privacy")
     assert r.status_code == 200 and "確認は、報告があったものと、自動の確認で性的な内容の疑いがあったもの（その場面の画像だけ）に限ります" in r.text
+
+
+def test_report_saves_analysis(env):
+    """対象の動画の解析データ（判定を動画なしで再現できる組）を通報に控え、90日で消す。元動画・完成品は控えない。"""
+    c, u = login("dev-rv-analysis")
+    jid = "jobRVS000001"
+    db.insert_job(jid, kind="video", status="done", user_id=u["id"], duration_sec=10.0)
+    db.update_job(jid, picks="[3, 5]", keep="[3, 5, 7]", blur="[1]")
+    d = retention.job_dir(jid)
+    os.makedirs(os.path.join(d, "thumbs"), exist_ok=True)
+    for name, data in (("tracks.json", b"{}"), ("features.npz", b"npz"), ("src.mp4", b"v"), ("out.mp4", b"o"),
+                       ("thumbs/t3.jpg", b"j")):
+        with open(os.path.join(d, name), "wb") as f:
+            f.write(data)
+    r = c.post("/api/reports", json={"category": "out_wrong", "job_id": jid, "consent": "1"})
+    assert r.status_code == 201, r.text
+    rid = r.json()["id"]
+    a = os.path.join(retention.report_dir(rid), "analysis")
+    assert db.get_report(rid)["analysis"] == 1
+    assert sorted(os.listdir(a)) == ["features.npz", "meta.json", "thumbs", "tracks.json"]
+    meta = main.json.load(open(os.path.join(a, "meta.json"), encoding="utf-8"))
+    assert meta["picks"] == [3, 5] and meta["keep"] == [3, 5, 7] and meta["missing"] == ["shots.json", "shots"]
+    assert retention.cleanup_report_images(time.time() + 91 * 86400) >= 1
+    assert not os.path.exists(a) and db.get_report(rid)["analysis"] == 0
+
+
+def test_report_analysis_gone(env):
+    """解析データが消えた後の通報は控えなし（受け付けはする）。"""
+    c, u = login("dev-rv-gone")
+    db.insert_job("jobRVS000002", kind="video", status="done", user_id=u["id"], duration_sec=10.0)
+    r = c.post("/api/reports", json={"category": "out_wrong", "job_id": "jobRVS000002", "consent": "1"})
+    assert r.status_code == 201
+    assert db.get_report(r.json()["id"])["analysis"] == 0
+    assert not os.path.exists(os.path.join(retention.report_dir(r.json()["id"]), "analysis"))

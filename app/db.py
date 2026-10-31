@@ -88,7 +88,8 @@ CREATE TABLE IF NOT EXISTS reports (
   created_at REAL,
   updated_at REAL,
   image_count INTEGER NOT NULL DEFAULT 0,  -- 添付のスクリーンショット（DATA_DIR/reports/<id>/<n>.jpg）
-  video_name TEXT                          -- 添付の画面録画（DATA_DIR/reports/<id>/video.<ext>・NULL=なし）
+  video_name TEXT,                         -- 添付の画面録画（DATA_DIR/reports/<id>/video.<ext>・NULL=なし）
+  analysis INTEGER NOT NULL DEFAULT 0      -- 対象の解析データの控え（DATA_DIR/reports/<id>/analysis/・1=あり）
 );
 CREATE TABLE IF NOT EXISTS line_channels (
   no INTEGER PRIMARY KEY,          -- 公式 LINE の番号（①=1・受付用は 0 推奨）
@@ -204,6 +205,8 @@ def init():
             con.execute("ALTER TABLE reports ADD COLUMN image_count INTEGER NOT NULL DEFAULT 0")
         if "video_name" not in {r["name"] for r in con.execute("PRAGMA table_info(reports)")}:
             con.execute("ALTER TABLE reports ADD COLUMN video_name TEXT")
+        if "analysis" not in {r["name"] for r in con.execute("PRAGMA table_info(reports)")}:
+            con.execute("ALTER TABLE reports ADD COLUMN analysis INTEGER NOT NULL DEFAULT 0")
         con.execute("CREATE INDEX IF NOT EXISTS jobs_owner ON jobs(owner, created_at)")
         con.execute("CREATE INDEX IF NOT EXISTS jobs_user ON jobs(user_id, created_at)")
         now = time.time()
@@ -468,10 +471,10 @@ def reports_of(user_id):
 
 
 def old_report_images(before):
-    """画像・動画の保存期限（作成から90日）を過ぎた通報。"""
+    """画像・動画・解析データの控えの保存期限（作成から90日）を過ぎた通報。"""
     with connect() as con:
         return [dict(r) for r in con.execute(
-            "SELECT * FROM reports WHERE (image_count>0 OR video_name IS NOT NULL) AND created_at<?", (before,))]
+            "SELECT * FROM reports WHERE (image_count>0 OR video_name IS NOT NULL OR analysis=1) AND created_at<?", (before,))]
 
 
 def update_report(report_id, **cols):
