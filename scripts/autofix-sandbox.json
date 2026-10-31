@@ -1,0 +1,18 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true,
+    "allowUnsandboxedCommands": false,
+    "failIfUnavailable": true,
+    "network": { "strictAllowlist": true, "allowedDomains": [] },
+    "filesystem": {
+      "allowWrite": ["/tmp", "/private/tmp", "/private/var/folders"],
+      "denyRead": ["~/.ssh", "~/.config", "~/.discord_webhooks", "~/.claude.json",
+                   "~/Library/Application Support/mosaic-alert-fix", "~/Library/Keychains"]
+    }
+  },
+  "permissions": {
+    "deny": ["WebFetch", "WebSearch", "Agent", "Read(~/.ssh/**)", "Read(~/.config/**)",
+             "Read(~/Library/Application Support/mosaic-alert-fix/**)"]
+  }
+}
