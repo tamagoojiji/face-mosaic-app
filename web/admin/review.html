@@ -1,0 +1,51 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>内容の確認｜顔モザイク 運営</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/admin.css">
+<style>
+.rv-imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:16px}
+.rv-imgs img{width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:#000}
+.rv-how{margin:16px 0 0;padding:12px 16px;border-radius:8px;background:var(--pri-soft);font-size:14px;line-height:1.6}
+</style>
+</head><body>
+<header class="a-top">
+  <a class="brand" href="/admin">顔モザイク 運営</a>
+  <nav aria-label="管理メニュー"><a href="/admin">ダッシュボード</a><a href="/admin/users">利用者</a><a href="/admin/jobs">ジョブ</a><a href="/admin/reports">通報</a><a href="/admin/line">公式 LINE</a><a href="/admin/zukai">図解</a><a href="/admin/settings">設定</a></nav>
+  <a class="out" href="/home">利用者画面へ</a>
+</header>
+<main class="a-main">
+  <h1>アダルトの疑いの確認</h1>
+  <p class="a-lead">自動の判定で止めたものです。判断は Discord の通知のスタンプで行います。</p>
+  <p class="msg err" id="err" role="alert" hidden></p>
+  <section class="a-box a-pad" aria-label="判定の内容">
+    <dl class="dl" id="info"></dl>
+    <p class="rv-how" id="how"></p>
+    <div class="rv-imgs" id="imgs"></div>
+  </section>
+</main>
+<script src="/static/common.js"></script>
+<script src="/static/admin.js"></script>
+<script>
+const id = location.pathname.split('/').filter(Boolean).pop();
+const ST = { nsfw_review: ['確認待ち', 'warn'], queued: ['続行（解析へ）', 'ok'], awaiting_pick: ['続行（選択待ち）', 'ok'], failed: ['削除しました', 'bad'] };
+(async () => {
+  let d;
+  try { d = await api('/admin/api/review/' + id); } catch (e) { showErr($('err'), e); return; }
+  const st = ST[d.status] || [d.status, ''];
+  fill($('info'),
+    h('dt', {}, '状態'), h('dd', {}, badge(st[0], st[1])),
+    h('dt', {}, '種類'), h('dd', {}, d.kind === 'video' ? '動画' : '写真'),
+    h('dt', {}, '利用者'), h('dd', {}, d.user_id ? h('a', { href: '/admin/users/' + d.user_id }, '#' + d.user_id) : '—'),
+    h('dt', {}, '判定'), h('dd', {}, d.info || '—'),
+    h('dt', {}, '止めた時刻'), h('dd', {}, dt(d.at)));
+  $('how').textContent = d.status === 'nsfw_review'
+    ? 'Discord の通知で ⭕ ＝ アダルトではない（処理を続ける）／ ❌ ＝ 削除する。' + d.hold_hours + '時間押されなければ削除します。'
+    : '判断は済んでいます。画像は判断のあとに削除しています。';
+  fill($('imgs'), Array.from({ length: d.images }, (_, i) =>
+    h('img', { src: '/admin/api/review/' + id + '/' + (i + 1) + '.jpg', alt: '判定したコマ ' + (i + 1), loading: 'lazy' })));
+})();
+</script>
+</body></html>

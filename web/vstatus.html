@@ -65,6 +65,7 @@ async function tick() {
   if (j.status === 'failed') { stop('処理できませんでした', j.error || '処理できませんでした。もう一度送ってください', true); return; }
   if (j.status === 'deleted') { stop('この動画は削除しました', '時間がたったので、元の動画と解析結果を削除しました。', false); return; }
   if (j.status === 'uploading') { location.replace('/upload?type=video'); return; }
+  if (j.status === 'nsfw_review') { stop('内容を確認しています', '内容を運営が確認しています。終わったら LINE でお知らせします（24時間以内）。この画面は閉じて大丈夫です。', false); setTimeout(tick, 30000); return; }
   const exporting = j.status === 'queued_export' || j.status === 'exporting';
   if (exporting) [...$('steps').children].forEach((li, i) => { li.className = i < 3 ? 'done' : 'on'; });
   const waiting = j.stage === 'waiting' || j.stage === 'waiting_export';

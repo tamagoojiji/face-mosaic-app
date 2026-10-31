@@ -14,7 +14,7 @@ import time
 import traceback
 
 from app import config, db
-from app.services import discord, monitor, notify, quota
+from app.services import discord, monitor, notify, quota, review
 from worker.engine import nsfw, video
 
 log = logging.getLogger("worker")
@@ -105,9 +105,16 @@ def do_prepare(j):
     db.update_job(jid, fps=info0["fps"], hdr=1 if hdr.get("mode") == "hlg" else 0,
                   width=info0["out_width"], height=info0["out_height"])
     video.to_1080(p["src"], vf0, p["v1080"])
-    # 性的な内容なら nsfw.Blocked（main で止めて元動画を消す）。判定の時間は変換の時間に含める
-    r = nsfw.check_video(p["v1080"])
-    log.info("nsfw %s コマ %d 該当 %d 最大 %.3f", jid, r["frames"], r["hits"], r["max"])
+    # 性的な内容の疑いなら運営の確認待ちにして止める（Discord に置けなければ main で削除）。
+    # 運営が ⭕ を押したもの（nsfw_ok）は判定しない。判定の時間は変換の時間に含める
+    if not j.get("nsfw_ok"):
+        try:
+            r = nsfw.check_video(p["v1080"])
+        except nsfw.Blocked as e:
+            if review.hold(db.get_job(jid), e):
+                return
+            raise
+        log.info("nsfw %s コマ %d 該当 %d 最大 %.3f", jid, r["frames"], r["hits"], r["max"])
     t1 = time.time()
     db.update_job(jid, t_prepare_sec=round(t1 - t0, 1))
     info, vf, _ = video.prepare(p["v1080"], p["dir"])

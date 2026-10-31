@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from . import config, db
 from . import main as core
-from .services import discord, monitor, quota, retention
+from .services import discord, monitor, quota, retention, review
 
 router = APIRouter(prefix="/admin")
 NOT_FOUND = "Not Found"  # 存在しないページと同じ応答
@@ -101,6 +101,11 @@ def settings_page(request: Request):
 @router.get("/line")
 def line_page(request: Request):
     return _page(request, "line.html")
+
+
+@router.get("/review/{job_id}")
+def review_page(request: Request, job_id: str):
+    return _page(request, "review.html")
 
 
 @router.get("/zukai")
@@ -416,6 +421,27 @@ def api_reports(request: Request, status: str = "", stage: str = ""):
     return _ok({"reports": [_report_row(r, users, jobs) for r in rows],
                 "counts": {s: _count("SELECT COUNT(*) FROM reports WHERE status=?", (s,)) for s in ("open", "closed")},
                 "stages": list(core.REPORT_STAGES)})
+
+
+@router.get("/api/review/{job_id}")
+def api_review(request: Request, job_id: str):
+    """アダルトの疑いで止めたもの（判断は Discord の ⭕❌）。"""
+    require_admin(request, api=True)
+    j = _target_job(job_id)
+    d = review.frames_dir(job_id)
+    n = len([f for f in os.listdir(d) if f.endswith(".jpg")]) if os.path.isdir(d) else 0
+    return _ok({"id": j["id"], "kind": j["kind"], "status": j["status"], "user_id": j["user_id"],
+                "info": j.get("nsfw_info"), "at": j.get("nsfw_at"), "images": n, "hold_hours": review.HOLD_HOURS})
+
+
+@router.get("/api/review/{job_id}/{n}.jpg")
+def api_review_image(request: Request, job_id: str, n: int):
+    require_admin(request, api=True)
+    _target_job(job_id)
+    p = os.path.join(review.frames_dir(job_id), f"{n}.jpg")
+    if not os.path.exists(p):
+        raise HTTPException(404, "画像が見つかりません（判断が済んだものは削除しています）")
+    return FileResponse(p, media_type="image/jpeg", headers=core.NO_STORE)
 
 
 @router.get("/api/reports/{rid}/images/{n}")

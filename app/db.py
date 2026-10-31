@@ -138,6 +138,10 @@ ADD_COLUMNS = {
     "out_fps": "REAL",
     "engine_ver": "TEXT",          # 動画: 解析した処理の版（worker.engine.video.ENGINE_VER・見込みの統計の切り分け）
     "features_state": "TEXT",      # 動画: 顔と服の特徴（選択画面を出した後に計算）pending | ready | failed
+    "nsfw_info": "TEXT",           # アダルトの疑いで止めたときの判定（例: 動画 3/90 コマ max=0.93）
+    "nsfw_at": "REAL",             # 止めた時刻（確認待ち nsfw_review の起点）
+    "nsfw_msg": "TEXT",            # Discord の通知（チャンネルID/メッセージID）
+    "nsfw_ok": "INTEGER",          # 運営が ⭕（アダルトではない）を押した → 判定を飛ばして続ける
 }
 # 起動時に足す列（users・③b 課金）
 ADD_USER_COLUMNS = {
@@ -258,6 +262,12 @@ def delete_jobs_of(user_id):
         con.executemany("DELETE FROM upload_parts WHERE job_id=?", [(i,) for i in ids])
         con.execute("DELETE FROM jobs WHERE user_id=?", (user_id,))
     return len(ids)
+
+
+def jobs_with_status(status):
+    with connect() as con:
+        rows = con.execute("SELECT * FROM jobs WHERE status=? ORDER BY updated_at", (status,)).fetchall()
+    return [dict(r) for r in rows]
 
 
 def expired_jobs(now):

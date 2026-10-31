@@ -23,6 +23,7 @@ const VIDEO_STATUS = {
   awaiting_pick: ['選択待ち', '/pick/'], awaiting_review: ['確認待ち', '/review/'],
   queued_export: ['書き出し中', '/status/'], exporting: ['書き出し中', '/status/'],
   done: ['完成', '/done/'], failed: ['失敗', '/status/'], deleted: ['削除済み', '/upload?type=video'],
+  nsfw_review: ['確認中', '/status/'],
 };
 function videoHref(j) {
   const s = VIDEO_STATUS[j.status] || VIDEO_STATUS.failed;

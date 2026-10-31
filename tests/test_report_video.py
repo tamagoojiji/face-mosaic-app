@@ -140,4 +140,4 @@ def test_report_video_expire():
 
 def test_privacy_mentions_review_limit():
     r = TestClient(main.app).get("/legal/privacy")
-    assert r.status_code == 200 and "確認は、報告があったものに限ります" in r.text
+    assert r.status_code == 200 and "確認は、報告があったものと、自動の確認で性的な内容の疑いがあったもの（その場面の画像だけ）に限ります" in r.text

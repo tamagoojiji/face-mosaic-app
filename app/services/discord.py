@@ -66,6 +66,28 @@ def send(channel, text, wait=False, files=None):
     return True
 
 
+def post_wait(channel, text):
+    """送って、送ったメッセージ（id・channel_id）を返す（スタンプを付けるため）。未設定なら None。"""
+    url = getattr(config, CHANNELS[channel])
+    if not url:
+        return None
+    body = json.dumps({"content": text[:1900], "allowed_mentions": {"parse": []}}).encode()
+    req = urllib.request.Request(url + "?wait=true", data=body, method="POST",
+                                 headers={"Content-Type": "application/json", "User-Agent": "face-mosaic-app"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return json.loads(r.read())
+
+
+def edit(channel, message_id, text):
+    """post_wait で送ったメッセージの文面を書き換える（Webhook が送ったものは Webhook でしか直せない）。"""
+    url = getattr(config, CHANNELS[channel])
+    body = json.dumps({"content": text[:1900], "allowed_mentions": {"parse": []}}).encode()
+    req = urllib.request.Request(f"{url}/messages/{message_id}", data=body, method="PATCH",
+                                 headers={"Content-Type": "application/json", "User-Agent": "face-mosaic-app"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return r.status
+
+
 # 例外の日本語の説明（上から順に、例外の文面か種類で当てる）。当たらなければ「想定外」
 _CAUSES = [
     ("フレーム抽出に失敗", None, "場面写真の1コマを動画から切り出せませんでした（ffmpeg）"),

@@ -47,5 +47,7 @@ STRIPE_READY = bool(STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET)
 DISCORD_WEBHOOK_ALERTS = os.environ.get("DISCORD_WEBHOOK_ALERTS", "")
 DISCORD_WEBHOOK_REPORTS = os.environ.get("DISCORD_WEBHOOK_REPORTS", "")
 DISCORD_WEBHOOK_USAGE = os.environ.get("DISCORD_WEBHOOK_USAGE", "")
+# アダルトの疑いの確認（#mosaic-alerts の通知に ⭕❌ を付けて読む Discord ボット）。空なら確認せずに削除する
+DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "")
 DISK_ALERT_FREE_RATIO = 0.20
 WORKER_STALE_SEC = 300  # worker の心拍がこれより古ければ停止とみなす

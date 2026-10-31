@@ -228,6 +228,7 @@ function videoItem(j) {
     if (j.idle_warn) { s.classList.add('warn'); s.textContent = remainText(j) + 'で削除されます'; }
     else s.textContent = (st === 'awaiting_pick' ? '残す顔を選んでください' : 'モザイクを確認してください') + '・' + left;
   } else if (st === 'uploading') s.textContent = '同じ動画を選ぶと続きから送れます';
+  else if (st === 'nsfw_review') s.textContent = '内容を運営が確認しています・終わったら LINE でお知らせします';
   else s.textContent = j.ahead ? 'あなたの前に ' + j.ahead + ' 件' : '目安 あと約' + Math.max(1, Math.round((j.eta_sec || 0) / 60)) + '分';
   meta.append(t, s);
   const b = document.createElement('span');

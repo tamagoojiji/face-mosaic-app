@@ -30,7 +30,7 @@ from worker.engine import video as vengine
 from worker.run import paths as vpaths
 
 from . import config, db
-from .services import billing, discord, monitor, notify, quota, retention
+from .services import billing, discord, monitor, notify, quota, retention, review
 
 log = logging.getLogger("uvicorn.error")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -57,6 +57,16 @@ async def retention_loop():
         await asyncio.sleep(600)
 
 
+async def review_loop():
+    """アダルトの疑いで止めたものの ⭕❌ を 20 秒ごとに読む（services/review.py）。"""
+    while True:
+        try:
+            await asyncio.to_thread(review.poll)
+        except Exception as e:  # 定期処理は止めない
+            log.warning("review.poll 失敗: %s", e)
+        await asyncio.sleep(20)
+
+
 @asynccontextmanager
 async def lifespan(_app):
     db.init()
@@ -69,9 +79,10 @@ async def lifespan(_app):
         log.warning("SESSION_SECRET が未設定のため、ログインできません")
     elif config.AUTH_MODE == "passcode" and not config.APP_PASSCODE:
         log.warning("APP_PASSCODE が未設定のため、合言葉で入れません")
-    task = asyncio.create_task(retention_loop())
+    tasks = [asyncio.create_task(retention_loop()), asyncio.create_task(review_loop())]
     yield
-    task.cancel()
+    for t in tasks:
+        t.cancel()
 
 
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
@@ -634,6 +645,13 @@ def upload_photo(request: Request, file: UploadFile = File(...)):
         with WORK_LOCK:
             r = photo.prepare(raw, src, os.path.join(d, "view.jpg"))
     except photo.nsfw.Blocked as e:
+        # 運営の確認待ちにする（元の写真は hold.bin で残す）。Discord に置けなければ削除する
+        os.replace(raw, os.path.join(d, "hold.bin"))
+        db.insert_job(job_id, kind="image", status="nsfw_check", bytes=size, user_id=u["id"],
+                      mosaic_style=quota.default_style(), expires_at=time.time() + quota.source_hours() * 3600)
+        if review.hold(db.get_job(job_id), e):
+            raise HTTPException(409, review.WAIT_MSG)
+        db.update_job(job_id, status="failed", error=photo.nsfw.BLOCK_MSG)
         shutil.rmtree(d, ignore_errors=True)
         log.warning("photo 不適切判定 user=%s %s", u["id"], e)
         discord.alert(f"不適切判定で停止 写真 利用者=#{u['id']}\n{e}（写真は削除済み）")

@@ -19,10 +19,11 @@ MAX_LONG = 4000   # これより大きい写真は縮小してから検出する
 VIEW_LONG = 2000  # 選択画面に出す画像の長辺
 
 
-def prepare(src_upload, src_jpg, view_jpg):
+def prepare(src_upload, src_jpg, view_jpg, check=True):
     """アップロード画像を向き補正・RGB化・長辺4000px以下の JPEG にし、検出する。
 
     撮影メタデータ（位置情報など）は JPEG に書かない。
+    check=False は性的な内容の判定を飛ばす（運営が確認して ⭕ を押したもの）。
     戻り値: dict(width, height, faces=[{id,x,y,w,h,conf,low}], warn, sec)
     """
     t0 = time.time()
@@ -33,7 +34,8 @@ def prepare(src_upload, src_jpg, view_jpg):
         s = MAX_LONG / float(max(W, H))
         im = im.resize((round(W * s), round(H * s)), Image.LANCZOS)
         W, H = im.size
-    nsfw.check_image(np.asarray(im, dtype=np.uint8))  # 性的な内容なら nsfw.Blocked（保存する前に止める）
+    if check:  # 性的な内容なら nsfw.Blocked（保存する前に止める）
+        nsfw.check_image(np.asarray(im, dtype=np.uint8))
     im.save(src_jpg, "JPEG", quality=95)
 
     faces, warn = detect(np.asarray(im, dtype=np.uint8))

@@ -17,13 +17,18 @@ MODEL = os.path.join(MODEL_DIR, "nsfw.onnx")
 THRESHOLD = 0.8      # この確率以上のコマを「性的」とみなす（open_nsfw の目安: 0.8 以上はほぼ確実）
 VIDEO_HITS = 2       # 動画はこのコマ数以上で止める（1コマだけの誤判定で止めない）
 VIDEO_STEP_SEC = 2.0  # 動画は2秒に1コマ調べる
+FRAMES_KEEP = 3       # 止めたときに運営の確認用に残すコマ数（確率の高い順）
 BLOCK_MSG = "この内容は処理できません（利用規約 第7条）。送った動画・写真は削除しました"
 
 _NET = None
 
 
 class Blocked(Exception):
-    """性的な内容と判定した（worker / app が処理を止めて元データを消す）。"""
+    """性的な内容と判定した。frames は確率の高いコマ（BGR・最大 FRAMES_KEEP 枚）で、運営の確認画面に出す。"""
+
+    def __init__(self, msg, frames=()):
+        super().__init__(msg)
+        self.frames = list(frames)
 
 
 def _net():
@@ -46,9 +51,10 @@ def score_bgr(bgr):
 
 def check_image(rgb):
     """写真1枚。性的と判定したら Blocked。戻り値は確率。"""
-    s = score_bgr(np.ascontiguousarray(rgb[:, :, ::-1]))
+    bgr = np.ascontiguousarray(rgb[:, :, ::-1])
+    s = score_bgr(bgr)
     if s >= THRESHOLD:
-        raise Blocked(f"写真 score={s:.2f}")
+        raise Blocked(f"写真 score={s:.2f}", [bgr])
     return s
 
 
@@ -65,6 +71,7 @@ def check_video(path):
         step = max(1, round(fps * VIDEO_STEP_SEC))
         frames = hits = 0
         top = 0.0
+        best = []  # (確率, コマ番号, BGR) の上位 FRAMES_KEEP 件
         for i in range(0, max(n, 1), step):
             cap.set(cv2.CAP_PROP_POS_FRAMES, i)
             ok, bgr = cap.read()
@@ -75,8 +82,9 @@ def check_video(path):
             top = max(top, s)
             if s >= THRESHOLD:
                 hits += 1
+                best = sorted(best + [(s, i, bgr)], key=lambda t: -t[0])[:FRAMES_KEEP]
     finally:
         cap.release()
     if frames and hits >= min(VIDEO_HITS, frames):
-        raise Blocked(f"動画 {hits}/{frames} コマ max={top:.2f}")
+        raise Blocked(f"動画 {hits}/{frames} コマ max={top:.2f}", [b for _, _, b in best])
     return {"frames": frames, "hits": hits, "max": round(top, 3)}
