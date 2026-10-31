@@ -29,7 +29,7 @@ def delete_report_images(r):
 
 
 # 通報の調査用に控える解析データ（元動画・完成品は控えない）。判定（decide）を動画なしで再現できる組
-ANALYSIS_FILES = ("tracks.json", "features.npz", "shots.json", "shots", "thumbs")
+ANALYSIS_FILES = ("tracks.json", "features.npz", "review.json", "shots.json", "shots", "thumbs")
 
 
 def save_report_analysis(rid, j):

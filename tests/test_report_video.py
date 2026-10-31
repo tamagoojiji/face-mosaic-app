@@ -162,7 +162,7 @@ def test_report_saves_analysis(env):
     assert db.get_report(rid)["analysis"] == 1
     assert sorted(os.listdir(a)) == ["features.npz", "meta.json", "thumbs", "tracks.json"]
     meta = main.json.load(open(os.path.join(a, "meta.json"), encoding="utf-8"))
-    assert meta["picks"] == [3, 5] and meta["keep"] == [3, 5, 7] and meta["missing"] == ["shots.json", "shots"]
+    assert meta["picks"] == [3, 5] and meta["keep"] == [3, 5, 7] and meta["missing"] == ["review.json", "shots.json", "shots"]
     assert retention.cleanup_report_images(time.time() + 91 * 86400) >= 1
     assert not os.path.exists(a) and db.get_report(rid)["analysis"] == 0
 
