@@ -123,7 +123,7 @@ def join_vf(*parts):
 
 def grab_frame(path, t, vf, width, out_png):
     filt = join_vf(vf, f"scale={width}:-2")
-    cmd = [FFMPEG, "-v", "error", "-ss", f"{t:.3f}", "-i", path,
+    cmd = [FFMPEG, "-v", "error", "-ss", f"{t:.6f}", "-i", path,
            "-frames:v", "1", "-vf", filt, "-y", out_png]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0 or not os.path.exists(out_png):
@@ -644,9 +644,12 @@ def build_shots(path, info, vf, shots, dw, out_dir):
     """build_page と同じ場面写真と枠のデータ。戻り値は items（画面の元データ）。"""
     os.makedirs(out_dir, exist_ok=True)
     k = SHOT_W / float(dw)
-    # 切り出しは ffmpeg 待ちなのでスレッドで SHOT_WORKERS 本ずつ同時に行う
+    # 切り出しは ffmpeg 待ちなのでスレッドで SHOT_WORKERS 本ずつ同時に行う。
+    # 入力シークは「指定時刻以降の最初のコマ」を返すので、コマ f の半コマ手前を指す。
+    # f / fps ちょうどだと丸めで f の時刻を越えたとき次のコマになり、最後のコマでは何も書けず失敗する
     with concurrent.futures.ThreadPoolExecutor(max_workers=_env_int("SHOT_WORKERS", 6)) as ex:
-        futs = [ex.submit(grab_frame, path, f / info["fps"], vf, SHOT_W, os.path.join(out_dir, f"shot{j}.jpg"))
+        futs = [ex.submit(grab_frame, path, max(0.0, (f - 0.5) / info["fps"]), vf, SHOT_W,
+                          os.path.join(out_dir, f"shot{j}.jpg"))
                 for j, (f, _faces) in enumerate(shots)]
         for fu in futs:
             fu.result()
