@@ -52,6 +52,10 @@ DETECT_LONG_SIDE = 1280
 IOU_MATCH = 0.3
 EMA_ALPHA = 0.5
 HOLD_FRAMES = 15
+# トラックが途切れた後に最後の枠を残すコマ数。追跡の対応付けと隙間の補間は HOLD_FRAMES=15 のまま
+HOLD_TAIL_FRAMES = 5
+# 検出が 1 コマしか無い blur トラックは描かない。木・地面などの単発の誤検出に保持枠が付いて「顔の無い所にモザイク」になるため
+BLUR_MIN_SEEN = 2
 BITRATE_SCALE = 0.8
 BITRATE_CAP = 80_000_000
 # video_retouch.py の既定（--faces background --face-keep-ratio 0.5 --face-min-frac 0.03 --detect-every 1）
@@ -860,7 +864,7 @@ def filled_track_boxes(tracks, n_frames, detect_every):
 
     out = []
     for t in tracks:
-        if t.get("action") != "blur":
+        if t.get("action") != "blur" or len(t["boxes"]) < BLUR_MIN_SEEN:
             continue
         keys = sorted(t["boxes"])
         filled = {}
@@ -875,7 +879,7 @@ def filled_track_boxes(tracks, n_frames, detect_every):
                         w = k / float(gap)
                         filled[f + k] = {c: b0[c] + (b1[c] - b0[c]) * w for c in "xywh"}
         last = keys[-1]
-        for k in range(1, HOLD_FRAMES + 1):
+        for k in range(1, HOLD_TAIL_FRAMES + 1):
             if last + k < n_frames:
                 filled[last + k] = t["boxes"][last]
         out.append((t, {f: b for f, b in filled.items() if f in t["boxes"] or not on_keep(f, b)}))
