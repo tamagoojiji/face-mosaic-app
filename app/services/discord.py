@@ -66,6 +66,30 @@ def send(channel, text, wait=False, files=None):
     return True
 
 
+# 例外の日本語の説明（上から順に、例外の文面か種類で当てる）。当たらなければ「想定外」
+_CAUSES = [
+    ("フレーム抽出に失敗", None, "場面写真の1コマを動画から切り出せませんでした（ffmpeg）"),
+    ("ffprobe に失敗", None, "動画の情報を読み取れませんでした（ffprobe）"),
+    ("映像ストリームがありません", None, "映像の入っていないファイルでした"),
+    ("HDR(PQ) は未対応", None, "未対応の HDR 形式（PQ）の動画でした"),
+    ("No space left", None, "サーバーのディスクの空きが足りませんでした"),
+    (None, "CalledProcessError", "動画の変換（ffmpeg）が途中で止まりました"),
+    (None, "TimeoutExpired", "処理が時間内に終わりませんでした"),
+    (None, "MemoryError", "サーバーのメモリが足りませんでした"),
+    (None, "FileNotFoundError", "必要なファイルが見つかりませんでした"),
+    (None, "PermissionError", "ファイルを読み書きする権限がありませんでした"),
+]
+
+
+def explain(exc):
+    """アラームに付ける「原因（日本語）」と「原文（英語・伏せ字）」の2行。"""
+    name, msg = type(exc).__name__, str(exc)
+    cause = next((ja for text, kind, ja in _CAUSES
+                  if (text and text in msg) or (kind and kind == name)), "想定していないエラーです")
+    raw = f"{name}: {msg[:300]}".replace("||", "| |").replace("`", "'")
+    return f"原因: {cause}\n原文（タップで表示）: ||{raw}||"
+
+
 def alert(text, wait=False):
     return send("alerts", "【要対応】" + text, wait)
 

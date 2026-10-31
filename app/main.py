@@ -187,7 +187,7 @@ def health():
 
 @app.exception_handler(Exception)
 async def on_error(request: Request, exc: Exception):
-    discord.alert(f"アプリのエラー {request.method} {request.url.path}: {type(exc).__name__}: {str(exc)[:300]}")
+    discord.alert(f"アプリのエラー {request.method} {request.url.path}\n{discord.explain(exc)}")
     return JSONResponse({"detail": "サーバーでエラーが起きました。時間をおいてもう一度お試しください"}, status_code=500)
 
 

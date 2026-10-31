@@ -46,8 +46,8 @@ def _failed(job_id, stage, msg, exc):
         return
     j["_refunded"] = quota.refund_video(j)
     notify.push("failed", j, reason=msg)
-    discord.alert(f"処理失敗 job={job_id} 工程={stage} 利用者=#{j.get('user_id')}\n理由: {msg}\n例外: "
-                  f"{type(exc).__name__}: {str(exc)[:300]}")
+    discord.alert(f"処理失敗 ジョブ={job_id} 工程={stage} 利用者=#{j.get('user_id')}\n理由: {msg}\n"
+                  f"{discord.explain(exc)}")
 
 
 def fail_prepare(job_id, msg, exc):
@@ -75,8 +75,8 @@ def fail_export(job_id, exc):
         db.update_job(job_id, status="done", out_path=p["out"], error="処理中にエラーが起きました", expires_at=None)
         j = db.get_job(job_id)
         notify.push("failed", j, reason="選び直しの書き出しに失敗しました。前の動画はそのまま保存できます")
-        discord.alert(f"処理失敗 job={job_id} 工程=書き出し（選び直し） 利用者=#{j.get('user_id')}\n例外: "
-                      f"{type(exc).__name__}: {str(exc)[:300]}")
+        discord.alert(f"処理失敗 ジョブ={job_id} 工程=書き出し（選び直し） 利用者=#{j.get('user_id')}\n"
+                      f"{discord.explain(exc)}")
     else:
         msg = "書き出しに失敗しました。お手数ですが、もう一度送ってください"
         db.update_job(job_id, status="failed", out_path=None, error=msg,
@@ -121,8 +121,8 @@ def do_prepare(j):
     except Exception as e:
         log.error("job %s 特徴の計算に失敗: %s\n%s", jid, e, traceback.format_exc())
         db.update_job(jid, features_state="failed")
-        discord.alert(f"処理失敗 job={jid} 工程=特徴（選択は特徴なしで続行）利用者=#{j.get('user_id')}\n例外: "
-                      f"{type(e).__name__}: {str(e)[:300]}")
+        discord.alert(f"処理失敗 ジョブ={jid} 工程=特徴（選択は特徴なしで続行）利用者=#{j.get('user_id')}\n"
+                      f"{discord.explain(e)}")
         return
     t4 = time.time()
     db.update_job(jid, t_feature_sec=round(t4 - t3, 1), features_state="ready")
