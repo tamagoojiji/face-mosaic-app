@@ -104,7 +104,9 @@ def line_page(request: Request):
 
 
 @router.get("/review/{job_id}")
-def review_page(request: Request, job_id: str):
+def review_page(request: Request, job_id: str, k: str = ""):
+    if review.key_ok(job_id, k):  # Discord の通知のリンク（鍵つき）はログインなしで開ける
+        return core.page("admin/review.html")
     return _page(request, "review.html")
 
 
@@ -424,9 +426,10 @@ def api_reports(request: Request, status: str = "", stage: str = ""):
 
 
 @router.get("/api/review/{job_id}")
-def api_review(request: Request, job_id: str):
-    """アダルトの疑いで止めたもの（判断は Discord の ⭕❌）。"""
-    require_admin(request, api=True)
+def api_review(request: Request, job_id: str, k: str = ""):
+    """アダルトの疑いで止めたもの（判断は Discord の ⭕❌）。運営か、通知のリンクの鍵を持っている人だけ。"""
+    if not review.key_ok(job_id, k):
+        require_admin(request, api=True)
     j = _target_job(job_id)
     d = review.frames_dir(job_id)
     n = len([f for f in os.listdir(d) if f.endswith(".jpg")]) if os.path.isdir(d) else 0
@@ -435,8 +438,9 @@ def api_review(request: Request, job_id: str):
 
 
 @router.get("/api/review/{job_id}/{n}.jpg")
-def api_review_image(request: Request, job_id: str, n: int):
-    require_admin(request, api=True)
+def api_review_image(request: Request, job_id: str, n: int, k: str = ""):
+    if not review.key_ok(job_id, k):
+        require_admin(request, api=True)
     _target_job(job_id)
     p = os.path.join(review.frames_dir(job_id), f"{n}.jpg")
     if not os.path.exists(p):

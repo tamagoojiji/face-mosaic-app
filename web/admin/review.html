@@ -30,10 +30,13 @@
 <script src="/static/admin.js"></script>
 <script>
 const id = location.pathname.split('/').filter(Boolean).pop();
+// Discord の通知のリンクの鍵（ログインなしで開くため）。API と画像にも付ける
+const key = new URLSearchParams(location.search).get('k');
+const q = key ? '?k=' + encodeURIComponent(key) : '';
 const ST = { nsfw_review: ['確認待ち', 'warn'], queued: ['続行（解析へ）', 'ok'], awaiting_pick: ['続行（選択待ち）', 'ok'], failed: ['削除しました', 'bad'] };
 (async () => {
   let d;
-  try { d = await api('/admin/api/review/' + id); } catch (e) { showErr($('err'), e); return; }
+  try { d = await api('/admin/api/review/' + id + q); } catch (e) { showErr($('err'), e); return; }
   const st = ST[d.status] || [d.status, ''];
   fill($('info'),
     h('dt', {}, '状態'), h('dd', {}, badge(st[0], st[1])),
@@ -45,7 +48,7 @@ const ST = { nsfw_review: ['確認待ち', 'warn'], queued: ['続行（解析へ
     ? 'Discord の通知で ⭕ ＝ アダルトではない（処理を続ける）／ ❌ ＝ 削除する。' + d.hold_hours + '時間押されなければ削除します。'
     : '判断は済んでいます。画像は判断のあとに削除しています。';
   fill($('imgs'), Array.from({ length: d.images }, (_, i) =>
-    h('img', { src: '/admin/api/review/' + id + '/' + (i + 1) + '.jpg', alt: '判定したコマ ' + (i + 1), loading: 'lazy' })));
+    h('img', { src: '/admin/api/review/' + id + '/' + (i + 1) + '.jpg' + q, alt: '判定したコマ ' + (i + 1), loading: 'lazy' })));
 })();
 </script>
 </body></html>

@@ -179,3 +179,23 @@ def test_admin_review_page_and_images(monkeypatch, fake_discord):
     assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
     for path in ("/admin/api/review/rvAdmin7xxxx", "/admin/api/review/rvAdmin7xxxx/1.jpg"):
         assert u.get(path).status_code == 404  # 利用者には存在しない扱い
+
+
+def test_review_link_key_opens_without_login(monkeypatch, fake_discord):
+    monkeypatch.setattr(config, "SESSION_SECRET", "test-secret")
+    monkeypatch.setattr(config, "AUTH_MODE", "passcode")
+    review.hold(_video_job("rvKeyJob0001"), _blocked())
+    k = review.link_key("rvKeyJob0001")
+    anon = TestClient(main.app)
+    assert anon.get(f"/admin/review/rvKeyJob0001?k={k}", follow_redirects=False).status_code == 200
+    assert anon.get(f"/admin/api/review/rvKeyJob0001?k={k}").json()["images"] == 2
+    assert anon.get(f"/admin/api/review/rvKeyJob0001/1.jpg?k={k}").status_code == 200
+    # 鍵なし・他のジョブの鍵・壊れた鍵は開けない
+    other = review.link_key("rvOtherJob001")
+    for q in ("", f"?k={other}", "?k=broken"):
+        assert anon.get(f"/admin/review/rvKeyJob0001{q}", follow_redirects=False).status_code == 302
+        assert anon.get(f"/admin/api/review/rvKeyJob0001{q}").status_code == 401
+        assert anon.get(f"/admin/api/review/rvKeyJob0001/1.jpg{q}").status_code == 401
+    # 期限切れ（max_age が負になるよう確認の時間を縮める）
+    monkeypatch.setattr(review, "HOLD_HOURS", -2)
+    assert not review.key_ok("rvKeyJob0001", k)

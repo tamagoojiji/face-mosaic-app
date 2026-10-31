@@ -14,6 +14,8 @@ import time
 import urllib.parse
 import urllib.request
 
+from itsdangerous import BadSignature, URLSafeTimedSerializer
+
 from .. import config, db
 from . import discord, notify, quota
 
@@ -23,6 +25,25 @@ OK, NG = "⭕", "❌"
 HOLD_HOURS = 24
 WAIT_MSG = "内容を運営が確認しています。終わったら LINE でお知らせします（24時間以内）"
 _ME = []  # ボット自身のユーザーID（スタンプの数から除く）
+
+
+def _signer():
+    return URLSafeTimedSerializer(config.SESSION_SECRET, salt="fm-review")
+
+
+def link_key(job_id):
+    """確認ページを運営がログインせずに開くための鍵（Discord のアプリ内ブラウザはログインを引き継がないため）。"""
+    return _signer().dumps(job_id)
+
+
+def key_ok(job_id, key):
+    """鍵がこのジョブのもので、期限（HOLD_HOURS+1 時間）内か。"""
+    if not key or not config.SESSION_SECRET:
+        return False
+    try:
+        return _signer().loads(key, max_age=(HOLD_HOURS + 1) * 3600) == job_id
+    except BadSignature:
+        return False
 
 
 def enabled():
@@ -76,7 +97,7 @@ def hold(j, exc):
     _save_frames(j["id"], exc.frames)
     kind = "動画" if j["kind"] == "video" else "写真"
     text = (f"🔞 アダルトの疑いで止めました（{kind}） job={j['id']} 利用者=#{j.get('user_id')}\n判定: {exc}\n"
-            f"画像: {config.APP_BASE_URL}/admin/review/{j['id']}\n"
+            f"画像: {config.APP_BASE_URL}/admin/review/{j['id']}?k={link_key(j['id'])}\n"
             f"{OK} アダルトではない（処理を続ける）／{NG} 削除する。{HOLD_HOURS}時間押されなければ削除します")
     try:
         m = discord.post_wait("alerts", text)
