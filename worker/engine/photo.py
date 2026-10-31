@@ -13,6 +13,7 @@ except Exception:  # 無くても JPEG/PNG は処理できる
 
 from .detect import MIN_CONF, detect
 from .mosaic import mosaic_face
+from . import nsfw
 
 MAX_LONG = 4000   # これより大きい写真は縮小してから検出する
 VIEW_LONG = 2000  # 選択画面に出す画像の長辺
@@ -32,6 +33,7 @@ def prepare(src_upload, src_jpg, view_jpg):
         s = MAX_LONG / float(max(W, H))
         im = im.resize((round(W * s), round(H * s)), Image.LANCZOS)
         W, H = im.size
+    nsfw.check_image(np.asarray(im, dtype=np.uint8))  # 性的な内容なら nsfw.Blocked（保存する前に止める）
     im.save(src_jpg, "JPEG", quality=95)
 
     faces, warn = detect(np.asarray(im, dtype=np.uint8))

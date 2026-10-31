@@ -15,7 +15,7 @@ import traceback
 
 from app import config, db
 from app.services import discord, monitor, notify, quota
-from worker.engine import video
+from worker.engine import nsfw, video
 
 log = logging.getLogger("worker")
 
@@ -93,6 +93,9 @@ def do_prepare(j):
     db.update_job(jid, fps=info0["fps"], hdr=1 if hdr.get("mode") == "hlg" else 0,
                   width=info0["out_width"], height=info0["out_height"])
     video.to_1080(p["src"], vf0, p["v1080"])
+    # 性的な内容なら nsfw.Blocked（main で止めて元動画を消す）。判定の時間は変換の時間に含める
+    r = nsfw.check_video(p["v1080"])
+    log.info("nsfw %s コマ %d 該当 %d 最大 %.3f", jid, r["frames"], r["hits"], r["max"])
     t1 = time.time()
     db.update_job(jid, t_prepare_sec=round(t1 - t0, 1))
     info, vf, _ = video.prepare(p["v1080"], p["dir"])
@@ -186,7 +189,9 @@ def main():
                 do_prepare(j)
             except Exception as e:
                 msg = "動画を読み込めませんでした。iPhone のカメラで撮った動画を送ってください"
-                if "HDR(PQ)" in str(e):
+                if isinstance(e, nsfw.Blocked):
+                    msg = nsfw.BLOCK_MSG
+                elif "HDR(PQ)" in str(e):
                     msg = "この動画の HDR 形式（HDR10・Dolby Vision の一部）にはまだ対応していません。カメラの設定で HDR ビデオをオフにして撮った動画を送ってください"
                 fail_prepare(j["id"], msg, e)
         else:

@@ -633,6 +633,11 @@ def upload_photo(request: Request, file: UploadFile = File(...)):
     try:
         with WORK_LOCK:
             r = photo.prepare(raw, src, os.path.join(d, "view.jpg"))
+    except photo.nsfw.Blocked as e:
+        shutil.rmtree(d, ignore_errors=True)
+        log.warning("photo 不適切判定 user=%s %s", u["id"], e)
+        discord.alert(f"不適切判定で停止 写真 利用者=#{u['id']}\n{e}（写真は削除済み）")
+        raise HTTPException(400, photo.nsfw.BLOCK_MSG)
     except Exception as e:
         shutil.rmtree(d, ignore_errors=True)
         log.warning("prepare 失敗: %s", e)
