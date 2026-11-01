@@ -107,4 +107,15 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .rthumbs a:hover img{border-color:var(--pri)}
 .crumb{display:inline-flex;align-items:center;min-height:32px;margin-bottom:8px;color:var(--pri);font-weight:600;text-decoration:none}
 @media (max-width:1100px){.tiles{grid-template-columns:repeat(3,minmax(0,1fr))}.a-top nav a{padding:0 8px}}
+/* スマホ: 上段に名前と利用者画面へ、下段にメニュー（横スクロール）。タイルは2列で幅いっぱい */
+@media (max-width:640px){
+  .a-top{flex-wrap:wrap;padding:0 16px;gap:0}
+  .a-top .brand{margin-right:auto;min-height:48px;display:inline-flex;align-items:center}
+  .a-top nav{order:3;flex:0 0 100%;overflow-x:auto;margin:0 -16px;padding:0 8px;scrollbar-width:none}
+  .a-top nav::-webkit-scrollbar{display:none}
+  .a-top nav a{min-height:44px;flex:none}
+  .a-main{padding:20px 16px}
+  .tiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .tile{padding:12px 14px}
+}
 @media (prefers-reduced-motion:reduce){.sw2 .track,.sw2 .track::after{transition:none}}
