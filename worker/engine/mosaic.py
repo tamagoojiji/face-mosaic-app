@@ -5,8 +5,10 @@
 （DESIGN 2節）。
 """
 
+import functools
 import math
 
+import cv2
 import numpy as np
 from PIL import Image
 
@@ -74,6 +76,42 @@ def smoothstep(x, lo, hi):
     return (t * t * (3.0 - 2.0 * t)).astype(np.float32)
 
 
+def _blur_rgb(region, sigma):
+    """gaussian_blur と同じ「縮小→ぼかし→拡大」を cv2 で3色まとめて行う（動画の書き出しで毎コマ呼ばれるため）。"""
+    h, w = region.shape[:2]
+    k = int(max(1, min(8, sigma // 4))) if sigma > 6.0 else 1
+    src = region.astype(np.float32)
+    if k > 1:
+        small = cv2.resize(src, (max(4, w // k), max(4, h // k)), interpolation=cv2.INTER_AREA)
+        small = cv2.GaussianBlur(small, (0, 0), sigma / k, borderType=cv2.BORDER_REPLICATE)
+        return cv2.resize(small, (w, h), interpolation=cv2.INTER_LINEAR)
+    return cv2.GaussianBlur(src, (0, 0), sigma, borderType=cv2.BORDER_REPLICATE)
+
+
+@functools.lru_cache(maxsize=256)
+def _grain(rh, rw):
+    """すりガラスの微粒ノイズ（種が固定なので大きさごとに同じ）。"""
+    rng = np.random.default_rng(20260921)
+    grain = rng.uniform(-1.0, 1.0, size=(rh, rw)).astype(np.float32)
+    grain = gaussian_blur(grain, 0.6)
+    peak = float(np.abs(grain).max())
+    if peak > 1e-6:
+        grain *= 3.0 / peak
+    grain.flags.writeable = False
+    return grain
+
+
+@functools.lru_cache(maxsize=256)
+def _ellipse_mask(rh, rw):
+    """楕円（縁はソフト）の重み。大きさごとに同じ。"""
+    yy = (np.arange(rh, dtype=np.float32)[:, None] - (rh - 1) / 2.0) / (rh / 2.0)
+    xx = (np.arange(rw, dtype=np.float32)[None, :] - (rw - 1) / 2.0) / (rw / 2.0)
+    d = np.sqrt(xx * xx + yy * yy)
+    mask = 1.0 - smoothstep(d, 0.8, 1.0)
+    mask.flags.writeable = False
+    return mask
+
+
 def mosaic_face(arr8, box, block=0, style="pixel"):
     """顔矩形を 25% 拡大した楕円（縁は矩形幅の10%でソフト）内を隠す。
 
@@ -104,24 +142,11 @@ def mosaic_face(arr8, box, block=0, style="pixel"):
         info["block"] = b
     else:
         sigma = max(3.0, 0.25 * box["w"])
-        src = region.astype(np.float32)
-        fill = np.empty_like(src)
-        for c in range(3):
-            fill[:, :, c] = gaussian_blur(src[:, :, c], sigma)
-        rng = np.random.default_rng(20260921)
-        grain = rng.uniform(-1.0, 1.0, size=(rh, rw)).astype(np.float32)
-        grain = gaussian_blur(grain, 0.6)
-        peak = float(np.abs(grain).max())
-        if peak > 1e-6:
-            grain *= 3.0 / peak
-        fill = np.clip(fill + grain[:, :, None], 0.0, 255.0)
+        fill = _blur_rgb(region, sigma) + _grain(rh, rw)[:, :, None]
+        np.clip(fill, 0.0, 255.0, out=fill)
         info["sigma"] = round(sigma, 2)
 
-    yy = (np.arange(rh, dtype=np.float32)[:, None] - (rh - 1) / 2.0) / (rh / 2.0)
-    xx = (np.arange(rw, dtype=np.float32)[None, :] - (rw - 1) / 2.0) / (rw / 2.0)
-    d = np.sqrt(xx * xx + yy * yy)
-    mask = 1.0 - smoothstep(d, 0.8, 1.0)
-    mask = mask[:, :, None]
+    mask = _ellipse_mask(rh, rw)[:, :, None]
 
     arr8[y0:y1, x0:x1] = np.rint(
         region.astype(np.float32) * (1.0 - mask) + fill * mask).astype(np.uint8)
