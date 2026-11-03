@@ -29,12 +29,12 @@ body{overflow-x:hidden}
 #msg{padding:var(--s5) var(--s4)}
 #msg p{margin:0 0 var(--s4)}
 #vw{position:fixed;inset:0;z-index:20;background:var(--dark);display:flex;flex-direction:column}
-#vwbar{display:flex;gap:var(--s2);align-items:center;padding:var(--s2) var(--s3);padding-top:calc(var(--s2) + env(safe-area-inset-top));background:#16233B;color:var(--on-pri)}
-#vwbar span{flex:1;font-size:14px;min-width:0}
-#vwbar button{min-width:44px;min-height:44px;padding:0 var(--s3);font:inherit;font-size:18px;border-radius:var(--radius-sm);background:#24324D;color:var(--on-pri);border:1px solid #3A4A68;cursor:pointer}
-#vwbar button.close{font-size:15px;font-weight:700;background:var(--pri);border-color:var(--pri)}
-#vwsc{flex:1;overflow:auto;touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch}
-#vwin{position:relative;margin:0 auto}
+#vwbar{padding:var(--s2) var(--s4);padding-top:calc(var(--s2) + env(safe-area-inset-top));background:#16233B;color:var(--on-pri);font-size:15px;font-weight:600}
+/* 拡大は「場面全体が画面に収まる大きさ」だけ（それ以上は拡大しない） */
+#vwsc{flex:1;min-height:0;overflow:hidden;display:flex;align-items:center;justify-content:center}
+#vwin{position:relative;flex:none}
+#vwft{padding:var(--s2) var(--s4) calc(var(--s2) + env(safe-area-inset-bottom));background:#16233B}
+#vwft .btn{width:100%}
 #vwin img{display:block;width:100%}
 /* 拡大表示の間は後ろの画面を描かない（全面を覆うダイアログ・読み上げも拡大表示だけに） */
 body.viewing > :not(#vw):not(script){visibility:hidden}
@@ -56,10 +56,9 @@ body.viewing > :not(#vw):not(script){visibility:hidden}
 </div>
 <div id="msg" hidden></div>
 <div id="vw" role="dialog" aria-modal="true" aria-label="拡大表示" hidden>
-  <div id="vwbar"><span id="vwt">拡大表示</span>
-    <button id="zo" type="button" aria-label="縮小">－</button><button id="zi" type="button" aria-label="拡大">＋</button>
-    <button class="close" id="vwc" type="button">戻る</button></div>
+  <div id="vwbar">枠をタップで選択（選んだ枠は緑）</div>
   <div id="vwsc"><div id="vwin"></div></div>
+  <div id="vwft"><button class="btn btn-pri" id="vwc" type="button">場面の一覧に戻る</button></div>
 </div>
 <script src="/static/common.js"></script>
 <script>
@@ -135,43 +134,30 @@ function fit() {
   });
   document.querySelectorAll('.ph').forEach(placeChecks);
 }
-// ---- 拡大表示（ボタン・ピンチ）
-let zoom = 1, base = 0, cur = null;
+// ---- 拡大表示（場面全体が画面に収まる大きさで固定）
+let cur = null;
 const vw = $('vw'), vin = $('vwin'), vsc = $('vwsc');
-function setZoom(z, cx, cy) {
-  const old = zoom; zoom = Math.min(6, Math.max(1, z));
-  const r = vsc.getBoundingClientRect(); cx = cx ?? r.width / 2; cy = cy ?? r.height / 2;
-  const px = (vsc.scrollLeft + cx) / old, py = (vsc.scrollTop + cy) / old;
-  vin.style.width = (base * zoom) + 'px'; vsc.scrollLeft = px * zoom - cx; vsc.scrollTop = py * zoom - cy;
+function fitViewer() {
+  if (!cur) return;
+  const r = vsc.getBoundingClientRect();
+  vin.style.width = Math.floor(Math.min(r.width, r.height * cur.w / cur.h)) + 'px';
   placeChecks(vin);
-  $('vwt').textContent = Math.round(zoom * 100) + '%・枠をタップで選択';
 }
 function openViewer(s) {
   cur = s; vin.replaceChildren();
   const im = document.createElement('img'); im.src = '/api/jobs/' + id + '/shots/' + s.img + '.jpg'; im.alt = s.sec + '秒の場面（拡大）';
   vin.appendChild(im); addBoxes(vin, s); paintAll();
   vw.hidden = false; document.body.style.overflow = 'hidden'; document.body.classList.add('viewing');
-  const r = vsc.getBoundingClientRect(); base = Math.min(r.width, r.height * s.w / s.h); zoom = 1; setZoom(2);
+  fitViewer();
   $('vwc').focus();
 }
-function closeViewer() { vw.hidden = true; document.body.style.overflow = ''; document.body.classList.remove('viewing'); vin.replaceChildren(); }
-$('zi').onclick = () => setZoom(zoom * 1.5);
-$('zo').onclick = () => setZoom(zoom / 1.5);
+function closeViewer() { cur = null; vw.hidden = true; document.body.style.overflow = ''; document.body.classList.remove('viewing'); vin.replaceChildren(); }
 $('vwc').onclick = closeViewer;
 vin.addEventListener('click', ev => toggleAt(vin, ev));
-vsc.addEventListener('scroll', () => placeChecks(vin), { passive: true });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !vw.hidden) closeViewer(); });
-vsc.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); const r = vsc.getBoundingClientRect(); setZoom(zoom * Math.exp(-e.deltaY / 200), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
-const pts = new Map(); let pd = 0, pz = 1;
-vsc.addEventListener('pointerdown', e => { pts.set(e.pointerId, e); if (pts.size === 2) { const [a, b] = [...pts.values()]; pd = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); pz = zoom; } });
-vsc.addEventListener('pointermove', e => {
-  if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, e);
-  if (pts.size === 2 && pd) { const [a, b] = [...pts.values()]; const r = vsc.getBoundingClientRect(); setZoom(pz * Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pd, (a.clientX + b.clientX) / 2 - r.left, (a.clientY + b.clientY) / 2 - r.top); }
-});
-['pointerup', 'pointercancel'].forEach(t => vsc.addEventListener(t, e => { pts.delete(e.pointerId); if (pts.size < 2) pd = 0; }));
 document.addEventListener('gesturestart', e => e.preventDefault());
 new ResizeObserver(fit).observe(ft);
-window.addEventListener('resize', fit);
+window.addEventListener('resize', () => { fit(); fitViewer(); });
 
 (async () => {
   let j;
