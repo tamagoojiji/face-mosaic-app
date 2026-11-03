@@ -52,6 +52,12 @@ DETECT_LONG_SIDE = 1280
 IOU_MATCH = 0.3
 EMA_ALPHA = 0.5
 HOLD_FRAMES = 15
+# IoU で対応しなかった検出の2段目の対応付け（速い動きで IoU が落ちてトラックが切れるのを減らす）:
+# 中心距離 ≤ CENTER_MATCH×max(検出の高さ, トラックの高さ) かつ 高さの比 CENTER_SIZE_RATIO の未使用トラックのうち最も近いもの。
+# 2番目の候補が最近傍の CENTER_AMBIG 倍以内の距離にあるとき（群衆で取り違えの恐れ）はつながない
+CENTER_MATCH = 1.0
+CENTER_SIZE_RATIO = (0.6, 1.6)
+CENTER_AMBIG = 1.5
 # トラックが途切れた後に最後の枠を残すコマ数。追跡の対応付けと隙間の補間は HOLD_FRAMES=15 のまま
 HOLD_TAIL_FRAMES = 5
 # 検出が 1 コマしか無い blur トラックは描かない。木・地面などの単発の誤検出に保持枠が付いて「顔の無い所にモザイク」になるため
@@ -73,11 +79,12 @@ SHOTS = 12
 SHOT_W = 1080
 LINK_GAP = 45
 LINK_DIST = 2.0
-LINK_FACE = 0.30
-LINK_CLOTH = 0.55
+# LINK_FACE/LINK_CLOTH（0.30/0.55→0.40/0.60）と GLOB_SUM（1.15→1.30）: 多数タップ時の誤 keep を減らす。2 本タップでは差なし（2026-11-03 E2E）
+LINK_FACE = 0.40
+LINK_CLOTH = 0.60
 GLOB_FACE = 0.35
 GLOB_CLOTH = 0.60
-GLOB_SUM = 1.15
+GLOB_SUM = 1.30
 KEEP_MIN_FRAC = 0.042
 COSTUME_CLOTH = 0.50
 COSTUME_MIN_FRAC = 0.07
@@ -205,6 +212,40 @@ def _track_detect(buf, dw, dh, face_score, upscale):
     return detect_faces_yunet(frame, YUNET_PATH, face_score, upscale=upscale)
 
 
+def _match_detection(d, active, used):
+    """1段目: IoU が IOU_MATCH を超える未使用トラックのうち IoU が最大のもの。無ければ None。"""
+    best, best_iou = None, IOU_MATCH
+    for t in active:
+        if t["id"] in used:
+            continue
+        iou, _c = _overlap(d, t["last"])
+        if iou > best_iou:
+            best, best_iou = t, iou
+    return best
+
+
+def _match_by_center(d, active, used):
+    """2段目: 中心距離と高さの比で最も近い未使用トラック。候補が無い・2番目が近すぎるときは None。"""
+    cx, cy = d["x"] + d["w"] / 2.0, d["y"] + d["h"] / 2.0
+    lo, hi = CENTER_SIZE_RATIO
+    cands = []
+    for t in active:
+        if t["id"] in used:
+            continue
+        lb = t["last"]
+        if not lo <= float(d["h"]) / max(lb["h"], 1e-6) <= hi:
+            continue
+        dist = math.hypot(cx - (lb["x"] + lb["w"] / 2.0), cy - (lb["y"] + lb["h"] / 2.0))
+        if dist <= CENTER_MATCH * max(float(d["h"]), lb["h"]):
+            cands.append((dist, t))
+    if not cands:
+        return None
+    cands.sort(key=lambda c: c[0])
+    if len(cands) >= 2 and cands[1][0] <= CENTER_AMBIG * cands[0][0]:
+        return None
+    return cands[0][1]
+
+
 def track_faces(path, info, vf, args):
     ow, oh = info["out_width"], info["out_height"]
     scale = min(1.0, DETECT_LONG_SIDE / float(max(ow, oh)))
@@ -235,14 +276,18 @@ def track_faces(path, info, vf, args):
             print(warn, file=sys.stderr)
         dets.sort(key=lambda f: -float(f.get("conf", 0.0)))
         used = set()
-        for d in dets:
-            best, best_iou = None, IOU_MATCH
-            for t in active:
-                if t["id"] in used:
-                    continue
-                iou, _c = _overlap(d, t["last"])
-                if iou > best_iou:
-                    best, best_iou = t, iou
+        pairs, rest = [], []
+        for d in dets:  # 1段目: IoU
+            best = _match_detection(d, active, used)
+            if best is None:
+                rest.append(d)
+                continue
+            used.add(best["id"])
+            pairs.append((d, best))
+        # 2段目の候補は途切れて HOLD_FRAMES 以内のトラックだけ（active は前のコマの終わりに絞るので最大 step コマ古いものが残る）
+        recent = [t for t in active if fi - t["last_frame"] <= HOLD_FRAMES]
+        for d in rest:  # 2段目: 中心距離（つながらなければ新しいトラック）
+            best = _match_by_center(d, recent, used)
             if best is None:
                 best = {"id": next_id, "boxes": {}, "confs": [],
                         "last": {k: float(d[k]) for k in "xywh"},
@@ -250,11 +295,13 @@ def track_faces(path, info, vf, args):
                 next_id += 1
                 active.append(best)
                 tracks.append(best)
-            else:
+            used.add(best["id"])
+            pairs.append((d, best))
+        for d, best in pairs:
+            if best["boxes"]:  # 既存のトラックは EMA（新しいトラックはそのコマの検出そのまま）
                 lb = best["last"]
                 best["last"] = {k: EMA_ALPHA * float(d[k]) + (1.0 - EMA_ALPHA) * lb[k]
                                 for k in "xywh"}
-            used.add(best["id"])
             best["boxes"][fi] = dict(best["last"], conf=float(d.get("conf", 0.0)))
             best["confs"].append(float(d.get("conf", 0.0)))
             best["last_frame"] = fi
@@ -849,7 +896,7 @@ def apply_overrides(tracks, ov):
 def filled_track_boxes(tracks, n_frames, detect_every):
     """blur のトラックごとに、1080p 版（30fps）のフレーム番号 → 枠（解析サイズの座標）を埋めたもの。
 
-    隙間の線形補間・途切れた後の保持（HOLD_FRAMES）・keep の顔の上に来た補間枠の除外は build_frame_boxes と同じ。
+    隙間の線形補間・途切れた後の保持（HOLD_TAIL_FRAMES）・keep の顔の上に来た補間枠の除外は build_frame_boxes と同じ。
     戻り値は [(トラック, {フレーム: 枠})]（トラックの順・フレームの順は build_frame_boxes と同じ）。"""
     keep_at = {}
     for t in tracks:
