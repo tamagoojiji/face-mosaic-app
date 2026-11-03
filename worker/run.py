@@ -9,6 +9,7 @@ LINE 通知（①選択の準備 ②できました ③処理できなかった�
 import json
 import logging
 import os
+import signal
 import threading
 import time
 import traceback
@@ -192,13 +193,25 @@ def heartbeat():
         time.sleep(30)
 
 
+_stopping = False
+
+
+def _on_term(signum, frame):
+    """デプロイ（docker compose up）の停止合図。処理中のジョブは最後まで終えてから止まる
+    （2026-11-03: 書き出し中に 10 秒で強制終了され、最初からやり直しになっていた）。"""
+    global _stopping
+    _stopping = True
+    log.info("停止の合図を受けました。処理中のジョブを終えてから止まります")
+
+
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     db.init()
     db.reset_running()
+    signal.signal(signal.SIGTERM, _on_term)
     threading.Thread(target=heartbeat, daemon=True).start()
     log.info("worker 起動（1件ずつ処理）")
-    while True:
+    while not _stopping:
         j = db.next_job()
         if not j:
             time.sleep(2)
@@ -213,6 +226,7 @@ def main():
                 do_export(j)
             except Exception as e:
                 fail_export(j["id"], e)
+    log.info("worker 停止")
 
 
 if __name__ == "__main__":

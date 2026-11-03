@@ -14,7 +14,7 @@
 - 外部ID（LINE・Stripe・GAS）は `docs/external-ids.md`
 
 ## 本番反映
-`scp <file> root@5.104.86.10:/opt/docker/face-mosaic-app/<file>` → `ssh root@5.104.86.10 "cd /opt/docker/face-mosaic-app && docker compose up -d --build"` → `curl https://mosaic.tamago-ai-world.com/health` と該当ページの表示確認。コンテナは COPY なので web/docs だけの変更でも build が要る。送る前に本番側のファイルが手元の変更前と同じか `cmp` で比べる。
+`scp <file> root@5.104.86.10:/opt/docker/face-mosaic-app/<file>` → `ssh root@5.104.86.10 "cd /opt/docker/face-mosaic-app && docker compose up -d --build"` → `curl https://mosaic.tamago-ai-world.com/health` と該当ページの表示確認。コンテナは COPY なので web/docs だけの変更でも build が要る。worker は処理中のジョブを終えるまで止まらない（最大60分）ので、`compose up` は Bash の `run_in_background` で回す。app 側だけの変更なら `docker compose up -d --build face-mosaic-app` で worker を止めずに済む。送る前に本番側のファイルが手元の変更前と同じか `cmp` で比べる。
 
 ## 守ること
 - 名前は「らくらくモザイク」（アプリ内の表示は「顔モザイク」）。問い合わせ先は contact@tetraris.com
