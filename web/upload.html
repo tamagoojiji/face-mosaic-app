@@ -22,6 +22,12 @@
 .track{height:10px;border-radius:999px;background:var(--surface);overflow:hidden;margin:var(--s2) 0 0;border:1px solid var(--line)}
 .fill{height:100%;width:0;background:var(--pri);transition:width .2s}
 .resume{margin:var(--s3) 0 0}
+/* 写真を何枚かまとめて選んだときの見比べ: 1列で大きく並べ、押した1枚を送る */
+.cands{display:flex;flex-direction:column;gap:var(--s4);margin:var(--s3) 0 0}
+.cand{display:block;width:100%;padding:0;border:1.5px solid var(--line);border-radius:var(--radius);background:var(--surface);cursor:pointer;overflow:hidden;font:inherit;color:var(--pri)}
+.cand:hover{border-color:var(--pri)}
+.cand img{display:block;width:100%;height:auto}
+.cand span{display:flex;align-items:center;justify-content:center;min-height:48px;font-weight:700}
 @media (prefers-reduced-motion:reduce){.fill{transition:none}}
 </style>
 </head><body>
@@ -58,10 +64,16 @@
     <h1>写真を1枚選んでください</h1>
     <p class="lead">選ぶとすぐに送信して、顔を探します（数秒〜十数秒）。</p>
     <label class="drop" id="drop">
-      <input type="file" id="file" accept="image/*">
+      <input type="file" id="file" accept="image/*" multiple>
       <span class="big">写真を選ぶ</span>
       <span class="small">JPEG・HEIC・PNG／1枚30MBまで</span>
     </label>
+    <p class="note" id="phint">似た写真で迷うときは、候補をまとめて選ぶと、次の画面で大きく見比べて1枚を選べます。</p>
+    <div id="pickone" hidden>
+      <p class="notice">送る写真を1枚押してください。</p>
+      <div class="cands" id="cands"></div>
+      <button type="button" class="btn btn-ter resume" id="repick">選び直す</button>
+    </div>
     <div class="prog" id="prog" hidden>
       <div class="label" id="plabel" aria-live="polite">送信しています…</div>
       <div class="track" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="ptrack"><div class="fill" id="pfill"></div></div>
@@ -85,10 +97,31 @@ function fail(msg, quota) {
   document.querySelector('#drop .big').textContent = '別の写真を選ぶ';
 }
 function setPct(p) { $('pfill').style.width = p + '%'; $('ptrack').setAttribute('aria-valuenow', String(Math.round(p))); }
+// 2枚以上選ばれたら大きく並べて1枚を選んでもらう（OS の選択画面は小さくて見比べにくいため）
+let candUrls = [];
+function clearCands() { candUrls.forEach(u => URL.revokeObjectURL(u)); candUrls = []; $('cands').textContent = ''; $('pickone').hidden = true; }
+$('repick').addEventListener('click', () => { clearCands(); $('file').value = ''; $('file').click(); $('drop').style.display = ''; $('phint').hidden = false; });
 $('file').addEventListener('change', () => {
-  const f = $('file').files[0];
-  if (!f) return;
-  $('err').hidden = true;
+  const fs = [...$('file').files];
+  if (!fs.length) return;
+  if (fs.length === 1) { sendPhoto(fs[0]); return; }
+  clearCands(); $('err').hidden = true;
+  $('drop').style.display = 'none'; $('phint').hidden = true; $('pickone').hidden = false;
+  fs.forEach((f, i) => {
+    const b = document.createElement('button'), img = document.createElement('img'), t = document.createElement('span'), u = URL.createObjectURL(f);
+    candUrls.push(u);
+    b.type = 'button'; b.className = 'cand';
+    img.src = u; img.alt = (i + 1) + '枚目'; img.decoding = 'async';
+    img.onerror = () => { img.remove(); t.textContent = (i + 1) + '枚目（プレビューできません）を送る'; };
+    t.textContent = (i + 1) + '枚目を送る';
+    b.append(img, t);
+    b.addEventListener('click', () => { clearCands(); sendPhoto(f); });
+    $('cands').append(b);
+  });
+  $('pickone').scrollIntoView({ block: 'start' });
+});
+function sendPhoto(f) {
+  $('err').hidden = true; $('phint').hidden = true;
   if (f.size > MAX) { fail('この写真は ' + (f.size / 1048576).toFixed(1) + 'MB あります。30MBまでの写真を選んでください'); return; }
   $('drop').style.display = 'none'; $('prog').hidden = false; setPct(0);
   $('plabel').textContent = '送信しています… 0%';
@@ -109,7 +142,7 @@ $('file').addEventListener('change', () => {
   };
   x.onerror = () => fail('通信が切れました。電波のよい場所でもう一度選んでください');
   x.send(fd);
-});
+}
 
 // ------------------------------------------------------------ 動画（8MB ごとに分割・途中から再開）
 let CFG = null, cur = null;  // cur = {file, key, up}
