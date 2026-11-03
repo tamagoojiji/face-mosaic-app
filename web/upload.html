@@ -72,7 +72,7 @@
   <section id="photo" hidden>
     <ol class="steps"><li class="on">1 写真を選ぶ</li><li>2 残す顔を選ぶ</li><li>3 保存する</li></ol>
     <h1>写真を1枚選んでください</h1>
-    <p class="lead">選ぶとすぐに送信して、顔を探します（数秒〜十数秒）。</p>
+    <p class="lead">選んだ写真を大きく表示します。「この写真を送る」で送信して、顔を探します（数秒〜十数秒）。</p>
     <label class="drop" id="drop">
       <input type="file" id="file" accept="image/*" multiple>
       <span class="big">写真を選ぶ</span>
@@ -116,7 +116,7 @@ function fail(msg, quota) {
   document.querySelector('#drop .big').textContent = '別の写真を選ぶ';
 }
 function setPct(p) { $('pfill').style.width = p + '%'; $('ptrack').setAttribute('aria-valuenow', String(Math.round(p))); }
-// 2枚以上選ばれたら一覧を出し、タップした1枚を拡大して選んでもらう（OS の選択画面は小さくて見比べにくいため）
+// 選んだ写真を一覧にし、タップした1枚を拡大して選んでもらう（1枚ならすぐ拡大）（OS の選択画面は小さくて見比べにくいため）
 let candUrls = [], candFiles = [], zi = 0, swipeX = null;
 function clearCands() { closeZoom(); candUrls.forEach(u => URL.revokeObjectURL(u)); candUrls = []; candFiles = []; $('cands').textContent = ''; $('pickone').hidden = true; }
 function showZoom(i) {
@@ -150,7 +150,6 @@ $('repick').addEventListener('click', () => { clearCands(); $('file').value = ''
 $('file').addEventListener('change', () => {
   const fs = [...$('file').files];
   if (!fs.length) return;
-  if (fs.length === 1) { sendPhoto(fs[0]); return; }
   clearCands(); $('err').hidden = true;
   $('drop').style.display = 'none'; $('phint').hidden = true; $('pickone').hidden = false;
   fs.forEach((f, i) => {
@@ -163,7 +162,7 @@ $('file').addEventListener('change', () => {
     b.addEventListener('click', () => showZoom(i));
     $('cands').append(b);
   });
-  $('pickone').scrollIntoView({ block: 'start' });
+  if (fs.length === 1) showZoom(0); else $('pickone').scrollIntoView({ block: 'start' });
 });
 function sendPhoto(f) {
   $('err').hidden = true; $('phint').hidden = true;
