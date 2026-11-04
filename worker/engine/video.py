@@ -878,6 +878,17 @@ def join_fragments(ts, face_m):
     return out
 
 
+def keep_fragments(tracks, keep, blur, face_m, short):
+    """選んだ人の途切れた続きも keep へ移す（出演者の一部にだけモザイクが残らないように）。戻り値は (keep_ids, blur_ids)。"""
+    keep, blur = set(keep), set(blur)
+    pool = [t for t in tracks if t["id"] in keep | blur and t["med_h"] >= FACE_MIN_FRAC * short]
+    for g in join_fragments(pool, face_m):
+        ids = {t["id"] for t in g}
+        if ids & keep:
+            keep |= ids
+    return keep, blur - keep
+
+
 def review_lists(info, tracks, keep, dw, face_m=None):
     """「モザイクをかける予定」「かけない予定」の一覧。モザイクは書き出しと同じ分類で、かかる顔をすべて出す。
     途切れた断片は1件にまとめ（ids）、遠くの小さい顔には small を付ける（画面でたたんで見せる）。"""
@@ -886,9 +897,9 @@ def review_lists(info, tracks, keep, dw, face_m=None):
     classify_tracks_global(cls, short, "background", FACE_KEEP_RATIO, FACE_MIN_FRAC)
     cand = [t for t in cls if t["id"] not in keep and len(t["boxes"]) >= BLUR_MIN_SEEN
             and (t["med_conf"] >= BLUR_MIN_CONF or t.get("action") == "blur")]
-    kept = [t for t in tracks if t["id"] in keep and t["med_h"] >= KEEP_MIN_FRAC * short]
     fps = info["fps"]
     min_h = FACE_MIN_FRAC * short
+    kept = [t for t in tracks if t["id"] in keep and t["med_h"] >= min_h]
 
     def item(g, small=False):
         rep = max(g, key=lambda t: t["med_h"])  # 切り抜きは大きく写った断片のもの
@@ -897,7 +908,7 @@ def review_lists(info, tracks, keep, dw, face_m=None):
     groups = [(g, False) for g in join_fragments([t for t in cand if t["med_h"] >= min_h], face_m or {})]
     groups += [(g, True) for g in join_fragments([t for t in cand if t["med_h"] < min_h], face_m or {})]
     return {"blur": sorted((item(g, s) for g, s in groups), key=lambda i: i["sec"]),
-            "keep": [item([t]) for t in sorted(kept, key=lambda t: t["first_frame"])]}
+            "keep": sorted((item(g) for g in join_fragments(kept, face_m or {})), key=lambda i: i["sec"])}
 
 
 # ---------------------------------------------------------------- 書き出し（video_retouch.py）

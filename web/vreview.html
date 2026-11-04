@@ -41,12 +41,7 @@ h1{margin-top:var(--s4)}
 #toast.show{opacity:1}
 #ft{position:fixed;left:0;right:0;bottom:0;z-index:10;border-top:1px solid var(--line);background:var(--paper);
   padding:var(--s2) var(--s4) calc(var(--s2) + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:6px}
-#cnt{font-size:15px;font-weight:700;line-height:22px}
-.ftop{display:flex;align-items:center;justify-content:space-between;gap:var(--s2)}
-#undo{flex:none;width:auto;min-height:44px;padding:0 var(--s3);font-size:15px}
-#undo:disabled{background:var(--dis-bg);color:var(--dis-fg);cursor:default}
-#cnt .m{color:var(--warn-tag)}
-#cnt .k{color:var(--keep-ink)}
+#undo{min-height:48px;font-size:16px}
 #ferr{margin:0}
 @media (prefers-reduced-motion:reduce){#toast{transition:none}}
 </style>
@@ -89,10 +84,7 @@ h1{margin-top:var(--s4)}
 </main>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="ft">
-  <div class="ftop">
-    <span id="cnt"><span class="m" id="cm">モザイク 0 件</span>・<span class="k" id="ck">かけない 0 件</span></span>
-    <button class="btn btn-ter" id="undo" type="button" disabled>1つ戻す</button>
-  </div>
+  <button class="btn btn-sec" id="undo" type="button" disabled>1つ戻す</button>
   <p class="err" id="ferr" hidden></p>
   <button class="btn btn-pri" id="go" type="button">この内容で書き出す</button>
 </div>
@@ -109,7 +101,6 @@ function render() {
   const all = ITEMS.filter(it => !KEEP.has(it.id)), b = all.filter(it => !it.small), s = all.filter(it => it.small), k = ITEMS.filter(it => KEEP.has(it.id));
   const far = s.length ? '＋遠く ' + s.length : '';
   $('nb').textContent = b.length + '件' + far.replace(' ', ''); $('nk').textContent = k.length + '件';
-  $('cm').textContent = 'モザイク ' + b.length + far + ' 件'; $('ck').textContent = 'かけない ' + k.length + ' 件';
   $('sm').hidden = !s.length; $('smt').textContent = '遠くの小さい顔 ' + s.length + '件（開くと確認できます）';
   fill($('gb'), b, false); fill($('gk'), k, true);
   if ($('sm').open) fill($('gs'), s, false);

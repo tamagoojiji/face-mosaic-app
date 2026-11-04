@@ -1067,6 +1067,7 @@ async def video_picks(request: Request, job_id: str):
         tracks, dw, dh, _seen = vengine.load_tracks(p["tracks"])
         face_m, cloth_m = vengine.load_feats(p["feats"]) if use_feats else ({}, {})
         keep, blur = vengine.decide(tracks, picks, face_m, cloth_m, min(dw, dh))
+        keep, blur = vengine.keep_fragments(tracks, keep, blur, face_m, min(dw, dh))
         lists = vengine.review_lists(vengine.probe(p["v1080"]), tracks, keep, dw, face_m)
         return keep, blur, lists
 

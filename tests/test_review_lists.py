@@ -82,3 +82,19 @@ def test_small_faces_are_marked_and_every_id_stays():
     blur = v.review_lists(INFO, ts, set(), 720)["blur"]
     assert {i for it in blur for i in it["ids"]} == {0, 1, 2}
     assert [it["small"] for it in blur] == [False, True, True]
+
+
+def test_rest_of_a_picked_person_moves_to_keep():
+    ts = [frag(0, 0, 5), frag(1, 10, 5), frag(2, 10, 5, x=400.0)]
+    assert v.keep_fragments(ts, {0}, {1, 2}, SAME, 720) == ({0, 1}, {2})
+
+
+def test_different_face_stays_in_blur():
+    ts = [frag(0, 0, 5), frag(1, 10, 5)]
+    other = {0: np.array([1.0, 0.0]), 1: np.array([0.0, 1.0])}
+    assert v.keep_fragments(ts, {0}, {1}, other, 720) == ({0}, {1})
+
+
+def test_kept_fragments_are_one_item():
+    ts = [frag(0, 0, 5), frag(1, 10, 5)]
+    assert [i["ids"] for i in v.review_lists(INFO, ts, {0, 1}, 720, SAME)["keep"]] == [[0, 1]]
