@@ -38,6 +38,9 @@ h1{margin-top:var(--s4)}
 #ft{position:fixed;left:0;right:0;bottom:0;z-index:10;border-top:1px solid var(--line);background:var(--paper);
   padding:var(--s2) var(--s4) calc(var(--s2) + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:6px}
 #cnt{font-size:15px;font-weight:700;line-height:22px}
+.ftop{display:flex;align-items:center;justify-content:space-between;gap:var(--s2)}
+#undo{flex:none;width:auto;min-height:44px;padding:0 var(--s3);font-size:15px}
+#undo:disabled{background:var(--dis-bg);color:var(--dis-fg);cursor:default}
 #cnt .m{color:var(--warn-tag)}
 #cnt .k{color:var(--keep-ink)}
 #ferr{margin:0}
@@ -77,14 +80,17 @@ h1{margin-top:var(--s4)}
 </main>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="ft">
-  <span id="cnt"><span class="m" id="cm">モザイク 0 件</span>・<span class="k" id="ck">かけない 0 件</span></span>
+  <div class="ftop">
+    <span id="cnt"><span class="m" id="cm">モザイク 0 件</span>・<span class="k" id="ck">かけない 0 件</span></span>
+    <button class="btn btn-ter" id="undo" type="button" disabled>1つ戻す</button>
+  </div>
   <p class="err" id="ferr" hidden></p>
   <button class="btn btn-pri" id="go" type="button">この内容で書き出す</button>
 </div>
 <script src="/static/common.js"></script>
 <script>
 const id = jobIdFromPath(), $ = x => document.getElementById(x);
-let ITEMS = [], KEEP = new Set(), tab = 'b', toastT = 0, HQ = false, CHOICE = false;
+let ITEMS = [], KEEP = new Set(), HIST = [], tab = 'b', toastT = 0, HQ = false, CHOICE = false;
 const mins = s => Math.max(1, Math.round(s / 60));
 const style = () => document.querySelector('input[name=st]:checked').value;
 const wantHq = () => CHOICE ? document.querySelector('input[name=q]:checked').value === 'src' : HQ;
@@ -95,6 +101,7 @@ function render() {
   $('nb').textContent = b.length + '件'; $('nk').textContent = k.length + '件';
   $('cm').textContent = 'モザイク ' + b.length + ' 件'; $('ck').textContent = 'かけない ' + k.length + ' 件';
   fill($('gb'), b, false); fill($('gk'), k, true);
+  $('undo').disabled = !HIST.length;
 }
 function fill(el, items, kept) {
   if (!items.length) {
@@ -113,11 +120,18 @@ function fill(el, items, kept) {
     cap.append(lb, s); t.append(im, cap);
     t.onclick = () => {
       kept ? KEEP.delete(it.id) : KEEP.add(it.id);
+      HIST.push(it.id);
       render(); toast(kept ? '「モザイクをかける予定」に移しました' : '「かけない予定」に移しました');
     };
     return t;
   }));
 }
+$('undo').onclick = () => {
+  const x = HIST.pop();
+  const back = KEEP.has(x);
+  back ? KEEP.delete(x) : KEEP.add(x);
+  render(); toast(back ? '1つ戻して「モザイクをかける予定」に戻しました' : '1つ戻して「かけない予定」に戻しました');
+};
 function toast(msg) {
   const t = $('toast'); t.textContent = msg; t.style.bottom = ($('ft').offsetHeight + 12) + 'px'; t.classList.add('show');
   clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1600);
