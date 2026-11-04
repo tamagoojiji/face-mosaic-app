@@ -22,18 +22,18 @@
 .track{height:10px;border-radius:999px;background:var(--surface);overflow:hidden;margin:var(--s2) 0 0;border:1px solid var(--line)}
 .fill{height:100%;width:0;background:var(--pri);transition:width .2s}
 .resume{margin:var(--s3) 0 0}
-/* 選んだ写真・動画の一覧: タップした1つを拡大して送る */
+/* 写真を何枚かまとめて選んだときの見比べ: 1列で大きく並べ、押した1枚を送る */
 .cands{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s1);margin:var(--s3) 0 0}
 .cand{display:block;aspect-ratio:1;padding:0;border:0;background:var(--surface);cursor:pointer;overflow:hidden;font:inherit;font-size:12px;color:var(--sub)}
-.cand img,.cand video{display:block;width:100%;height:100%;object-fit:cover;pointer-events:none}
+.cand img{display:block;width:100%;height:100%;object-fit:cover}
 .cand:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
-/* タップした1つの拡大表示 */
+/* タップした1枚の拡大表示 */
 .zoom{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;background:#000;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
 .zoom[hidden]{display:none}
 .zoom .zhead{display:flex;align-items:center;justify-content:space-between;min-height:52px;padding:0 var(--s4);color:#fff;font-weight:600}
 .zoom .zhead button{min-height:44px;padding:0 var(--s2);border:0;background:none;color:#fff;font:inherit;font-weight:700;cursor:pointer}
 .zoom .zimg{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative}
-.zoom .zimg img,.zoom .zimg video{max-width:100%;max-height:100%;object-fit:contain}
+.zoom .zimg img{max-width:100%;max-height:100%;object-fit:contain}
 .zoom .znav{position:absolute;top:50%;transform:translateY(-50%);width:48px;height:64px;border:0;border-radius:var(--radius-sm);background:rgba(0,0,0,.45);color:#fff;font-size:32px;cursor:pointer}
 .zoom .znav:disabled{display:none}
 .zoom .zprev{left:var(--s2)} .zoom .znext{right:var(--s2)}
@@ -51,18 +51,12 @@
   <section id="video" hidden>
     <ol class="steps"><li class="on">1 送る</li><li>2 選ぶ</li><li>3 確認</li><li>4 保存</li></ol>
     <h1>動画を1本選んでください</h1>
-    <p class="lead" id="vlead">選んだ動画を大きく表示します。「この動画を送る」で送信し、届いたら顔を探して、残したい人を選べるようにします。</p>
+    <p class="lead" id="vlead">選ぶとすぐに送信します。届いたら顔を探して、残したい人を選べるようにします。</p>
     <label class="drop" id="vdrop">
       <input type="file" id="vfile" accept="video/*">
       <span class="big" id="vbig">動画を選ぶ</span>
       <span class="small" id="vlimit">1本1.5GBまで</span>
     </label>
-    <p class="note" id="vhint">選ぶと次の画面で大きく再生して確認できます。</p>
-    <div id="vpickone" hidden>
-      <p class="notice">動画を押すと大きく表示します。</p>
-      <div class="cands" id="vcands"></div>
-      <button type="button" class="btn btn-ter resume" id="vrepick">選び直す</button>
-    </div>
     <p class="note" id="vest" hidden></p>
     <p class="notice" id="vpending" hidden></p>
     <div class="prog" id="vprog" hidden>
@@ -90,6 +84,15 @@
       <div class="cands" id="cands"></div>
       <button type="button" class="btn btn-ter resume" id="repick">選び直す</button>
     </div>
+    <div class="zoom" id="zoom" role="dialog" aria-modal="true" aria-label="写真の拡大表示" hidden>
+      <div class="zhead"><span id="zcount"></span><button type="button" id="zclose">閉じる</button></div>
+      <div class="zimg" id="zimg">
+        <img id="zpic" alt="">
+        <button type="button" class="znav zprev" id="zprev" aria-label="前の写真">‹</button>
+        <button type="button" class="znav znext" id="znext" aria-label="次の写真">›</button>
+      </div>
+      <div class="zfoot"><button type="button" class="btn btn-pri" id="zsend">この写真を送る</button></div>
+    </div>
     <div class="prog" id="prog" hidden>
       <div class="label" id="plabel" aria-live="polite">送信しています…</div>
       <div class="track" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="ptrack"><div class="fill" id="pfill"></div></div>
@@ -97,16 +100,6 @@
     <p class="err" id="err" hidden></p>
     <a class="btn btn-sec resume" id="pplan" href="/plans" hidden>プランを比較する</a>
   </section>
-  <div class="zoom" id="zoom" role="dialog" aria-modal="true" aria-label="拡大表示" hidden>
-    <div class="zhead"><span id="zcount"></span><button type="button" id="zclose">閉じる</button></div>
-    <div class="zimg" id="zimg">
-      <img id="zpic" alt="" hidden>
-      <video id="zvid" controls playsinline hidden></video>
-      <button type="button" class="znav zprev" id="zprev" aria-label="前へ">‹</button>
-      <button type="button" class="znav znext" id="znext" aria-label="次へ">›</button>
-    </div>
-    <div class="zfoot"><button type="button" class="btn btn-pri" id="zsend">この写真を送る</button></div>
-  </div>
 </main>
 <script src="/static/common.js"></script>
 <script>
@@ -123,17 +116,11 @@ function fail(msg, quota) {
   document.querySelector('#drop .big').textContent = '別の写真を選ぶ';
 }
 function setPct(p) { $('pfill').style.width = p + '%'; $('ptrack').setAttribute('aria-valuenow', String(Math.round(p))); }
-// 選んだ写真・動画を一覧にし、タップした1つを拡大して選んでもらう（1つならすぐ拡大）（OS の選択画面は小さくて見比べにくいため）
-const K = TYPE === 'video'
-  ? { unit: '本', input: 'vfile', hint: 'vhint', box: 'vpickone', list: 'vcands', repick: 'vrepick', drop: on => { $('vdrop').hidden = !on; }, send: f => sendVideo(f) }
-  : { unit: '枚', input: 'file', hint: 'phint', box: 'pickone', list: 'cands', repick: 'repick', drop: on => { $('drop').style.display = on ? '' : 'none'; }, send: f => sendPhoto(f) };
-$('zsend').textContent = TYPE === 'video' ? 'この動画を送る' : 'この写真を送る';
+// 選んだ写真を一覧にし、タップした1枚を拡大して選んでもらう（1枚ならすぐ拡大）（OS の選択画面は小さくて見比べにくいため）
 let candUrls = [], candFiles = [], zi = 0, swipeX = null;
-function clearCands() { closeZoom(); candUrls.forEach(u => URL.revokeObjectURL(u)); candUrls = []; candFiles = []; $(K.list).textContent = ''; $(K.box).hidden = true; }
+function clearCands() { closeZoom(); candUrls.forEach(u => URL.revokeObjectURL(u)); candUrls = []; candFiles = []; $('cands').textContent = ''; $('pickone').hidden = true; }
 function showZoom(i) {
-  zi = i;
-  if (TYPE === 'video') { $('zvid').pause(); $('zvid').src = candUrls[i]; $('zvid').hidden = false; }
-  else { $('zpic').src = candUrls[i]; $('zpic').alt = (i + 1) + K.unit + '目'; $('zpic').hidden = false; }
+  zi = i; $('zpic').src = candUrls[i]; $('zpic').alt = (i + 1) + '枚目';
   $('zcount').textContent = (i + 1) + ' / ' + candUrls.length;
   $('zprev').disabled = i === 0; $('znext').disabled = i === candUrls.length - 1;
   if ($('zoom').hidden) { $('zoom').hidden = false; document.body.style.overflow = 'hidden'; $('zsend').focus(); }
@@ -141,15 +128,13 @@ function showZoom(i) {
 function closeZoom() {
   if ($('zoom').hidden) return;
   $('zoom').hidden = true; document.body.style.overflow = '';
-  $('zvid').pause(); $('zvid').removeAttribute('src'); $('zvid').load();
-  const b = $(K.list).children[zi]; if (b) b.focus();
+  const b = $('cands').children[zi]; if (b) b.focus();
 }
 $('zclose').addEventListener('click', closeZoom);
 $('zprev').addEventListener('click', () => showZoom(zi - 1));
 $('znext').addEventListener('click', () => showZoom(zi + 1));
-$('zsend').addEventListener('click', () => { const f = candFiles[zi]; clearCands(); K.send(f); });
-// 動画は再生バーの操作と取り違えるので、スワイプでの前後移動は写真だけ
-$('zimg').addEventListener('touchstart', e => { swipeX = TYPE === 'photo' && e.touches.length === 1 ? e.touches[0].clientX : null; }, { passive: true });
+$('zsend').addEventListener('click', () => { const f = candFiles[zi]; clearCands(); sendPhoto(f); });
+$('zimg').addEventListener('touchstart', e => { swipeX = e.touches.length === 1 ? e.touches[0].clientX : null; }, { passive: true });
 $('zimg').addEventListener('touchend', e => {
   if (swipeX === null) return;
   const dx = e.changedTouches[0].clientX - swipeX; swipeX = null;
@@ -161,25 +146,23 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'ArrowLeft' && zi > 0) showZoom(zi - 1);
   else if (e.key === 'ArrowRight' && zi < candUrls.length - 1) showZoom(zi + 1);
 });
-$(K.repick).addEventListener('click', () => { clearCands(); $(K.input).value = ''; $(K.input).click(); K.drop(true); $(K.hint).hidden = false; });
-$(K.input).addEventListener('change', () => {
-  const fs = [...$(K.input).files];
+$('repick').addEventListener('click', () => { clearCands(); $('file').value = ''; $('file').click(); $('drop').style.display = ''; $('phint').hidden = false; });
+$('file').addEventListener('change', () => {
+  const fs = [...$('file').files];
   if (!fs.length) return;
-  clearCands(); $('err').hidden = true; $('verr').hidden = true; $('vresume').hidden = true; $('vplan').hidden = true;
-  K.drop(false); $(K.hint).hidden = true; $(K.box).hidden = false;
+  clearCands(); $('err').hidden = true;
+  $('drop').style.display = 'none'; $('phint').hidden = true; $('pickone').hidden = false;
   fs.forEach((f, i) => {
-    const b = document.createElement('button'), u = URL.createObjectURL(f);
-    const m = document.createElement(TYPE === 'video' ? 'video' : 'img');
+    const b = document.createElement('button'), img = document.createElement('img'), u = URL.createObjectURL(f);
     candUrls.push(u); candFiles.push(f);
-    b.type = 'button'; b.className = 'cand'; b.setAttribute('aria-label', (i + 1) + K.unit + '目を大きく表示');
-    if (TYPE === 'video') { m.muted = true; m.playsInline = true; m.preload = 'metadata'; m.src = u + '#t=0.1'; }
-    else { m.src = u; m.alt = ''; m.decoding = 'async'; }
-    m.onerror = () => { m.remove(); b.textContent = (i + 1) + K.unit + '目'; };
-    b.append(m);
+    b.type = 'button'; b.className = 'cand'; b.setAttribute('aria-label', (i + 1) + '枚目を大きく表示');
+    img.src = u; img.alt = ''; img.decoding = 'async';
+    img.onerror = () => { img.remove(); b.textContent = (i + 1) + '枚目'; };
+    b.append(img);
     b.addEventListener('click', () => showZoom(i));
-    $(K.list).append(b);
+    $('cands').append(b);
   });
-  if (fs.length === 1) showZoom(0); else $(K.box).scrollIntoView({ block: 'start' });
+  if (fs.length === 1) showZoom(0); else $('pickone').scrollIntoView({ block: 'start' });
 });
 function sendPhoto(f) {
   $('err').hidden = true; $('phint').hidden = true;
@@ -299,8 +282,9 @@ $('vresume').addEventListener('click', async () => {
   try { cur.up = await api('/api/uploads/' + cur.up.id); } catch (e) { vfail(e.message, true); return; }
   sendParts();
 });
-async function sendVideo(f) {
-  $('vdrop').hidden = false; $('vhint').hidden = true;
+$('vfile').addEventListener('change', async () => {
+  const f = $('vfile').files[0];
+  if (!f) return;
   $('verr').hidden = true; $('vresume').hidden = true; $('vplan').hidden = true;
   if (!CFG) { try { CFG = await api('/api/config'); } catch (e) { vfail(e.message, false); return; } }
   if (CFG.video_block) { vfail(CFG.video_block, false, true); return; }
@@ -328,7 +312,7 @@ async function sendVideo(f) {
     ? '届いてから顔を選べるまで 約' + ceilMin(est.prep_per_min * dur / 60 + est.queue_sec) + '分'
       + (est.queue_count > 0 ? '（順番待ち' + est.queue_count + '件を含む）' : '') + 'です。' : '');
   sendParts();
-}
+});
 if (TYPE === 'photo') {  // 今月の写真を使いきっていたら、選ぶ前に理由と次の一歩を出す
   api('/api/config').then(c => { if (c.image_block) fail(c.image_block, true); }).catch(() => { });
 }
