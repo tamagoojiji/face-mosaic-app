@@ -46,6 +46,10 @@ FFMPEG = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
 # Mac はデコードに VideoToolbox を使う。Linux（VPS）には無いので付けない
 HWACCEL = ["-hwaccel", "videotoolbox"] if sys.platform == "darwin" else []
 FFPROBE = shutil.which("ffprobe") or "/opt/homebrew/bin/ffprobe"
+# MP4 へそのままコピーできる音声。それ以外（PCM の一部など）はコピーすると ffmpeg が最初に止まるので AAC にする
+MP4_AUDIO = ("aac", "mp3", "alac", "ac3", "eac3")
+# コピーも変換もできない音声。ffprobe の版によって iPhone の空間オーディオに名前が付かない（タグの apac だけが残る）
+NO_USE_AUDIO = ("apple_apac", "unknown", "none")
 
 # ---- video_retouch.py の値
 DETECT_LONG_SIDE = 1280
@@ -120,15 +124,21 @@ def probe(path):
         else int(float(d["format"].get("bit_rate") or 0))
 
     # iPhone の空間オーディオ（apple_apac）は mp4 へコピーできないので、一緒に入っている AAC を使う
-    audio = next((s["index"] for s in d["streams"]
-                  if s.get("codec_type") == "audio" and s.get("codec_name") != "apple_apac"), None)
+    audio = next((s for s in d["streams"] if s.get("codec_type") == "audio" and s.get("codec_tag_string") != "apac"
+                  and s.get("codec_name", "unknown") not in NO_USE_AUDIO), None)
 
     w, h = int(v["width"]), int(v["height"])
     out_w, out_h = (h, w) if rot in (90, 270) else (w, h)
     return {"width": w, "height": h, "out_width": out_w, "out_height": out_h,
             "rotation": rot, "fps": fps, "fps_str": v.get("r_frame_rate", "30/1"),
             "frames": nb, "duration": dur, "bit_rate": br, "has_b_frames": int(v.get("has_b_frames") or 0),
-            "has_audio": audio is not None, "audio_index": audio}
+            "has_audio": audio is not None, "audio_index": audio and audio["index"],
+            "audio_codec": audio and audio["codec_name"]}
+
+
+def audio_args(info):
+    """使う音声の扱い。MP4 に入る音声はコピーし、入らない音声は AAC に変換する。"""
+    return ["-c:a", "copy"] if info["audio_codec"] in MP4_AUDIO else ["-c:a", "aac", "-b:a", "192k"]
 
 
 def join_vf(*parts):
@@ -177,7 +187,7 @@ def _to_1080_cmd(path, vf, out, info):
     # LUT（RGB 化→3D LUT→YUV 戻し）を 4K60 のまま掛けると、最後に捨てる 7/8 の画素にも掛かる
     # （VPS 6 実測・4K60 HLG 30秒: LUT→縮小 299秒 / 間引き→縮小→LUT 90秒・PSNR 44dB で見た目は同じ）
     filt = join_vf("fps=30", "scale='if(gt(iw,ih),1920,-2)':'if(gt(iw,ih),-2,1920)'", vf)
-    audio = ["-map", f"0:{info['audio_index']}", "-c:a", "copy"] if info["has_audio"] else ["-an"]
+    audio = ["-map", f"0:{info['audio_index']}", *audio_args(info)] if info["has_audio"] else ["-an"]
     return [FFMPEG, "-v", "error", "-y", *HWACCEL, "-i", path, "-map", "0:v:0",
             "-vf", filt, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "16",
             "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709",
@@ -191,7 +201,13 @@ def to_1080(path, vf, out):
     自動回転を効かせると displaymatrix は出力に引き継がれず、回転情報の無い正立動画になる。"""
     if os.path.exists(out):
         return out
-    subprocess.run(_to_1080_cmd(path, vf, out, probe(path)), check=True)
+    r = subprocess.run(_to_1080_cmd(path, vf, out, probe(path)), capture_output=True, text=True, errors="replace")
+    if r.returncode != 0:
+        # ffmpeg は本当の理由を先頭に、書き込みの失敗は末尾に出すので、アラームの原文（300文字）へ両方を入れる
+        err = (r.stderr or r.stdout).strip()
+        print(err[-4000:], file=sys.stderr)
+        raise RuntimeError(f"1080p 変換に失敗 (rc={r.returncode}): "
+                           f"{err if len(err) <= 260 else err[:130] + ' … ' + err[-130:]}")
     os.replace(out + ".part.mp4", out)
     return out
 
@@ -1078,7 +1094,7 @@ def _render_split(hq, path, info, vf, boxes_of_seg, total, n_seg, out_path, enco
                 f.write("file '" + os.path.abspath(sp).replace("'", "'\\''") + "'\n")
         cmd = [FFMPEG, "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", lst]
         if info["has_audio"]:
-            cmd += ["-i", path, "-map", "0:v:0", "-map", f"1:{info['audio_index']}", "-c:a", "copy"]
+            cmd += ["-i", path, "-map", "0:v:0", "-map", f"1:{info['audio_index']}", *audio_args(info)]
         else:
             cmd += ["-map", "0:v:0"]
         cmd += ["-c:v", "copy", "-movflags", "+faststart", "-f", "mp4", out_path]
