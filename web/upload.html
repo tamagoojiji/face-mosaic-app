@@ -38,6 +38,9 @@
 .zoom .znav:disabled{display:none}
 .zoom .zprev{left:var(--s2)} .zoom .znext{right:var(--s2)}
 .zoom .zfoot{padding:var(--s3) var(--s4) var(--s4)}
+/* 途中まで送った動画: どの動画か分かるように小さな画像と名前を並べる */
+.pend{display:flex;align-items:center;gap:var(--s2)}
+.pend img{flex:none;width:56px;height:56px;object-fit:cover;border-radius:var(--radius-sm)}
 @media (prefers-reduced-motion:reduce){.fill{transition:none}}
 </style>
 </head><body>
@@ -58,11 +61,12 @@
       <span class="small" id="vlimit">1本1.5GBまで</span>
     </label>
     <p class="note" id="vest" hidden></p>
-    <p class="notice" id="vpending" hidden></p>
+    <div id="vpending" hidden></div>
     <div class="prog" id="vprog" hidden>
       <div class="label" id="vlabel" aria-live="polite">送信しています…</div>
       <div class="track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-labelledby="vlabel" id="vtrack"><div class="fill" id="vfill"></div></div>
       <p class="sub" id="vsub"></p>
+      <p class="notice">送り終わるまで、この画面を開いたままにしてください。別のアプリに移ったり画面を消したりすると送信が止まります。戻ると続きから送ります。</p>
     </div>
     <p class="err" id="verr" role="alert" hidden></p>
     <a class="btn btn-sec resume" id="vplan" href="/plans" hidden>プランを比較する</a>
@@ -190,10 +194,11 @@ function sendPhoto(f) {
 
 // ------------------------------------------------------------ 動画（8MB ごとに分割・途中から再開）
 let CFG = null, cur = null;  // cur = {file, key, up}
+let sending = false, putX = null, lastProg = 0, onVisible = null, wake = null, diag = null;
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch (e) { } },
-  del(k) { try { localStorage.removeItem(k); } catch (e) { } },
+  del(k) { try { const id = localStorage.getItem(k); if (id) localStorage.removeItem('fm_meta_' + id); localStorage.removeItem(k); } catch (e) { } },
   keys() { try { return Object.keys(localStorage).filter(k => k.startsWith('fm_up_')); } catch (e) { return []; } },
 };
 const limitText = s => s % 60 === 0 ? (s / 60) + '分' : mmss(s);
@@ -221,13 +226,63 @@ function readDuration(file) {
     v.src = url;
   });
 }
+// 途中の動画を見分けるための小さな画像（取れない端末では null のまま。送信は待たせない）
+function videoThumb(file) {
+  return new Promise(res => {
+    const v = document.createElement('video'), url = URL.createObjectURL(file);
+    let done = false;
+    const end = d => { if (done) return; done = true; v.pause(); URL.revokeObjectURL(url); res(d); };
+    v.muted = true; v.playsInline = true; v.preload = 'auto';
+    v.onloadeddata = () => { v.pause(); v.currentTime = Math.min(1, (v.duration || 0) / 2); };
+    v.onseeked = () => {
+      try {
+        const c = document.createElement('canvas'), r = 112 / Math.max(v.videoWidth, v.videoHeight);
+        c.width = Math.round(v.videoWidth * r); c.height = Math.round(v.videoHeight * r);
+        c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+        end(c.toDataURL('image/jpeg', 0.6));
+      } catch (e) { end(null); }
+    };
+    v.onerror = () => end(null);
+    setTimeout(() => end(null), 5000);
+    v.src = url;
+    v.play().catch(() => { });
+  });
+}
+function saveMeta(file, id, dur) {
+  const k = 'fm_meta_' + id, m = { name: file.name, dur };
+  if (store.get(k)) return;
+  store.set(k, JSON.stringify(m));
+  videoThumb(file).then(thumb => { if (thumb && store.get(k)) store.set(k, JSON.stringify({ ...m, thumb })); });
+}
+// 送信中は画面を消さない（電源ボタンやアプリの切り替えは防げない。裏に回ると解除されるので戻ったら取り直す）
+function keepAwake() {
+  if (!('wakeLock' in navigator)) { diag.wake = 'none'; return; }
+  navigator.wakeLock.request('screen').then(l => {
+    if (sending) { wake = l; diag.wake = 'on'; } else l.release();
+  }).catch(() => { diag.wake = 'fail'; });
+}
+// 送信の計測（どこで遅い・止まったかの切り分け用）。分割ごとの時間と画面の状態だけを送る
+function diagSend() {
+  if (!cur || !diag) return;
+  fetch('/api/uploads/' + cur.up.id + '/diag', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(diag) }).catch(() => { });
+}
+document.addEventListener('visibilitychange', () => {
+  if (sending && diag.events.length < 100) diag.events.push([Math.round((Date.now() - diag.t0) / 1000), document.hidden ? 'hidden' : 'visible']);
+  if (document.hidden) { if (sending) diagSend(); return; }
+  if (onVisible) { onVisible(); onVisible = null; }
+  if (sending) {  // 裏に回っている間に止まった通信は、エラーも出ないことがあるので送り直す
+    keepAwake(); diagSend();
+    if (putX && Date.now() - lastProg > 5000) putX.abort();
+  } else if (cur && !$('vresume').hidden) $('vresume').click();
+});
 function putPart(id, n, blob, onprog) {
   return new Promise((res, rej) => {
     const x = new XMLHttpRequest();
+    putX = x; lastProg = Date.now();
     x.open('PUT', '/api/uploads/' + id + '/parts/' + n);
     x.setRequestHeader('Content-Type', 'application/octet-stream');
     x.timeout = 120000;
-    x.upload.onprogress = e => { if (e.lengthComputable) onprog(e.loaded); };
+    x.upload.onprogress = e => { lastProg = Date.now(); if (e.lengthComputable) onprog(e.loaded); };
     x.onload = () => {
       if (x.status === 401) { location.href = '/'; return; }
       if (x.status === 200) { res(); return; }
@@ -235,11 +290,22 @@ function putPart(id, n, blob, onprog) {
       const err = new Error((j && j.detail) || '送信に失敗しました'); err.status = x.status; rej(err);
     };
     x.onerror = x.ontimeout = () => { const e = new Error('通信が切れました'); e.status = 0; rej(e); };
+    x.onabort = () => { const e = new Error('送り直します'); e.status = 0; e.aborted = true; rej(e); };
     x.send(blob);
   });
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function sendParts() {
+  if (sending) return;
+  sending = true;
+  diag = diag || { t0: Date.now(), parts: [], retries: 0, events: [], wake: null, net: (navigator.connection || {}).effectiveType || null };
+  keepAwake();
+  try { await sendAll(); } finally {
+    sending = false; putX = null;
+    if (wake) { wake.release().catch(() => { }); wake = null; }
+  }
+}
+async function sendAll() {
   const { file, up, key } = cur;
   $('verr').hidden = true; $('vresume').hidden = true; $('vprog').hidden = false; $('vdrop').hidden = true; $('vpending').hidden = true;
   const got = new Set(up.received);
@@ -255,15 +321,20 @@ async function sendParts() {
     const blob = file.slice(n * up.part_size, Math.min(up.bytes, (n + 1) * up.part_size));
     let ok = false;
     for (let t = 0; t < 4 && !ok; t++) {
-      try { await putPart(up.id, n, blob, show); ok = true; }
+      const t0 = Date.now();
+      try { await putPart(up.id, n, blob, show); ok = true; diag.parts.push([n, Date.now() - t0]); }
       catch (e) {
         if (e.status === 409 || e.status === 410 || e.status === 404 || e.status === 402) { store.del(key); vfail(e.message, false, e.status === 402); return; }
+        diag.retries++;
+        if (e.aborted) { t--; continue; }
+        if (document.hidden) { await new Promise(r => { onVisible = r; }); t--; continue; }
         if (t < 3) { $('vsub').textContent = '通信が不安定です。もう一度送っています…'; await sleep(2000 * (t + 1)); }
       }
     }
     if (!ok) { vfail('通信が切れました。電波のよい場所で「途中から再開」を押してください', true); return; }
     got.add(n); doneBytes += blob.size; show(0);
   }
+  diagSend();
   vpct(100, '届きました。受け取りを確認しています…', '');
   try {
     const j = await api('/api/uploads/' + up.id + '/complete', { method: 'POST' });
@@ -306,7 +377,8 @@ $('vfile').addEventListener('change', async () => {
     } catch (e) { vfail(e.message, false, e.status === 402); return; }
     store.set(key, up.id);
   }
-  cur = { file: f, key, up };
+  cur = { file: f, key, up }; diag = null;
+  saveMeta(f, up.id, dur);
   const est = CFG.est;
   $('vlead').textContent = (dur ? mmss(dur) + '・' : '') + mb(f.size) + ' の動画を送ります。' + (est && dur
     ? '届いてから顔を選べるまで 約' + ceilMin(est.prep_per_min * dur / 60 + est.queue_sec) + '分'
@@ -338,7 +410,15 @@ if (TYPE === 'video') {
       try {
         const u = await api('/api/uploads/' + store.get(k));
         if (u.status !== 'uploading') { store.del(k); continue; }
-        $('vpending').textContent = '途中まで送った動画があります（' + Math.floor(u.received.length / u.parts * 100) + '%）。同じ動画をもう一度選ぶと、続きから送ります。';
+        let m = {};
+        try { m = JSON.parse(store.get('fm_meta_' + u.id)) || {}; } catch (e) { }
+        const row = document.createElement('p'), txt = document.createElement('span');
+        row.className = 'notice pend';
+        if (m.thumb) { const img = document.createElement('img'); img.src = m.thumb; img.alt = ''; row.append(img); }
+        txt.textContent = '途中まで送った動画があります（' + Math.floor(u.received.length / u.parts * 100) + '%）: '
+          + (m.name || k.slice(6).replace(/_\d+_\d+$/, '')) + '・' + (m.dur ? mmss(m.dur) + '・' : '') + mb(u.bytes) + '。同じ動画をもう一度選ぶと、続きから送ります。';
+        row.append(txt);
+        $('vpending').append(row);
         $('vpending').hidden = false;
       } catch (e) { store.del(k); }
     }

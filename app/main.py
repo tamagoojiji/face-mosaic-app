@@ -977,6 +977,17 @@ async def put_part(request: Request, job_id: str, n: int):
     return JSONResponse({"ok": True, "n": n}, headers=NO_STORE)
 
 
+@app.post("/api/uploads/{job_id}/diag")
+async def upload_diag(request: Request, job_id: str):
+    # 送信の計測（どこで遅い・止まったかの切り分け用）。分割ごとの時間と画面の状態だけをログへ残す
+    require_api(request)
+    _video(request, job_id)
+    b = await _json_body(request)
+    keep = {k: b.get(k) for k in ("parts", "retries", "events", "wake", "net")}
+    log.info("upload 計測 %s %s", job_id, json.dumps(keep, ensure_ascii=False)[:8000])
+    return JSONResponse({"ok": True}, headers=NO_STORE)
+
+
 @app.post("/api/uploads/{job_id}/complete")
 async def complete_upload(request: Request, job_id: str):
     u = require_api(request)

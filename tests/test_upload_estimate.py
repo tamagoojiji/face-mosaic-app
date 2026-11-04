@@ -1,6 +1,7 @@
 """送る画面の処理時間の目安（/api/config の est）。"""
 
 import os
+import secrets
 import sys
 import tempfile
 import time
@@ -77,3 +78,30 @@ def test_est_none_on_error(client, monkeypatch):
     r = c.get("/api/config")
     assert r.status_code == 200
     assert r.json()["est"] is None
+
+
+@pytest.fixture
+def upload_job_id():
+    jid = secrets.token_urlsafe(9)
+    yield jid
+    with db.connect() as con:
+        con.execute("DELETE FROM jobs WHERE id=?", (jid,))
+
+
+def test_upload_diag_logs_only_known_fields(client, upload_job_id, caplog):
+    c, u = client
+    db.insert_job(upload_job_id, kind="video", status="uploading", user_id=u["id"], bytes=100, expires_at=time.time() + 3600)
+    with caplog.at_level("INFO"):
+        r = c.post(f"/api/uploads/{upload_job_id}/diag",
+                   json={"parts": [[0, 3200]], "retries": 1, "events": [[12, "hidden"]], "wake": "on", "net": None, "x": "捨てる"})
+    assert r.status_code == 200, r.text
+    line = next(m for m in caplog.messages if "upload 計測" in m)
+    assert "3200" in line and "hidden" in line and "捨てる" not in line
+
+
+def test_upload_diag_needs_owner(client, upload_job_id):
+    c, _ = client
+    other = db.create_user(line_user_id=f"Uother-{time.time()}", display_name="別")
+    db.insert_job(upload_job_id, kind="video", status="uploading", user_id=other["id"], bytes=100, expires_at=time.time() + 3600)
+    ok = c.post(f"/api/uploads/{upload_job_id}/diag", json={"parts": []})
+    assert ok.status_code in (403, 404), ok.text
