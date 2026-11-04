@@ -119,3 +119,25 @@ def test_render_segments_boxes_use_absolute_frame(src30, tmp_path, monkeypatch):
             for f in (b1 - 2, b1 - 1, b1, b1 + 1)}
     assert diff[b1 - 1] > 15 and diff[b1] > 15, diff
     assert diff[b1 - 2] < 5 and diff[b1 + 1] < 5, diff
+
+
+def _fake_probe(monkeypatch, audio_codecs):
+    streams = [{"index": 0, "codec_type": "video", "width": 64, "height": 64, "r_frame_rate": "30/1", "duration": "1"}]
+    streams += [{"index": i + 1, "codec_type": "audio", "codec_name": c} for i, c in enumerate(audio_codecs)]
+    out = json.dumps({"streams": streams, "format": {"duration": "1"}})
+    monkeypatch.setattr(video.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, out, ""))
+    return video.probe("x.mov")
+
+
+def test_spatial_audio_is_skipped_for_aac(monkeypatch):
+    # iPhone の元動画: 先頭の音声が空間オーディオ（mp4 へコピーできず解析が失敗していた）
+    info = _fake_probe(monkeypatch, ["apple_apac", "aac"])
+    assert info["has_audio"] and info["audio_index"] == 2
+    cmd = video._to_1080_cmd("x.mov", "", "o", info)
+    assert cmd[cmd.index("-map", cmd.index("-map") + 1) + 1] == "0:2"
+
+
+def test_only_spatial_audio_means_no_audio(monkeypatch):
+    info = _fake_probe(monkeypatch, ["apple_apac"])
+    assert not info["has_audio"]
+    assert "-an" in video._to_1080_cmd("x.mov", "", "o", info)
