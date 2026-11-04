@@ -89,7 +89,6 @@ KEEP_MIN_FRAC = 0.042
 COSTUME_CLOTH = 0.50
 COSTUME_MIN_FRAC = 0.07
 COSTUME_MIN_SEEN = 4
-REVIEW_MIN_FRAC = 0.0625
 REVIEW_THUMB = 200
 FEAT_VER = f"w{FEAT_W}-s{SAMPLES}-torso0.6"
 
@@ -766,15 +765,16 @@ def _thumb_range(hwaccel, path, vf, fw, fh, k, fps_str, a, b, need, out_dir):
 
 
 def make_thumbs(path, info, vf, tracks, dw, out_dir):
-    """確認画面に出る可能性のある顔（conf 0.40 以上・高さ短辺 4.2% 以上）の切り抜きを作る。
+    """確認画面に出る可能性のある顔（conf 0.40 以上か、書き出しでモザイクがかかる顔）の切り抜きを作る。
 
     切り抜くフレーム（conf 最大）と範囲（顔の2倍・200px）は build_review と同じ。
     THUMB_WORKERS 個のコマ範囲に分けて別プロセスで同時に読む（1 範囲あたり最低 SEG_MIN_FRAMES コマ）。
     """
     os.makedirs(out_dir, exist_ok=True)
     short = min(dw, dh_of(info, dw))
-    rows = [t for t in tracks if t["med_conf"] >= BLUR_MIN_CONF
-            and t["med_h"] >= min(REVIEW_MIN_FRAC, KEEP_MIN_FRAC) * short]
+    cls = [dict(t) for t in tracks]
+    classify_tracks_global(cls, short, "background", FACE_KEEP_RATIO, FACE_MIN_FRAC)
+    rows = [t for t in cls if t["med_conf"] >= BLUR_MIN_CONF or t.get("action") == "blur"]
     need = {}
     for t in rows:
         bx = boxes_of(t)
@@ -825,10 +825,12 @@ def make_thumbs(path, info, vf, tracks, dw, out_dir):
 
 
 def review_lists(info, tracks, keep, dw):
-    """build_review と同じ「モザイクをかける予定」「かけない予定」の一覧。"""
+    """「モザイクをかける予定」「かけない予定」の一覧。モザイクは書き出しと同じ分類で、かかる顔をすべて出す。"""
     short = min(dw, dh_of(info, dw))
-    cand = [t for t in tracks if t["id"] not in keep and t["med_conf"] >= BLUR_MIN_CONF
-            and t["med_h"] >= REVIEW_MIN_FRAC * short and len(t["boxes"]) >= 2]
+    cls = [dict(t) for t in tracks]
+    classify_tracks_global(cls, short, "background", FACE_KEEP_RATIO, FACE_MIN_FRAC)
+    cand = [t for t in cls if t["id"] not in keep and len(t["boxes"]) >= BLUR_MIN_SEEN
+            and (t["med_conf"] >= BLUR_MIN_CONF or t.get("action") == "blur")]
     kept = [t for t in tracks if t["id"] in keep and t["med_h"] >= KEEP_MIN_FRAC * short]
     fps = info["fps"]
 
