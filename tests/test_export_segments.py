@@ -129,9 +129,10 @@ def _fake_probe(monkeypatch, audio_codecs):
     return video.probe("x.mov")
 
 
-def test_spatial_audio_is_skipped_for_aac(monkeypatch):
+@pytest.mark.parametrize("spatial", ["apple_apac", "unknown", None])  # ffmpeg 7.1 は unknown
+def test_spatial_audio_is_skipped_for_aac(monkeypatch, spatial):
     # iPhone の元動画: 先頭の音声が空間オーディオ（mp4 へコピーできず解析が失敗していた）
-    info = _fake_probe(monkeypatch, ["apple_apac", "aac"])
+    info = _fake_probe(monkeypatch, [spatial, "aac"])
     assert info["has_audio"] and info["audio_index"] == 2
     cmd = video._to_1080_cmd("x.mov", "", "o", info)
     assert cmd[cmd.index("-map", cmd.index("-map") + 1) + 1] == "0:2"

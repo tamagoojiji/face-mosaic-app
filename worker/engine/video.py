@@ -44,6 +44,7 @@ SFACE_PATH = os.path.join(MODELS, "sface.onnx")
 
 FFMPEG = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
 # Mac はデコードに VideoToolbox を使う。Linux（VPS）には無いので付けない
+MP4_AUDIO = {"aac", "mp3", "alac", "ac3", "eac3", "opus", "flac"}  # mp4 へそのままコピーできる音声
 HWACCEL = ["-hwaccel", "videotoolbox"] if sys.platform == "darwin" else []
 FFPROBE = shutil.which("ffprobe") or "/opt/homebrew/bin/ffprobe"
 
@@ -119,9 +120,9 @@ def probe(path):
     br = int(v["bit_rate"]) if str(v.get("bit_rate") or "").isdigit() \
         else int(float(d["format"].get("bit_rate") or 0))
 
-    # iPhone の空間オーディオ（apple_apac）は mp4 へコピーできないので、一緒に入っている AAC を使う
+    # iPhone の空間オーディオは mp4 へコピーできない（ffmpeg 7.1 では形式名も unknown になる）ので、一緒に入っている AAC を使う
     audio = next((s["index"] for s in d["streams"]
-                  if s.get("codec_type") == "audio" and s.get("codec_name") != "apple_apac"), None)
+                  if s.get("codec_type") == "audio" and s.get("codec_name") in MP4_AUDIO), None)
 
     w, h = int(v["width"]), int(v["height"])
     out_w, out_h = (h, w) if rot in (90, 270) else (w, h)
