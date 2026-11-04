@@ -53,13 +53,13 @@
     <h1>動画を1本選んでください</h1>
     <p class="lead" id="vlead">選んだ動画を大きく表示します。「この動画を送る」で送信し、届いたら顔を探して、残したい人を選べるようにします。</p>
     <label class="drop" id="vdrop">
-      <input type="file" id="vfile" accept="video/*" multiple>
+      <input type="file" id="vfile" accept="video/*">
       <span class="big" id="vbig">動画を選ぶ</span>
       <span class="small" id="vlimit">1本1.5GBまで</span>
     </label>
-    <p class="note" id="vhint">似た動画で迷うときは、候補をまとめて選ぶと、次の画面で1本ずつ大きく再生して選べます。</p>
+    <p class="note" id="vhint">選ぶと次の画面で大きく再生して確認できます。</p>
     <div id="vpickone" hidden>
-      <p class="notice">動画を押すと大きく表示します。送る1本を選んでください。</p>
+      <p class="notice">動画を押すと大きく表示します。</p>
       <div class="cands" id="vcands"></div>
       <button type="button" class="btn btn-ter resume" id="vrepick">選び直す</button>
     </div>
