@@ -25,6 +25,10 @@ h1{margin-top:var(--s4)}
 .t .cap b{color:var(--warn-tag)}
 .t.k{border-color:var(--keep)}
 .t.k .cap b{color:var(--keep-ink)}
+#sm{margin:0 0 var(--s3);border:1px solid var(--line);border-radius:var(--radius-sm)}
+#sm summary{display:flex;align-items:center;min-height:48px;padding:var(--s1) var(--s3);font-weight:600;cursor:pointer}
+#sm .help{margin:0 var(--s3) var(--s2)}
+#sm .grid{padding:0 var(--s2) var(--s2)}
 .empty{grid-column:1/-1;background:var(--surface);border-radius:var(--radius-sm);color:var(--sub);font-size:14px;padding:var(--s3) var(--s4);margin:0}
 .repick{margin:var(--s5) 0 0}
 .seg.q{grid-template-columns:1fr}
@@ -70,6 +74,11 @@ h1{margin-top:var(--s4)}
   </div>
   <section role="tabpanel" id="pb" aria-labelledby="tb">
     <p class="help">モザイクが不要なもの（ダンサー・キャラクター・風船・手や靴など）をタップしてください。</p>
+    <details id="sm" hidden>
+      <summary id="smt"></summary>
+      <p class="help">これらの顔にもモザイクがかかります。モザイクが不要なものがあればタップしてください。</p>
+      <div class="grid" id="gs"></div>
+    </details>
     <div class="grid" id="gb"></div>
   </section>
   <section role="tabpanel" id="pk" aria-labelledby="tk" hidden>
@@ -97,10 +106,13 @@ const wantHq = () => CHOICE ? document.querySelector('input[name=q]:checked').va
 const goLabel = () => wantHq() ? '元の画質で書き出す' : '1080p で書き出す';
 
 function render() {
-  const b = ITEMS.filter(it => !KEEP.has(it.id)), k = ITEMS.filter(it => KEEP.has(it.id));
-  $('nb').textContent = b.length + '件'; $('nk').textContent = k.length + '件';
-  $('cm').textContent = 'モザイク ' + b.length + ' 件'; $('ck').textContent = 'かけない ' + k.length + ' 件';
+  const all = ITEMS.filter(it => !KEEP.has(it.id)), b = all.filter(it => !it.small), s = all.filter(it => it.small), k = ITEMS.filter(it => KEEP.has(it.id));
+  const far = s.length ? '＋遠く ' + s.length : '';
+  $('nb').textContent = b.length + '件' + far.replace(' ', ''); $('nk').textContent = k.length + '件';
+  $('cm').textContent = 'モザイク ' + b.length + far + ' 件'; $('ck').textContent = 'かけない ' + k.length + ' 件';
+  $('sm').hidden = !s.length; $('smt').textContent = '遠くの小さい顔 ' + s.length + '件（開くと確認できます）';
   fill($('gb'), b, false); fill($('gk'), k, true);
+  if ($('sm').open) fill($('gs'), s, false);
   $('undo').disabled = !HIST.length;
 }
 function fill(el, items, kept) {
@@ -120,18 +132,19 @@ function fill(el, items, kept) {
     cap.append(lb, s); t.append(im, cap);
     t.onclick = () => {
       kept ? KEEP.delete(it.id) : KEEP.add(it.id);
-      HIST.push(it.id);
+      HIST.push(it);
       render(); toast(kept ? '「モザイクをかける予定」に移しました' : '「かけない予定」に移しました');
     };
     return t;
   }));
 }
 $('undo').onclick = () => {
-  const x = HIST.pop();
+  const x = HIST.pop().id;
   const back = KEEP.has(x);
   back ? KEEP.delete(x) : KEEP.add(x);
   render(); toast(back ? '1つ戻して「モザイクをかける予定」に戻しました' : '1つ戻して「かけない予定」に戻しました');
 };
+$('sm').addEventListener('toggle', render);
 function toast(msg) {
   const t = $('toast'); t.textContent = msg; t.style.bottom = ($('ft').offsetHeight + 12) + 'px'; t.classList.add('show');
   clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1600);
@@ -157,7 +170,7 @@ new ResizeObserver(fit).observe($('ft'));
   if (!['awaiting_review', 'done'].includes(j.status) || !j.review) { location.replace('/status/' + id); return; }
   if (j.idle_warn) { $('warn').textContent = idleWarnText(j); $('warn').hidden = false; }
   if (j.status === 'awaiting_review') { $('repick').href = '/pick/' + id; $('repick').hidden = false; }
-  ITEMS = [...j.review.blur, ...j.review.keep];
+  ITEMS = [...j.review.blur, ...j.review.keep].map(it => ({ ...it, ids: it.ids || [it.id] }));
   KEEP = new Set(ITEMS.filter(it => j.keep.includes(it.id)).map(it => it.id));
   document.querySelector('input[name=st][value=' + (j.style === 'blur' ? 'blur' : 'pixel') + ']').checked = true;
   // 画質: 高画質で書き出せる（オプション＋元動画あり）かつ元動画が 1080p30 より重いときだけ 2 択
@@ -187,7 +200,7 @@ new ResizeObserver(fit).observe($('ft'));
 
 $('go').onclick = async () => {
   const go = $('go'); go.disabled = true; go.textContent = '書き出しを受け付けています…'; $('ferr').hidden = true;
-  const body = { keep: ITEMS.filter(it => KEEP.has(it.id)).map(it => it.id), blur: ITEMS.filter(it => !KEEP.has(it.id)).map(it => it.id),
+  const body = { keep: ITEMS.filter(it => KEEP.has(it.id)).flatMap(it => it.ids), blur: ITEMS.filter(it => !KEEP.has(it.id)).flatMap(it => it.ids),
     style: style(), hq: wantHq() };
   try {
     await api('/api/jobs/' + id + '/review', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

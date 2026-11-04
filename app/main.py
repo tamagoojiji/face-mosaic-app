@@ -1067,7 +1067,7 @@ async def video_picks(request: Request, job_id: str):
         tracks, dw, dh, _seen = vengine.load_tracks(p["tracks"])
         face_m, cloth_m = vengine.load_feats(p["feats"]) if use_feats else ({}, {})
         keep, blur = vengine.decide(tracks, picks, face_m, cloth_m, min(dw, dh))
-        lists = vengine.review_lists(vengine.probe(p["v1080"]), tracks, keep, dw)
+        lists = vengine.review_lists(vengine.probe(p["v1080"]), tracks, keep, dw, face_m)
         return keep, blur, lists
 
     try:
@@ -1102,7 +1102,7 @@ async def video_review(request: Request, job_id: str):
     rv = _read_json(os.path.join(p["dir"], "review.json"))
     if not rv or not os.path.exists(p["v1080"]):
         raise HTTPException(410, "解析結果が削除されています。もう一度送ってください")
-    shown = {it["id"] for it in rv["lists"]["blur"] + rv["lists"]["keep"]}
+    shown = {i for it in rv["lists"]["blur"] + rv["lists"]["keep"] for i in it.get("ids", [it["id"]])}
     keep_ids &= shown
     blur_ids = (blur_ids & shown) - keep_ids
     keep = (set(rv["auto_keep"]) - blur_ids) | keep_ids

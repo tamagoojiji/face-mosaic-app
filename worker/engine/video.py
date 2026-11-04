@@ -91,6 +91,10 @@ COSTUME_CLOTH = 0.50
 COSTUME_MIN_FRAC = 0.07
 COSTUME_MIN_SEEN = 4
 REVIEW_THUMB = 200
+REVIEW_JOIN_GAP = 15     # 確認画面で断片をつなぐ条件: 途切れてから 15 コマ以内
+REVIEW_JOIN_DIST = 1.5   # 顔の高さの 1.5 倍以内の位置
+REVIEW_JOIN_SIZE = 1.5   # 大きさの差が 1.5 倍以内
+REVIEW_JOIN_FACE = 0.6   # 顔の特徴の似かた（cos）がこれ以上
 FEAT_VER = f"w{FEAT_W}-s{SAMPLES}-torso0.6"
 
 
@@ -830,8 +834,53 @@ def make_thumbs(path, info, vf, tracks, dw, out_dir):
     return len(rows)
 
 
-def review_lists(info, tracks, keep, dw):
-    """「モザイクをかける予定」「かけない予定」の一覧。モザイクは書き出しと同じ分類で、かかる顔をすべて出す。"""
+def _face_cos(a, b):
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-9))
+
+
+def join_fragments(ts, face_m):
+    """追跡が途切れた同じ人の断片を確認画面の1件にまとめる（見せ方だけ。書き出しは断片ごとのまま）。
+    別の人が混ざると「かけない」で2人とも外れるので、すぐ後に続けて現れ・近くて・大きさが同じで・顔も似ている
+    ものだけを1対1でつなぐ（位置だけでは隣の人が混ざった。顔の特徴が無ければつながない）。戻り値は断片のリストのリスト。"""
+    ts = sorted(ts, key=lambda t: min(boxes_of(t)))
+    bx = [boxes_of(t) for t in ts]
+    frames = [sorted(x) for x in bx]
+    nxt, taken = {}, set()
+    for i, a in enumerate(ts):
+        la = bx[i][frames[i][-1]]
+        best, bd = None, None
+        for j in range(i + 1, len(ts)):
+            b = ts[j]
+            if frames[j][0] - frames[i][-1] > REVIEW_JOIN_GAP:
+                break
+            if j in taken or frames[j][0] <= frames[i][-1]:
+                continue
+            if max(a["med_h"], b["med_h"]) > REVIEW_JOIN_SIZE * min(a["med_h"], b["med_h"]):
+                continue
+            if a["id"] not in face_m or b["id"] not in face_m or _face_cos(face_m[a["id"]], face_m[b["id"]]) < REVIEW_JOIN_FACE:
+                continue
+            fb = bx[j][frames[j][0]]
+            d = math.hypot(la["x"] + la["w"] / 2 - fb["x"] - fb["w"] / 2, la["y"] + la["h"] / 2 - fb["y"] - fb["h"] / 2)
+            if d <= REVIEW_JOIN_DIST * max(a["med_h"], b["med_h"]) and (bd is None or d < bd):
+                best, bd = j, d
+        if best is not None:
+            nxt[i] = best
+            taken.add(best)
+    out = []
+    for i in range(len(ts)):
+        if i in taken:
+            continue
+        g = [ts[i]]
+        while i in nxt:
+            i = nxt[i]
+            g.append(ts[i])
+        out.append(g)
+    return out
+
+
+def review_lists(info, tracks, keep, dw, face_m=None):
+    """「モザイクをかける予定」「かけない予定」の一覧。モザイクは書き出しと同じ分類で、かかる顔をすべて出す。
+    途切れた断片は1件にまとめ（ids）、遠くの小さい顔には small を付ける（画面でたたんで見せる）。"""
     short = min(dw, dh_of(info, dw))
     cls = [dict(t) for t in tracks]
     classify_tracks_global(cls, short, "background", FACE_KEEP_RATIO, FACE_MIN_FRAC)
@@ -839,11 +888,16 @@ def review_lists(info, tracks, keep, dw):
             and (t["med_conf"] >= BLUR_MIN_CONF or t.get("action") == "blur")]
     kept = [t for t in tracks if t["id"] in keep and t["med_h"] >= KEEP_MIN_FRAC * short]
     fps = info["fps"]
+    min_h = FACE_MIN_FRAC * short
 
-    def item(t):
-        return {"id": t["id"], "sec": round(t["first_frame"] / fps, 1)}
-    return {"blur": [item(t) for t in sorted(cand, key=lambda t: t["first_frame"])],
-            "keep": [item(t) for t in sorted(kept, key=lambda t: t["first_frame"])]}
+    def item(g, small=False):
+        rep = max(g, key=lambda t: t["med_h"])  # 切り抜きは大きく写った断片のもの
+        return {"id": rep["id"], "ids": sorted(t["id"] for t in g), "sec": round(min(t["first_frame"] for t in g) / fps, 1),
+                "small": small}
+    groups = [(g, False) for g in join_fragments([t for t in cand if t["med_h"] >= min_h], face_m or {})]
+    groups += [(g, True) for g in join_fragments([t for t in cand if t["med_h"] < min_h], face_m or {})]
+    return {"blur": sorted((item(g, s) for g, s in groups), key=lambda i: i["sec"]),
+            "keep": [item([t]) for t in sorted(kept, key=lambda t: t["first_frame"])]}
 
 
 # ---------------------------------------------------------------- 書き出し（video_retouch.py）

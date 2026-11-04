@@ -6,6 +6,8 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+import numpy as np  # noqa: E402
+
 from worker.engine import video as v  # noqa: E402
 
 INFO = {"out_width": 720, "out_height": 1280, "fps": 30.0}
@@ -42,3 +44,41 @@ def test_list_matches_export_when_all_faces_are_small():
 def test_kept_face_is_not_in_blur_list():
     lists = v.review_lists(INFO, [track(0, 200), track(1, 15)], {1}, 720)
     assert 1 not in {i["id"] for i in lists["blur"]}
+
+
+SAME = {i: np.array([1.0, 0.0]) for i in range(5)}  # 全員同じ顔の特徴
+
+
+def frag(tid, first, n, x=100.0, h=60.0):
+    box = {"x": x, "y": 100.0, "w": h, "h": h}
+    return {"id": tid, "first_frame": first, "boxes": {first + i: dict(box) for i in range(n)},
+            "med_h": h, "med_conf": 0.8, "med_box": box}
+
+
+def test_fragments_of_one_person_become_one_item():
+    lists = v.review_lists(INFO, [frag(0, 0, 5), frag(1, 10, 5), frag(2, 200, 5)], set(), 720, SAME)
+    assert [i["ids"] for i in lists["blur"]] == [[0, 1], [2]]
+
+
+def test_far_or_overlapping_or_other_size_are_not_joined():
+    ts = [frag(0, 0, 5), frag(1, 8, 5, x=400.0), frag(2, 2, 5, x=104.0), frag(3, 8, 5, x=100.0, h=120.0)]
+    assert sorted(len(i["ids"]) for i in v.review_lists(INFO, ts, set(), 720, SAME)["blur"]) == [1, 1, 1, 1]
+
+
+def test_different_face_or_no_feature_is_not_joined():
+    ts = [frag(0, 0, 5), frag(1, 10, 5)]
+    other = {0: np.array([1.0, 0.0]), 1: np.array([0.0, 1.0])}
+    assert len(v.review_lists(INFO, ts, set(), 720, other)["blur"]) == 2
+    assert len(v.review_lists(INFO, ts, set(), 720)["blur"]) == 2
+
+
+def test_one_fragment_joins_only_the_nearest_next():
+    ts = [frag(0, 0, 5), frag(1, 8, 5, x=110.0), frag(2, 8, 5, x=130.0)]
+    assert [i["ids"] for i in v.review_lists(INFO, ts, set(), 720, SAME)["blur"]] == [[0, 1], [2]]
+
+
+def test_small_faces_are_marked_and_every_id_stays():
+    ts = [frag(0, 0, 5), frag(1, 10, 3, x=300.0, h=15.0), frag(2, 100, 3, x=500.0, h=15.0)]
+    blur = v.review_lists(INFO, ts, set(), 720)["blur"]
+    assert {i for it in blur for i in it["ids"]} == {0, 1, 2}
+    assert [it["small"] for it in blur] == [False, True, True]
