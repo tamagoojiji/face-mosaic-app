@@ -86,7 +86,7 @@
 - 対象: 持ち主が `users.hq=1` かつ plan が動画A/B で、元動画が残っているジョブ。確認画面の「この内容で書き出す」の時点で `jobs.hq_export` を決め、worker はそれを見て元動画から書き出す。それ以外（hq=0・画像のみ・無料）は従来の 1080p 書き出しのまま（コードも結果も変えていない）
 - 座標: tracks.json の枠（解析サイズ）× `1080p版の幅/解析の幅` × `元の幅/1080p版の幅`（縦横それぞれ・自動回転後の寸法）。判定（keep/blur・補間・途切れ後の保持・keep の顔の上の補間枠を外す）は 1080p と同じ `filled_track_boxes` を使う
 - 時間: 元のコマ j の時刻 j/元fps を 1080p 版のコマ位置（×30）に直し、前後のコマの枠を時刻で線形補間。片側しか無いトラックの端はある方の枠をそのまま使う
-- 書き出し: ffmpeg で元動画をデコード（自動回転・HLG は hdr_sdr と同じ LUT で SDR・`-fps_mode cfr -r 元fps`）→ 1コマずつ Python で `mosaic_face` → libx264 `-crf 18 -preset veryfast -threads 3 -rc-lookahead 10 -pix_fmt yuv420p`（デコーダは `-threads 2`）・音声はコピー・`+faststart` → `out.tmp.mp4` → 成功時に `out.mp4`
+- 書き出し: ffmpeg で元動画をデコード（自動回転・HLG は hdr_sdr と同じ LUT で SDR・`-fps_mode cfr -r 元fps`）→ 1コマずつ Python で `mosaic_face` → libx264 `-crf 18 -preset veryfast -threads 3 -rc-lookahead 10 -pix_fmt yuv420p`（デコーダは `-threads 2`）・音声はコピー（MP4 に入らない音声は AAC に変換）・`+faststart` → `out.tmp.mp4` → 成功時に `out.mp4`
 - 元動画: 高画質で書き出したときは完成後も保持し、選び直しも高画質で書き出す（24時間の期限で消える）。1080p で書き出したときは従来どおり完成時に消す
 - 画面: 確認画面に「画質」の2択（1080p／元の画質＝{幅}×{高さ}・{fps}fps）と、それぞれの書き出しの見込み。2択は高画質で書き出せて元動画が長辺1920超か31fps以上のときだけ（既定は元の画質）。それ以外は見込み1行（オプションなしは高画質オプションへの案内つき）。送った `hq` は高画質で書き出せる人だけ尊重。見込みは同じ処理の版（`jobs.engine_ver`＝`video.ENGINE_VER`）の実測中央値で、高画質は負荷係数（幅×高さ×fps÷4K60、0.05〜1.5）で 4K60 換算→このジョブの係数を掛ける。実測が無ければ 4K60 の本番実測（2026-10-29）。処理中の目安も選んだ画質の値。完成画面に「画質：元の解像度（2160×3840・60fps）」。完成品の幅・高さ・fps は `jobs.out_width/out_height/out_fps` に記録
 

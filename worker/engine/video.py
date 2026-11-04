@@ -46,6 +46,8 @@ FFMPEG = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
 # Mac はデコードに VideoToolbox を使う。Linux（VPS）には無いので付けない
 HWACCEL = ["-hwaccel", "videotoolbox"] if sys.platform == "darwin" else []
 FFPROBE = shutil.which("ffprobe") or "/opt/homebrew/bin/ffprobe"
+# MP4 へそのままコピーできる音声。それ以外（PCM の一部など）はコピーすると ffmpeg が最初に止まるので AAC にする
+MP4_AUDIO = ("aac", "mp3", "alac", "ac3", "eac3")
 
 # ---- video_retouch.py の値
 DETECT_LONG_SIDE = 1280
@@ -124,7 +126,15 @@ def probe(path):
     return {"width": w, "height": h, "out_width": out_w, "out_height": out_h,
             "rotation": rot, "fps": fps, "fps_str": v.get("r_frame_rate", "30/1"),
             "frames": nb, "duration": dur, "bit_rate": br, "has_b_frames": int(v.get("has_b_frames") or 0),
-            "has_audio": any(s.get("codec_type") == "audio" for s in d["streams"])}
+            "has_audio": any(s.get("codec_type") == "audio" for s in d["streams"]),
+            "audio_codec": next((s.get("codec_name") or "unknown" for s in d["streams"]
+                                 if s.get("codec_type") == "audio"), "")}
+
+
+def audio_args(info):
+    """1本目の音声の扱い。MP4 に入る音声はコピーし、入らない音声は AAC に変換する。"""
+    codec = info.get("audio_codec")
+    return ["-c:a", "copy"] if not codec or codec in MP4_AUDIO else ["-c:a", "aac", "-b:a", "192k"]
 
 
 def join_vf(*parts):
@@ -173,10 +183,10 @@ def _to_1080_cmd(path, vf, out, info):
     # LUT（RGB 化→3D LUT→YUV 戻し）を 4K60 のまま掛けると、最後に捨てる 7/8 の画素にも掛かる
     # （VPS 6 実測・4K60 HLG 30秒: LUT→縮小 299秒 / 間引き→縮小→LUT 90秒・PSNR 44dB で見た目は同じ）
     filt = join_vf("fps=30", "scale='if(gt(iw,ih),1920,-2)':'if(gt(iw,ih),-2,1920)'", vf)
-    return [FFMPEG, "-v", "error", "-y", *HWACCEL, "-i", path,
+    return [FFMPEG, "-v", "error", "-y", *HWACCEL, "-i", path, "-map", "0:v:0", "-map", "0:a:0?",
             "-vf", filt, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "16",
             "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709",
-            "-colorspace", "bt709", "-c:a", "copy", "-metadata:s:v", "rotate=0", out + ".part.mp4"]
+            "-colorspace", "bt709", *audio_args(info), "-metadata:s:v", "rotate=0", out + ".part.mp4"]
 
 
 def to_1080(path, vf, out):
@@ -186,7 +196,13 @@ def to_1080(path, vf, out):
     自動回転を効かせると displaymatrix は出力に引き継がれず、回転情報の無い正立動画になる。"""
     if os.path.exists(out):
         return out
-    subprocess.run(_to_1080_cmd(path, vf, out, probe(path)), check=True)
+    r = subprocess.run(_to_1080_cmd(path, vf, out, probe(path)), capture_output=True, text=True, errors="replace")
+    if r.returncode != 0:
+        # ffmpeg は本当の理由を先頭に、書き込みの失敗は末尾に出すので、アラームの原文（300文字）へ両方を入れる
+        err = (r.stderr or r.stdout).strip()
+        print(err[-4000:], file=sys.stderr)
+        raise RuntimeError(f"1080p 変換に失敗 (rc={r.returncode}): "
+                           f"{err if len(err) <= 260 else err[:130] + ' … ' + err[-130:]}")
     os.replace(out + ".part.mp4", out)
     return out
 
@@ -1073,7 +1089,7 @@ def _render_split(hq, path, info, vf, boxes_of_seg, total, n_seg, out_path, enco
                 f.write("file '" + os.path.abspath(sp).replace("'", "'\\''") + "'\n")
         cmd = [FFMPEG, "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", lst]
         if info["has_audio"]:
-            cmd += ["-i", path, "-map", "0:v:0", "-map", "1:a:0", "-c:a", "copy"]
+            cmd += ["-i", path, "-map", "0:v:0", "-map", "1:a:0", *audio_args(info)]
         else:
             cmd += ["-map", "0:v:0"]
         cmd += ["-c:v", "copy", "-movflags", "+faststart", "-f", "mp4", out_path]

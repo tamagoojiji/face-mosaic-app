@@ -95,6 +95,7 @@ _CAUSES = [
     ("映像ストリームがありません", None, "映像の入っていないファイルでした"),
     ("HDR(PQ) は未対応", None, "未対応の HDR 形式（PQ）の動画でした"),
     ("No space left", None, "サーバーのディスクの空きが足りませんでした"),
+    ("1080p 変換に失敗", None, "動画の変換（ffmpeg）が途中で止まりました"),
     (None, "CalledProcessError", "動画の変換（ffmpeg）が途中で止まりました"),
     (None, "TimeoutExpired", "処理が時間内に終わりませんでした"),
     (None, "MemoryError", "サーバーのメモリが足りませんでした"),
