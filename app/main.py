@@ -977,6 +977,21 @@ async def put_part(request: Request, job_id: str, n: int):
     return JSONResponse({"ok": True, "n": n}, headers=NO_STORE)
 
 
+@app.post("/api/uploads/{job_id}/cancel")
+async def cancel_upload(request: Request, job_id: str):
+    # 送信をやめる。届いた分も履歴も残さない（使用量は受け取り完了で数えるので減らない）
+    require_api(request)
+    _video(request, job_id, ("uploading",))
+    if job_id in COMPLETING:
+        raise HTTPException(409, "受け取り中です。少しお待ちください")
+    shutil.rmtree(job_dir(job_id), ignore_errors=True)
+    db.drop_parts(job_id)
+    with db.connect() as con:
+        con.execute("DELETE FROM jobs WHERE id=?", (job_id,))
+    log.info("upload キャンセル %s", job_id)
+    return JSONResponse({"ok": True}, headers=NO_STORE)
+
+
 @app.post("/api/uploads/{job_id}/diag")
 async def upload_diag(request: Request, job_id: str):
     # 送信の計測（どこで遅い・止まったかの切り分け用）。分割ごとの時間と画面の状態だけをログへ残す

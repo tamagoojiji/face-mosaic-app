@@ -105,3 +105,43 @@ def test_upload_diag_needs_owner(client, upload_job_id):
     db.insert_job(upload_job_id, kind="video", status="uploading", user_id=other["id"], bytes=100, expires_at=time.time() + 3600)
     ok = c.post(f"/api/uploads/{upload_job_id}/diag", json={"parts": []})
     assert ok.status_code in (403, 404), ok.text
+
+
+def test_cancel_removes_everything(client, upload_job_id):
+    c, u = client
+    db.insert_job(upload_job_id, kind="video", status="uploading", user_id=u["id"], bytes=100, expires_at=time.time() + 3600)
+    db.add_part(upload_job_id, 0, 100)
+    d = os.path.join(main.job_dir(upload_job_id), "parts")
+    os.makedirs(d)
+    open(os.path.join(d, "00000.part"), "wb").close()
+    r = c.post(f"/api/uploads/{upload_job_id}/cancel")
+    assert r.status_code == 200, r.text
+    assert db.get_job(upload_job_id) is None and not db.parts(upload_job_id)
+    assert not os.path.exists(main.job_dir(upload_job_id))
+    assert c.put(f"/api/uploads/{upload_job_id}/parts/0", content=b"x" * 100).status_code == 404  # 別の端末の送信も止まる
+
+
+def test_cancel_only_while_uploading(client, upload_job_id):
+    c, u = client
+    db.insert_job(upload_job_id, kind="video", status="queued", user_id=u["id"], bytes=100, expires_at=time.time() + 3600)
+    assert c.post(f"/api/uploads/{upload_job_id}/cancel").status_code == 409
+    assert db.get_job(upload_job_id)["status"] == "queued"
+
+
+def test_cancel_waits_for_complete(client, upload_job_id):
+    c, u = client
+    db.insert_job(upload_job_id, kind="video", status="uploading", user_id=u["id"], bytes=100, expires_at=time.time() + 3600)
+    main.COMPLETING.add(upload_job_id)
+    try:
+        assert c.post(f"/api/uploads/{upload_job_id}/cancel").status_code == 409
+    finally:
+        main.COMPLETING.discard(upload_job_id)
+    assert db.get_job(upload_job_id) is not None
+
+
+def test_cancel_needs_owner(client, upload_job_id):
+    c, _ = client
+    other = db.create_user(line_user_id=f"Uother-{time.time()}", display_name="別")
+    db.insert_job(upload_job_id, kind="video", status="uploading", user_id=other["id"], bytes=100, expires_at=time.time() + 3600)
+    assert c.post(f"/api/uploads/{upload_job_id}/cancel").status_code in (403, 404)
+    assert db.get_job(upload_job_id) is not None

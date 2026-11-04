@@ -22,6 +22,12 @@
 .badge.busy{background:var(--surface);color:var(--fg)}
 .badge.gone{background:var(--surface);color:var(--sub)}
 .chev{flex:none;color:var(--sub);font-size:18px}
+/* 送信中の行: 左へスライドするとキャンセルが出る */
+.list li.swipe{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
+.list li.swipe::-webkit-scrollbar{display:none}
+.swipe .item{flex:none;width:100%;scroll-snap-align:start}
+.swipe .cx{flex:none;width:112px;scroll-snap-align:end;border:0;background:var(--warn-tag);color:var(--on-pri);font:inherit;font-size:15px;font-weight:700;cursor:pointer}
+.swipe .cx:disabled{background:var(--dis-bg);color:var(--dis-fg);cursor:default}
 .sends{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}
 .empty{background:var(--surface);border-radius:var(--radius);padding:var(--s4);margin:0}
 .empty b{display:block;margin:0 0 var(--s1)}
@@ -227,7 +233,7 @@ function videoItem(j) {
   else if (st === 'awaiting_pick' || st === 'awaiting_review') {
     if (j.idle_warn) { s.classList.add('warn'); s.textContent = remainText(j) + 'で削除されます'; }
     else s.textContent = (st === 'awaiting_pick' ? '残す顔を選んでください' : 'モザイクを確認してください') + '・' + left;
-  } else if (st === 'uploading') s.textContent = '同じ動画を選ぶと続きから送れます';
+  } else if (st === 'uploading') s.textContent = '同じ動画を選ぶと続きから送れます。やめるときは左へスライド';
   else if (st === 'nsfw_review') s.textContent = '内容を運営が確認しています・終わったら LINE でお知らせします';
   else s.textContent = j.ahead ? 'あなたの前に ' + j.ahead + ' 件' : '目安 あと約' + Math.max(1, Math.round((j.eta_sec || 0) / 60)) + '分';
   meta.append(t, s);
@@ -236,7 +242,22 @@ function videoItem(j) {
   b.textContent = (VIDEO_STATUS[st] || VIDEO_STATUS.failed)[0];
   const c = document.createElement('span'); c.className = 'chev'; c.textContent = '›'; c.setAttribute('aria-hidden', 'true');
   a.append(thumb, meta, b, c); li.append(a);
+  if (st === 'uploading') {
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'cx'; x.textContent = 'キャンセル';
+    x.setAttribute('aria-label', when + 'の送信をキャンセルして、途中まで送った分を消す');
+    x.onclick = () => cancelUpload(j.id, li, x);
+    li.classList.add('swipe'); li.append(x);
+  }
   return li;
+}
+async function cancelUpload(id, li, x) {
+  const err = document.getElementById('err'), ul = li.parentNode;
+  x.disabled = true; x.textContent = '中止中…'; err.hidden = true;
+  try { await api('/api/uploads/' + id + '/cancel', { method: 'POST' }); } catch (e) {
+    err.textContent = e.message; err.hidden = false; err.scrollIntoView({ block: 'center' }); x.disabled = false; x.textContent = 'キャンセル'; return;
+  }
+  li.remove();
+  if (!ul.children.length) { ul.hidden = true; document.getElementById('empty').hidden = false; }
 }
 </script>
 </body></html>
