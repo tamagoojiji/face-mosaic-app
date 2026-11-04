@@ -491,9 +491,9 @@ def manual_img(name: str):
 
 @app.get("/manual/{name}")
 def manual_page(name: str):
-    """使い方の説明書（簡易 quick・詳細 guide。ログイン不要）。"""
+    """使い方の説明書（簡易 quick・詳細 guide・テスター向けお知らせ。ログイン不要）。"""
     name = name.removesuffix(".html")
-    if name not in ("quick", "guide"):
+    if name not in ("quick", "guide", "update-2026-11-05"):
         raise HTTPException(404, "見つかりません")
     return FileResponse(os.path.join(MANUAL, name + ".html"), headers={"Cache-Control": "no-cache"})
 
