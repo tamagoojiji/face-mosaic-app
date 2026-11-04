@@ -92,12 +92,17 @@ function addBoxes(parent, s) {
     parent.appendChild(e);
   });
 }
-// 小さい枠も指で押せるように: 押した点を含む枠（小さい枠は 44px 四方に広げて判定）のうち、いちばん上に重なっているもの
+// 小さい枠も指で押せるように 44px 四方に広げて判定する。候補が複数なら押した点にいちばん近い枠（枠の中を押したら 0）、
+// 同じ近さなら小さい枠（大きい枠の中の小さい枠も押せるように）
 function hitAt(parent, x, y) {
-  return [...parent.querySelectorAll('.b:not(.off)')].reverse().find(e => {
+  let best = null, bg = Infinity, ba = Infinity;
+  parent.querySelectorAll('.b:not(.off)').forEach(e => {
     const r = e.getBoundingClientRect(), w = Math.max(r.width, 44), h = Math.max(r.height, 44);
-    return Math.abs(x - (r.left + r.width / 2)) <= w / 2 && Math.abs(y - (r.top + r.height / 2)) <= h / 2;
+    if (Math.abs(x - (r.left + r.width / 2)) > w / 2 || Math.abs(y - (r.top + r.height / 2)) > h / 2) return;
+    const gap = Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom)), area = r.width * r.height;
+    if (gap < bg || (gap === bg && area < ba)) { best = e; bg = gap; ba = area; }
   });
+  return best;
 }
 function toggleAt(parent, ev) {  // 枠を押したら true（キーボード操作 detail 0 はそのボタン）
   const el = ev.detail === 0 ? ev.target.closest('.b') : hitAt(parent, ev.clientX, ev.clientY);
