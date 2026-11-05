@@ -90,6 +90,7 @@
       <div><div class="k">写真</div><div class="v" id="qi">—</div><div class="s" id="qis"></div></div>
     </div>
     <p class="qhq" id="qhq" hidden>高画質オプション: ON（元の解像度と fps で書き出します）</p>
+    <p class="qhq" id="qnew" hidden>お知らせ: 動画は1本3分・3GBまで送れるようになりました</p>
     <a class="qlink" href="/plans">プランを比較する</a>
   </section>
   <h2 class="recent">最近の動画と写真</h2>
@@ -164,6 +165,7 @@ api('/api/me').then(m => {
   $('qis').textContent = m.limits.images === null ? '' : '月' + m.limits.images + '枚まで';
   $('keepnote').textContent = '元の動画・写真は完成から' + m.source_hours + '時間、完成したものは' + m.output_days + '日で自動で消えます。';
   $('qhq').hidden = !m.hq;
+  $('qnew').hidden = !m.video_allowed;
   $('quota').hidden = false;
 }).catch(() => { });
 
