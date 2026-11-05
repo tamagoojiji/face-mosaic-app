@@ -279,13 +279,13 @@ def _line_exchange(code, nonce, redirect_uri):
 def _notify_registered(u):
     """登録・再登録の LINE（友だち追加していない人は LINE API がエラー → push 側で warning だけ）。"""
     if quota.campaign_active():
-        what = f"写真{quota.setting('campaign_images')}枚・1分までの動画{quota.setting('campaign_videos')}本"
+        what = f"写真{quota.setting('campaign_images')}枚・3分までの動画{quota.setting('campaign_videos')}本"
     else:
-        what = f"写真{quota.PLANS['free']['images']}枚と1分までの動画1本まで"
+        what = f"写真{quota.PLANS['free']['images']}枚と3分までの動画1本まで"
     kw = {"text": f"登録ありがとうございます。{billing._md(u['trial_ends_at'])}まで無料で試せます（{what}）。"}
     if quota.is_tester(u) and u.get("tester_until"):  # 新規登録でテスターになった人
         kw = {"text": f"登録ありがとうございます。{billing._md(u['tester_until'] - 1)}までテスターとして、"
-                      "写真・動画の枚数と本数の上限なく使えます（動画は1本1分まで）。"
+                      "写真・動画の枚数と本数の上限なく使えます（動画は1本3分まで）。"
                       "気になったことは 設定 →「問題を報告する」から教えてください。"}
     if u.get("trial_ends_at") and u["trial_ends_at"] <= time.time():  # 再登録でお試しが終わっている
         kw = {"text": "おかえりなさい。お試し期間は終了しているため、プランを選ぶと使えます。", "link": "/plans"}
@@ -929,7 +929,7 @@ async def create_upload(request: Request):
     if size <= 0:
         raise HTTPException(400, "動画を選び直してください")
     if size > config.MAX_VIDEO_BYTES:
-        raise HTTPException(413, f"この動画は {size / 1048576:.0f}MB です。1本1.5GBまでです")
+        raise HTTPException(413, f"この動画は {size / 1048576:.0f}MB です。1本3GBまでです")
     msg = quota.check_video(u, dur)
     if msg:
         raise HTTPException(402, msg)

@@ -43,13 +43,13 @@ def test_tester_limits():
     u = expired_user("Utester1", "tester")
     lim = quota.limits(u)
     assert lim["images"] is None and lim["video_count_month"] is None and lim["video_sec_month"] is None
-    assert lim["video_len"] == 60 and lim["video_allowed"] is True
+    assert lim["video_len"] == 180 and lim["video_allowed"] is True
     assert lim["tester"] is True and lim["campaign"] is False
     assert quota.blocked(u) is None
     assert quota.check_image(u) is None
-    assert quota.check_video(u, 59) is None
-    msg = quota.check_video(u, 61)
-    assert msg is not None and "1本1分まで" in msg
+    assert quota.check_video(u, 179) is None
+    msg = quota.check_video(u, 181)
+    assert msg is not None and "1本3分まで" in msg
 
 
 def test_user_trial_expired_control():

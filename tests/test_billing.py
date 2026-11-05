@@ -305,12 +305,14 @@ def test_free_plan_one_video():
     db.set_setting("campaign_on", "0")
     u = db.create_user(line_user_id="Ufree1v", display_name="x", trial_ends_at=time.time() + 3600)
     assert quota.check_video(u, 30) is None
-    assert "1本1分までです" in quota.check_video(u, 90)
+    assert quota.check_video(u, 180) is None
+    assert "1本3分までです" in quota.check_video(u, 200)
     db.add_usage(u["id"], quota.month_of(), seconds=30, videos=1)
     assert "使いきりました" in quota.check_video(u, 30)
     assert quota.check_video(dict(u, plan="image"), 30) == "画像のみプランでは動画は送れません"
     lim = quota.limits({"plan": "free"})
-    assert lim["video_allowed"] is True and lim["video_len"] == 60
+    assert lim["video_allowed"] is True and lim["video_len"] == 180
+    assert quota.limits({"plan": "video_a"})["video_len"] == 180
     assert lim["video_count_month"] == 1 and lim["video_sec_month"] == 0
 
 

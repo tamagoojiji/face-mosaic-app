@@ -58,7 +58,7 @@
     <label class="drop" id="vdrop">
       <input type="file" id="vfile" accept="video/*">
       <span class="big" id="vbig">動画を選ぶ</span>
-      <span class="small" id="vlimit">1本1.5GBまで</span>
+      <span class="small" id="vlimit">1本3GBまで</span>
     </label>
     <p class="note" id="vest" hidden></p>
     <div id="vpending" hidden></div>
@@ -359,7 +359,7 @@ $('vfile').addEventListener('change', async () => {
   $('verr').hidden = true; $('vresume').hidden = true; $('vplan').hidden = true;
   if (!CFG) { try { CFG = await api('/api/config'); } catch (e) { vfail(e.message, false); return; } }
   if (CFG.video_block) { vfail(CFG.video_block, false, true); return; }
-  if (f.size > CFG.max_video_bytes) { vfail('この動画は ' + mb(f.size) + ' です。1本1.5GBまでです', false); return; }
+  if (f.size > CFG.max_video_bytes) { vfail('この動画は ' + mb(f.size) + ' です。1本3GBまでです', false); return; }
   $('vbig').textContent = '長さを確認しています…';
   const dur = await readDuration(f);
   if (dur > CFG.max_video_sec + 0.5) {
@@ -393,7 +393,7 @@ if (TYPE === 'video') {
     try {
       CFG = await api('/api/config');
       if (CFG.video_block) { vfail(CFG.video_block, false, true); $('vdrop').hidden = true; return; }
-      $('vlimit').textContent = limitText(CFG.max_video_sec) + 'まで・1本1.5GBまで';
+      $('vlimit').textContent = limitText(CFG.max_video_sec) + 'まで・1本3GBまで';
       const est = CFG.est;
       if (est) {
         $('vest').textContent = '目安: 1分の動画なら、届いてから顔を選べるまで約' + ceilMin(est.prep_per_min) + '分'

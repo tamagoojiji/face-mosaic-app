@@ -502,7 +502,7 @@ async def api_report_update(request: Request, rid: int):
 SETTING_LABELS = {
     "launch_price_until": "リリース記念価格の申し込み期限",
     "campaign_on": "リリース記念", "campaign_from": "リリース記念の開始日", "campaign_to": "リリース記念の終了日",
-    "campaign_images": "記念中の写真（枚/月）", "campaign_videos": "記念中の1分動画（本/月）",
+    "campaign_images": "記念中の写真（枚/月）", "campaign_videos": "記念中の動画（本/月）",
     "source_retention_hours": "元データを消すまで（時間）", "output_retention_days": "完成品の保存（日）",
     "idle_warn_hours": "放置の再通知まで（時間）", "idle_delete_hours": "放置で削除するまで（時間）",
     "mosaic_default": "モザイクの標準",

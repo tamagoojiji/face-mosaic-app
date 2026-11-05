@@ -9,11 +9,11 @@ from .. import config, db
 
 # price = リリース記念価格（期限までの申し込み・続けている間ずっと）、regular_price = 定価。None = 無制限。video_sec_month=0 かつ video_count_month=0 は「動画なし」
 PLANS = {
-    "free": {"label": "無料", "price": 0, "regular_price": 0, "video_sec_month": 0, "video_count_month": 1, "video_len": 60,
+    "free": {"label": "無料", "price": 0, "regular_price": 0, "video_sec_month": 0, "video_count_month": 1, "video_len": 180,
              "images": 5, "quality": "1080p・30fps"},
     "image": {"label": "画像のみ", "price": 500, "regular_price": 1000, "video_sec_month": 0, "video_count_month": 0, "video_len": 0,
               "images": 100, "quality": "画像は長辺4000pxまで"},
-    "video_a": {"label": "動画A", "price": 980, "regular_price": 1480, "video_sec_month": 600, "video_count_month": None, "video_len": 60,
+    "video_a": {"label": "動画A", "price": 980, "regular_price": 1480, "video_sec_month": 600, "video_count_month": None, "video_len": 180,
                 "images": 100, "quality": "1080p・30fps"},
     "video_b": {"label": "動画B", "price": 1480, "regular_price": 1980, "video_sec_month": 5400, "video_count_month": None, "video_len": 180,
                 "images": None, "quality": "1080p・30fps"},
