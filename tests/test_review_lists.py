@@ -98,3 +98,16 @@ def test_different_face_stays_in_blur():
 def test_kept_fragments_are_one_item():
     ts = [frag(0, 0, 5), frag(1, 10, 5)]
     assert [i["ids"] for i in v.review_lists(INFO, ts, {0, 1}, 720, SAME)["keep"]] == [[0, 1]]
+
+
+def test_score_ranks_big_and_long_faces_higher():
+    lists = v.review_lists(INFO, [track(0, 200, frames=10), track(1, 60, frames=3)], set(), 720)
+    sc = {i["id"]: i["score"] for i in lists["blur"] + lists["keep"]}
+    assert sc[0] > sc[1] > 0
+
+
+def test_score_of_joined_fragments_counts_all_frames():
+    joined = v.review_lists(INFO, [frag(0, 0, 5), frag(1, 10, 5)], set(), 720, SAME)["blur"]
+    alone = v.review_lists(INFO, [frag(0, 0, 5)], set(), 720)["blur"]
+    assert len(joined) == 1 and joined[0]["score"] > alone[0]["score"]
+    assert joined[0]["score"] == round(60.0 / 720 * 10, 3)

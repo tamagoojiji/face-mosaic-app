@@ -904,7 +904,7 @@ def review_lists(info, tracks, keep, dw, face_m=None):
     def item(g, small=False):
         rep = max(g, key=lambda t: t["med_h"])  # 切り抜きは大きく写った断片のもの
         return {"id": rep["id"], "ids": sorted(t["id"] for t in g), "sec": round(min(t["first_frame"] for t in g) / fps, 1),
-                "small": small}
+                "small": small, "score": round(rep["med_h"] / short * sum(len(t["boxes"]) for t in g), 3)}
     groups = [(g, False) for g in join_fragments([t for t in cand if t["med_h"] >= min_h], face_m or {})]
     groups += [(g, True) for g in join_fragments([t for t in cand if t["med_h"] < min_h], face_m or {})]
     return {"blur": sorted((item(g, s) for g, s in groups), key=lambda i: i["sec"]),

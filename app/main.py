@@ -1112,6 +1112,7 @@ async def video_review(request: Request, job_id: str):
         keep_ids = {int(x) for x in b.get("keep", [])}
         blur_ids = {int(x) for x in b.get("blur", [])}
         style = "blur" if b.get("style") == "blur" else "pixel"
+        rank = b.get("rank") if b.get("rank") in ("A", "B", "C") else "A"
     except (TypeError, ValueError):
         raise HTTPException(400, "送信内容が正しくありません")
     p = vpaths(job_id)
@@ -1127,9 +1128,9 @@ async def video_review(request: Request, job_id: str):
     if "hq" in b:  # 確認画面で選んだ画質。高画質で書き出せる人だけ尊重（無ければ従来どおり）
         hq = hq and b["hq"] is True
     db.update_job(job_id, status="queued_export", keep=json.dumps(sorted(keep)), blur=json.dumps(sorted(blur)),
-                  mosaic_style=style, error=None, expires_at=None, hq_export=1 if hq else 0)
-    log.info("review %s %s keep %d blur %d（%s）%s", job_id, style, len(keep), len(blur),
-             "選び直し" if j["status"] == "done" else "初回", "高画質" if hq else "1080p")
+                  mosaic_style=style, error=None, expires_at=None, hq_export=1 if hq else 0, review_rank=rank)
+    log.info("review %s %s keep %d blur %d（%s）%s %s", job_id, style, len(keep), len(blur),
+             "選び直し" if j["status"] == "done" else "初回", "高画質" if hq else "1080p", rank)
     return JSONResponse(_public(db.get_job(job_id)), headers=NO_STORE)
 
 

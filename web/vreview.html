@@ -9,6 +9,9 @@ h1{margin-top:var(--s4)}
 #warn{margin:0 0 var(--s3)}
 .seg{margin:0 0 var(--s4)}
 .seg label{min-height:64px}
+.seg.seg3{grid-template-columns:1fr 1fr 1fr}
+#rest{margin:var(--s3) 0 0}
+#rest .help{margin:0 0 var(--s2)}
 .tabs{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line);margin:0 0 var(--s3)}
 .tabs button{min-height:56px;font:inherit;font-size:15px;font-weight:700;background:none;border:0;border-bottom:3px solid transparent;margin-bottom:-1px;color:var(--sub);cursor:pointer;padding:var(--s1) 6px;line-height:1.3}
 .tabs button:hover{color:var(--fg)}
@@ -52,6 +55,12 @@ h1{margin-top:var(--s4)}
   <h1>モザイクの確認</h1>
   <p class="lead">顔をタップすると、もう一方の列に移ります。</p>
   <p class="notice warn" id="warn" role="status" hidden></p>
+  <fieldset class="seg seg3">
+    <legend>確認する顔の数</legend>
+    <label><input type="radio" name="rank" value="A" checked><span><span class="m">すべて</span><span class="d" id="rdA"></span></span></label>
+    <label><input type="radio" name="rank" value="B"><span><span class="m">半分</span><span class="d" id="rdB"></span></span></label>
+    <label><input type="radio" name="rank" value="C"><span><span class="m">1割</span><span class="d" id="rdC"></span></span></label>
+  </fieldset>
   <fieldset class="seg">
     <legend>モザイクの種類（標準はブロック粗め）</legend>
     <label><input type="radio" name="st" value="pixel" checked><span><span class="m">ブロック粗め</span><span class="d">マス目で強く隠す</span></span></label>
@@ -75,6 +84,10 @@ h1{margin-top:var(--s4)}
       <div class="grid" id="gs"></div>
     </details>
     <div class="grid" id="gb"></div>
+    <div id="rest" hidden>
+      <p class="help" id="restt"></p>
+      <button class="btn btn-sec" id="resta" type="button"></button>
+    </div>
   </section>
   <section role="tabpanel" id="pk" aria-labelledby="tk" hidden>
     <p class="help">モザイクが必要なもの（観客の顔）が混じっていたらタップしてください。</p>
@@ -96,9 +109,24 @@ const mins = s => Math.max(1, Math.round(s / 60));
 const style = () => document.querySelector('input[name=st]:checked').value;
 const wantHq = () => CHOICE ? document.querySelector('input[name=q]:checked').value === 'src' : HQ;
 const goLabel = () => wantHq() ? '元の画質で書き出す' : '1080p で書き出す';
+// 確認する顔の数: A=すべて B=目立つ順の上位 50% C=上位 10%。隠れた顔も書き出しではモザイクになる
+const RANK = { A: [1, 'いちばん正確'], B: [0.5, '上位 50%'], C: [0.1, '上位 10%'] };
+const rank = () => document.querySelector('input[name=rank]:checked').value;
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { } },
+};
 
 function render() {
-  const all = ITEMS.filter(it => !KEEP.has(it.id)), b = all.filter(it => !it.small), s = all.filter(it => it.small), k = ITEMS.filter(it => KEEP.has(it.id));
+  const all = ITEMS.filter(it => !KEEP.has(it.id)), k = ITEMS.filter(it => KEEP.has(it.id));
+  const cnt = r => Math.ceil(all.length * RANK[r][0]);
+  const top = new Set([...all].sort((x, y) => (x.small - y.small) || ((y.score || 0) - (x.score || 0))).slice(0, cnt(rank())));
+  const vis = all.filter(it => top.has(it)), rest = all.length - vis.length;
+  const b = vis.filter(it => !it.small), s = vis.filter(it => it.small);
+  for (const r in RANK) $('rd' + r).textContent = cnt(r) + '件・' + RANK[r][1];
+  $('rest').hidden = !rest;
+  $('restt').textContent = 'ほかに ' + rest + ' 件の顔は自動でモザイクになります（ここには出していません）';
+  $('resta').textContent = rest + ' 件をすべて見る';
   const far = s.length ? '＋遠く ' + s.length : '';
   $('nb').textContent = b.length + '件' + far.replace(' ', ''); $('nk').textContent = k.length + '件';
   $('sm').hidden = !s.length; $('smt').textContent = '遠くの小さい顔 ' + s.length + '件（開くと確認できます）';
@@ -136,6 +164,8 @@ $('undo').onclick = () => {
   render(); toast(back ? '1つ戻して「モザイクをかける予定」に戻しました' : '1つ戻して「かけない予定」に戻しました');
 };
 $('sm').addEventListener('toggle', render);
+document.querySelectorAll('input[name=rank]').forEach(r => r.addEventListener('change', () => { store.set('fm_rank', rank()); render(); }));
+$('resta').onclick = () => { document.querySelector('input[name=rank][value=A]').checked = true; store.set('fm_rank', 'A'); render(); };
 function toast(msg) {
   const t = $('toast'); t.textContent = msg; t.style.bottom = ($('ft').offsetHeight + 12) + 'px'; t.classList.add('show');
   clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1600);
@@ -163,6 +193,8 @@ new ResizeObserver(fit).observe($('ft'));
   if (j.status === 'awaiting_review') { $('repick').href = '/pick/' + id; $('repick').hidden = false; }
   ITEMS = [...j.review.blur, ...j.review.keep].map(it => ({ ...it, ids: it.ids || [it.id] }));
   KEEP = new Set(ITEMS.filter(it => j.keep.includes(it.id)).map(it => it.id));
+  const r0 = store.get('fm_rank');
+  if (RANK[r0]) document.querySelector('input[name=rank][value=' + r0 + ']').checked = true;
   document.querySelector('input[name=st][value=' + (j.style === 'blur' ? 'blur' : 'pixel') + ']').checked = true;
   // 画質: 高画質で書き出せる（オプション＋元動画あり）かつ元動画が 1080p30 より重いときだけ 2 択
   HQ = !!j.hq_est_sec; CHOICE = !!j.hq_choice;
@@ -192,7 +224,7 @@ new ResizeObserver(fit).observe($('ft'));
 $('go').onclick = async () => {
   const go = $('go'); go.disabled = true; go.textContent = '書き出しを受け付けています…'; $('ferr').hidden = true;
   const body = { keep: ITEMS.filter(it => KEEP.has(it.id)).flatMap(it => it.ids), blur: ITEMS.filter(it => !KEEP.has(it.id)).flatMap(it => it.ids),
-    style: style(), hq: wantHq() };
+    style: style(), hq: wantHq(), rank: rank() };
   try {
     await api('/api/jobs/' + id + '/review', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     location.href = '/status/' + id;

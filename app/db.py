@@ -143,6 +143,7 @@ ADD_COLUMNS = {
     "nsfw_at": "REAL",             # 止めた時刻（確認待ち nsfw_review の起点）
     "nsfw_msg": "TEXT",            # Discord の通知（チャンネルID/メッセージID）
     "nsfw_ok": "INTEGER",          # 運営が ⭕（アダルトではない）を押した → 判定を飛ばして続ける
+    "review_rank": "TEXT",         # 動画: 確認画面で選んだ表示量 A=すべて B=半分 C=1割
 }
 # 起動時に足す列（users・③b 課金）
 ADD_USER_COLUMNS = {

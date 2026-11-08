@@ -61,6 +61,35 @@ def test_review_hq_choice(monkeypatch, ready, body_hq, want):
     assert j["status"] == "queued_export" and j["hq_export"] == want
 
 
+@pytest.mark.parametrize("sent,want", [("B", "B"), ("C", "C"), (None, "A"), ("Z", "A")])
+def test_review_rank_is_saved(monkeypatch, sent, want):
+    db.init()
+    monkeypatch.setattr(config, "SESSION_SECRET", "test-secret")
+    monkeypatch.setattr(config, "AUTH_MODE", "line")
+    now = time.time()
+    tag = str(sent)
+    u = db.create_user(line_user_id="Ur-" + tag, display_name="表示量", trial_ends_at=now + 86400,
+                       ig_asked_at=now, agreed_at=now)
+    vid = "rankvideo" + tag[:1] + "xx"
+    p = main.vpaths(vid)
+    os.makedirs(p["dir"], exist_ok=True)
+    with open(p["v1080"], "wb") as f:
+        f.write(b"x")
+    with open(os.path.join(p["dir"], "review.json"), "w") as f:
+        json.dump({"lists": {"blur": [{"id": 1, "sec": 1}], "keep": []}, "auto_keep": [], "auto_blur": [1]}, f)
+    db.insert_job(vid, kind="video", status="awaiting_review", user_id=u["id"], duration_sec=30,
+                  width=1920, height=1080, fps=30, expires_at=now + 3600)
+    c = TestClient(main.app)
+    c.cookies.set(config.COOKIE_NAME, main._serializer().dumps({"uid": u["id"]}), domain=HOST)
+    body = {"keep": [], "blur": [1], "style": "pixel"}
+    if sent is not None:
+        body["rank"] = sent
+    r = c.post(f"/api/jobs/{vid}/review", json=body)
+    assert r.status_code == 200, r.text
+    j = db.get_job(vid)
+    assert j["review_rank"] == want and json.loads(j["blur"]) == [1]
+
+
 def test_load_factor_bounds():
     assert main.load_factor({"width": 3840, "height": 2160, "fps": 60}) == pytest.approx(1.0)
     assert main.load_factor({"width": 1920, "height": 1080, "fps": 30}) == pytest.approx(0.125)
