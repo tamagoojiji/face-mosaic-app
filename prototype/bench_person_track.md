@@ -12,7 +12,10 @@
 source .venv/bin/activate
 python prototype/bench_person_track.py --video <v1080.mp4> --tracks <tracks.json> --out result.json
 ```
-主な引数: `--model`（既定 `prototype/models/yolox_tiny.onnx`）`--input-size`（0=名前から: tiny/nano 416・他 640）`--long-side 640` `--every 2` `--conf 0.3` `--hold 30` `--threads 0`（0=OpenCV の既定）
+主な引数: `--model`（既定 `prototype/models/yolox_tiny.onnx`）`--input-size`（0=名前から: tiny/nano 416・他 640）`--long-side 640` `--every 2` `--conf 0.3` `--hold 30` `--threads 0`（0=OpenCV の既定）`--workers 1` `--draw <out.mp4>`
+
+- `--workers N`: 本番の顔検出（`worker/engine/video.py` の `_seg_bounds`＋spawn の Pool）と同じく、動画をコマ範囲に N 分割し（1 範囲あたり最低 150 コマ）、別プロセスで検出だけを並列に行う。各ワーカーは `-ss` で範囲の先頭へ入力シークし、`-frames:v` で読むコマ数を絞る（最後の範囲は最後まで読む）。ワーカー内は `cv2.setNumThreads(1)`。追跡は検出結果を集めてからコマ順に 1 プロセスで行う。`time_sec` の `decode_resize`・`detect` はワーカーの合計、`detect_wall` が検出の経過時間、`total_wall` が全体。範囲の重ねは無し（Mac で workers 1 と 4 の検出数・紐づき数が完全一致）
+- `--draw <out.mp4>`: 追跡の後に動画をもう一度読み、検出に使った縮小コマに体トラックの枠と ID（色は ID ごと）を描いて書き出す（libx264・30fps・yuv420p）。`--tracks` があれば顔の枠も描き、紐づいた体の ID を枠の上に小さく出す（紐づいていない顔は赤枠）。左下はコマ番号。体は検出したコマにしか枠が無いので、間のコマは直前の検出コマの枠を出す。かかった秒数は `time_sec.draw`（`total_wall` には含めない）。顔が写るので出力はリポジトリの外に置く
 
 `--tracks` は**同じ動画・同じコマ番号**のもの。本番の prepare と同じく 1080p 化した動画（`v1080.mp4`）とその `tracks.json` を組で渡す。
 
@@ -75,6 +78,14 @@ ssh root@5.104.86.10 "docker run --rm --network none -v /opt/face-mosaic-bench:/
 ssh root@5.104.86.10 "docker run --rm --network none -v /opt/face-mosaic-bench:/bench -w /bench face-mosaic-app-face-mosaic-worker nice -n 10 python bench_person_track.py --video v1080.mp4 --tracks tracks.json --model yolox_s.onnx --out result_s.json"
 ssh root@5.104.86.10 "docker run --rm --network none -v /opt/face-mosaic-bench:/bench -w /bench face-mosaic-app-face-mosaic-worker nice -n 10 python bench_person_track.py --video v1080.mp4 --tracks tracks.json --model yolox_tiny.onnx --threads 2 --out result_tiny_t2.json"
 ```
+5b. 並列化（本番の顔検出と同じ分割・各ワーカー 1 スレッド）。スクリプトを送り直し、入力を消していたら送り直す
+```
+scp prototype/bench_person_track.py root@5.104.86.10:/opt/face-mosaic-bench/
+scp $W/v1080.mp4 $W/tracks.json root@5.104.86.10:/opt/face-mosaic-bench/
+ssh root@5.104.86.10 "docker run --rm --network none -v /opt/face-mosaic-bench:/bench -w /bench face-mosaic-app-face-mosaic-worker nice -n 10 python bench_person_track.py --video v1080.mp4 --tracks tracks.json --model yolox_tiny.onnx --workers 4 --every 2 --out result_tiny_w4_e2.json"
+ssh root@5.104.86.10 "docker run --rm --network none -v /opt/face-mosaic-bench:/bench -w /bench face-mosaic-app-face-mosaic-worker nice -n 10 python bench_person_track.py --video v1080.mp4 --tracks tracks.json --model yolox_tiny.onnx --workers 4 --every 4 --out result_tiny_w4_e4.json"
+```
+
 6. 結果を手元へ
 ```
 scp 'root@5.104.86.10:/opt/face-mosaic-bench/result_*.json' $W/

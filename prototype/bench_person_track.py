@@ -7,18 +7,22 @@
 - 検出: cv2.dnn で YOLOX（Apache-2.0）の ONNX。person クラスだけ・信頼度 --conf 以上
 - 追跡: ByteTrack 風の簡易版（高信頼→低信頼の 2 段 IoU 対応付け・直前 2 回の差分で位置を線形外挿）
 - --tracks（本番の tracks.json）: 顔の枠の中心が体の枠の上 40% に入れば、その体に属するとみなす
+- --workers N: 本番の顔検出と同じく、コマ範囲を N 分割して spawn のプロセスで検出だけ並列に行う（追跡は集めてから 1 プロセス）
+- --draw out.mp4: 追跡の後に動画をもう一度読み、体トラックの枠と ID（--tracks があれば顔の枠も）を描いて書き出す
 使い方・モデルの入手・VPS での測り方は bench_person_track.md。
 """
 
 import argparse
 import collections
 import json
+import multiprocessing
 import os
 import shutil
 import statistics
 import subprocess
 import sys
 import time
+from fractions import Fraction
 
 import cv2
 import numpy as np
@@ -32,6 +36,7 @@ HIGH_CONF = 0.5   # 1 段目の対応付け・新規トラックに使う検出
 IOU_MATCH = 0.3
 NMS_IOU = 0.45
 FACE_TOP_FRAC = 0.4  # 顔の中心が体の枠の上 40% 以内なら、その体に属する
+SEG_MIN_FRAMES = 150  # 1 分割あたりの最低コマ数（worker/engine/video.py の _seg_bounds と同じ）
 
 
 def probe(path):
@@ -46,10 +51,63 @@ def probe(path):
             rot = int(sd["rotation"])
     if abs(rot) % 180 == 90:  # ffmpeg の自動回転後の向き
         w, h = h, w
-    num, den = (v.get("avg_frame_rate") or v.get("r_frame_rate") or "30/1").split("/")
+    fps_str = v.get("avg_frame_rate") or v.get("r_frame_rate") or "30/1"
+    num, den = fps_str.split("/")
     fps = float(num) / float(den or 1)
     dur = float(v.get("duration") or d["format"].get("duration") or 0)
-    return w, h, fps, dur
+    nb = int(v.get("nb_frames") or 0) or int(round(dur * fps))
+    return w, h, fps, fps_str, dur, nb
+
+
+def seg_bounds(total, n):
+    """コマ範囲 [0, total) を n 個の [a, b) に分ける（worker/engine/video.py の _seg_bounds と同じ）。"""
+    n = max(1, min(n, total // SEG_MIN_FRAMES))
+    return [(total * k // n, total * (k + 1) // n) for k in range(n)]
+
+
+def read_cmd(video, dw, dh, fps_str, a, b):
+    """コマ [a, b) を長辺縮小の bgr24 で読む ffmpeg（b=None は最後まで）。シークは _thumb_range と同じ入力シーク。"""
+    cmd = [FFMPEG, "-v", "error", *HWACCEL]
+    if a > 0:
+        cmd += ["-ss", f"{float(a / Fraction(fps_str)):.9f}"]
+    cmd += ["-i", video, "-an", "-sn", "-dn", "-vf", f"scale={dw}:{dh}"]
+    if b is not None:
+        cmd += ["-frames:v", str(b - a)]
+    return cmd + ["-f", "rawvideo", "-pix_fmt", "bgr24", "-"]
+
+
+def detect_range(video, model, size, conf, dw, dh, fps_str, a, b, every, threads):
+    """コマ [a, b)（b=None は最後まで）を読み、コマ番号 % every == 0 のコマで体を検出する。
+
+    戻り値 (frames_read, [(コマ番号, dets)], デコード秒, 検出秒)。threads=1 は並列のワーカー（1 プロセス 1 スレッド）。"""
+    if threads:
+        cv2.setNumThreads(threads)
+    det = Yolox(model, size, conf)
+    fsize = dw * dh * 3
+    proc = subprocess.Popen(read_cmd(video, dw, dh, fps_str, a, b), stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, bufsize=fsize)
+    out, t_dec, t_det, i = [], 0.0, 0.0, a
+    try:
+        while b is None or i < b:
+            t0 = time.perf_counter()
+            buf = proc.stdout.read(fsize)
+            t_dec += time.perf_counter() - t0
+            if len(buf) < fsize:
+                break
+            if i % every == 0:
+                frame = np.frombuffer(buf, dtype=np.uint8).reshape(dh, dw, 3)
+                t0 = time.perf_counter()
+                out.append((i, det(frame)))
+                t_det += time.perf_counter() - t0
+            i += 1
+    finally:
+        proc.stdout.close()
+        err = proc.stderr.read().decode("utf-8", "replace")
+        proc.stderr.close()
+        rc = proc.wait()
+    if rc != 0 and i == a:
+        raise RuntimeError(f"デコードに失敗 (rc={rc}, コマ {a}〜): {err.strip()[-300:]}")
+    return i - a, out, t_dec, t_det
 
 
 # ---------------------------------------------------------------- 検出（YOLOX）
@@ -202,6 +260,68 @@ def hist(values, bins=((1, 1), (2, 2), (3, 5), (6, 10), (11, 30), (31, 10 ** 9))
     return out
 
 
+# ---------------------------------------------------------------- 目視用の描画
+
+def _color(tid):
+    """体 ID ごとの色（赤は「紐づいていない顔」用に避ける）。"""
+    hsv = np.uint8([[[(tid * 37) % 150 + 20, 200, 255]]])
+    return tuple(int(c) for c in cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)[0, 0])
+
+
+def draw_video(out_path, video, dw, dh, fps_str, every, body_tracks, face_tracks, fw, fh, f2b):
+    """体トラックの枠と ID、顔の枠（紐づいた体の ID・紐づいていない顔は赤）を縮小コマに描いて mp4 にする。
+
+    体は検出したコマにだけ枠があるので、間のコマは直前の検出コマ（コマ番号 - コマ番号 % every）の枠を出す。"""
+    bodies = collections.defaultdict(list)
+    for t in body_tracks:
+        for fi, b in t["boxes"].items():
+            bodies[fi].append((t["id"], b))
+    faces = collections.defaultdict(list)
+    for ft in face_tracks or ():
+        for fi, b in ft["boxes"].items():
+            faces[fi].append((f2b.get(ft["id"]), b))
+    kx, ky = (dw / float(fw), dh / float(fh)) if face_tracks else (1.0, 1.0)
+    fsize = dw * dh * 3
+    rd = subprocess.Popen(read_cmd(video, dw, dh, fps_str, 0, None), stdout=subprocess.PIPE,
+                          stderr=subprocess.DEVNULL, bufsize=fsize)
+    wr = subprocess.Popen([FFMPEG, "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgr24",
+                           "-s", f"{dw}x{dh}", "-framerate", fps_str, "-i", "-", "-r", "30",
+                           "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+                           out_path], stdin=subprocess.PIPE)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    i = 0
+    try:
+        while True:
+            buf = rd.stdout.read(fsize)
+            if len(buf) < fsize:
+                break
+            img = np.frombuffer(buf, dtype=np.uint8).reshape(dh, dw, 3).copy()
+            for tid, (x, y, w, h) in bodies.get(i - i % every, ()):
+                c = _color(tid)
+                cv2.rectangle(img, (int(x), int(y)), (int(x + w), int(y + h)), c, 2)
+                cv2.putText(img, str(tid), (int(x) + 2, int(y) + 16), font, 0.55, (0, 0, 0), 3, cv2.LINE_AA)
+                cv2.putText(img, str(tid), (int(x) + 2, int(y) + 16), font, 0.55, c, 1, cv2.LINE_AA)
+            for bid, b in faces.get(i, ()):
+                x0, y0 = int(b["x"] * kx), int(b["y"] * ky)
+                x1, y1 = int((b["x"] + b["w"]) * kx), int((b["y"] + b["h"]) * ky)
+                c = (0, 0, 255) if bid is None else _color(bid)
+                cv2.rectangle(img, (x0, y0), (x1, y1), c, 1)
+                if bid is not None:
+                    cv2.putText(img, str(bid), (x0, max(10, y0 - 3)), font, 0.35, c, 1, cv2.LINE_AA)
+            cv2.putText(img, f"{i}", (4, dh - 6), font, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+            wr.stdin.write(img.tobytes())
+            i += 1
+    finally:
+        rd.stdout.close()
+        rd.kill()
+        rd.wait()
+        wr.stdin.close()
+        rc = wr.wait()
+    if rc != 0:
+        raise SystemExit(f"描画の書き出しに失敗 (rc={rc})")
+    return i
+
+
 # ---------------------------------------------------------------- 本体
 
 def main():
@@ -215,55 +335,52 @@ def main():
     ap.add_argument("--every", type=int, default=2)
     ap.add_argument("--conf", type=float, default=0.3)
     ap.add_argument("--hold", type=int, default=30)
-    ap.add_argument("--threads", type=int, default=0, help="cv2 のスレッド数（0=OpenCV の既定）")
+    ap.add_argument("--threads", type=int, default=0, help="cv2 のスレッド数（0=OpenCV の既定。--workers 2 以上では各ワーカー 1）")
+    ap.add_argument("--workers", type=int, default=1, help="検出を並列にするプロセス数（コマ範囲で分割・1 範囲あたり最低 150 コマ）")
+    ap.add_argument("--draw", help="体の ID・顔の紐づきを描いた mp4（時間の計測には含めない）")
     a = ap.parse_args()
 
     if a.threads:
         cv2.setNumThreads(a.threads)
     name = os.path.basename(a.model)
     size = a.input_size or (416 if ("tiny" in name or "nano" in name) else 640)
-    det = Yolox(a.model, size, a.conf)
     every = max(1, a.every)
 
-    w, h, fps, dur = probe(a.video)
+    w, h, fps, fps_str, dur, nb = probe(a.video)
     sc = min(1.0, a.long_side / float(max(w, h)))
     dw, dh = max(2, int(round(w * sc / 2)) * 2), max(2, int(round(h * sc / 2)) * 2)
-    cmd = [FFMPEG, "-v", "error", *HWACCEL, "-i", a.video, "-an", "-sn", "-dn",
-           "-vf", f"scale={dw}:{dh}", "-f", "rawvideo", "-pix_fmt", "bgr24", "-"]
-    fsize = dw * dh * 3
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=fsize)
+
+    # 最後の範囲は b=None（nb_frames がずれていても最後まで読む・_render_seg の last と同じ考え方）
+    bounds = seg_bounds(nb, max(1, a.workers))
+    jobs = [(a.video, a.model, size, a.conf, dw, dh, fps_str, lo, None if k == len(bounds) - 1 else hi, every,
+             1 if len(bounds) > 1 else 0) for k, (lo, hi) in enumerate(bounds)]
+    t_all = time.perf_counter()
+    if len(jobs) > 1:
+        pool = multiprocessing.get_context("spawn").Pool(len(jobs))
+        try:
+            parts = [r.get() for r in [pool.apply_async(detect_range, job) for job in jobs]]
+        finally:
+            pool.terminate()
+            pool.join()
+    else:
+        try:
+            parts = [detect_range(*jobs[0])]
+        except RuntimeError as e:
+            raise SystemExit(str(e))
+    t_det_wall = time.perf_counter() - t_all
+    i = sum(p[0] for p in parts)
+    t_dec = sum(p[2] for p in parts)  # 並列のときはワーカーの合計（CPU 側の目安）
+    t_det = sum(p[3] for p in parts)
+    detected = sorted((fi, d) for p in parts for fi, d in p[1])
 
     tracker = Tracker(a.hold)
-    t_dec = t_det = t_trk = 0.0
-    n_det_frames = n_dets = 0
-    i = 0
-    t_all = time.perf_counter()
-    try:
-        while True:
-            t0 = time.perf_counter()
-            buf = proc.stdout.read(fsize)
-            t_dec += time.perf_counter() - t0
-            if len(buf) < fsize:
-                break
-            if i % every == 0:
-                frame = np.frombuffer(buf, dtype=np.uint8).reshape(dh, dw, 3)
-                t0 = time.perf_counter()
-                dets = det(frame)
-                t1 = time.perf_counter()
-                tracker.update(i, dets)
-                t_trk += time.perf_counter() - t1
-                t_det += t1 - t0
-                n_det_frames += 1
-                n_dets += len(dets)
-            i += 1
-    finally:
-        proc.stdout.close()
-        err = proc.stderr.read().decode("utf-8", "replace")
-        proc.stderr.close()
-        rc = proc.wait()
+    t0 = time.perf_counter()
+    for fi, dets in detected:
+        tracker.update(fi, dets)
+    t_trk = time.perf_counter() - t0
     t_all = time.perf_counter() - t_all
-    if rc != 0 and i == 0:
-        raise SystemExit(f"デコードに失敗 (rc={rc}): {err.strip()[-300:]}")
+    n_det_frames = len(detected)
+    n_dets = sum(len(d) for _fi, d in detected)
 
     dur = dur or i / fps
     per_min = 60.0 / dur if dur else 0.0
@@ -273,10 +390,13 @@ def main():
                   "duration_sec": round(dur, 2), "frames": i},
         "settings": {"model": name, "input_size": size, "long_side": a.long_side, "detect_size": [dw, dh],
                      "every": every, "conf": a.conf, "high_conf": HIGH_CONF, "iou": IOU_MATCH,
-                     "hold": a.hold, "threads": cv2.getNumThreads()},
-        "time_sec": {"decode_resize": round(t_dec, 2), "detect": round(t_det, 2), "track": round(t_trk, 3),
-                     "total_wall": round(t_all, 2)},
+                     "hold": a.hold, "threads": 1 if len(jobs) > 1 else cv2.getNumThreads(),
+                     "workers": len(jobs), "segments": [[lo, hi] for lo, hi in bounds]},
+        # decode_resize・detect は並列のときワーカーの合計。detect_wall は検出（デコード込み）の経過時間
+        "time_sec": {"decode_resize": round(t_dec, 2), "detect": round(t_det, 2), "detect_wall": round(t_det_wall, 2),
+                     "track": round(t_trk, 3), "total_wall": round(t_all, 2)},
         "time_sec_per_video_min": {"decode_resize": round(t_dec * per_min, 2), "detect": round(t_det * per_min, 2),
+                                   "detect_wall": round(t_det_wall * per_min, 2),
                                    "track": round(t_trk * per_min, 3), "total_wall": round(t_all * per_min, 2)},
         "detect": {"frames": n_det_frames, "detections": n_dets,
                    "ms_per_frame": round(1000 * t_det / max(n_det_frames, 1), 1)},
@@ -284,6 +404,7 @@ def main():
                         "span_ge_30": sum(1 for s in spans if s >= 30)},
     }
 
+    fts, fw, fh, f2b = None, 0, 0, {}
     if a.tracks:
         t0 = time.perf_counter()
         fts, fw, fh = load_face_tracks(a.tracks)
@@ -304,6 +425,12 @@ def main():
             "faces_per_body_max": max(per_body.values()) if per_body else 0,
             "link_sec": round(time.perf_counter() - t0, 2),
         }
+
+    if a.draw:
+        t0 = time.perf_counter()
+        n = draw_video(a.draw, a.video, dw, dh, fps_str, every, tracker.tracks, fts, fw, fh, f2b)
+        res["time_sec"]["draw"] = round(time.perf_counter() - t0, 2)
+        res["draw"] = {"path": os.path.basename(a.draw), "frames": n}
 
     text = json.dumps(res, ensure_ascii=False, indent=2)
     print(text)
