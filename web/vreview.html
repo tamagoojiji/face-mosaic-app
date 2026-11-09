@@ -56,7 +56,7 @@ h1{margin-top:var(--s4)}
   <p class="lead">顔をタップすると、もう一方の列に移ります。</p>
   <p class="notice warn" id="warn" role="status" hidden></p>
   <fieldset class="seg seg3">
-    <legend>確認する顔の数</legend>
+    <legend>確認する顔の数（半分・1割は選んだ人に似ている順）</legend>
     <label><input type="radio" name="rank" value="A" checked><span><span class="m">すべて</span><span class="d" id="rdA"></span></span></label>
     <label><input type="radio" name="rank" value="B"><span><span class="m">半分</span><span class="d" id="rdB"></span></span></label>
     <label><input type="radio" name="rank" value="C"><span><span class="m">1割</span><span class="d" id="rdC"></span></span></label>
@@ -110,7 +110,7 @@ const style = () => document.querySelector('input[name=st]:checked').value;
 const wantHq = () => CHOICE ? document.querySelector('input[name=q]:checked').value === 'src' : HQ;
 const goLabel = () => wantHq() ? '元の画質で書き出す' : '1080p で書き出す';
 // 確認する顔の数: A=すべて B=選んだ人に似ている順の上位 50% C=上位 10%。隠れた顔も書き出しではモザイクになる
-const RANK = { A: [1, 'いちばん正確'], B: [0.5, '似ている順の上位 50%'], C: [0.1, '上位 10%'] };
+const RANK = { A: 1, B: 0.5, C: 0.1 };
 const rank = () => document.querySelector('input[name=rank]:checked').value;
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
@@ -119,11 +119,11 @@ const store = {
 
 function render() {
   const all = ITEMS.filter(it => !KEEP.has(it.id)), k = ITEMS.filter(it => KEEP.has(it.id));
-  const cnt = r => Math.ceil(all.length * RANK[r][0]);
+  const cnt = r => Math.ceil(all.length * RANK[r]);
   const top = new Set([...all].sort((x, y) => (x.small - y.small) || ((y.score || 0) - (x.score || 0))).slice(0, cnt(rank())));
   const vis = all.filter(it => top.has(it)), rest = all.length - vis.length;
   const b = vis.filter(it => !it.small), s = vis.filter(it => it.small);
-  for (const r in RANK) $('rd' + r).textContent = cnt(r) + '件・' + RANK[r][1];
+  for (const r in RANK) $('rd' + r).textContent = cnt(r) + '件';
   $('rest').hidden = !rest;
   $('restt').textContent = 'ほかに ' + rest + ' 件の顔は自動でモザイクになります（ここには出していません）';
   $('resta').textContent = rest + ' 件をすべて見る';
