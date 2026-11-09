@@ -889,7 +889,7 @@ def keep_fragments(tracks, keep, blur, face_m, short):
     return keep, blur - keep
 
 
-def review_lists(info, tracks, keep, dw, face_m=None):
+def review_lists(info, tracks, keep, dw, face_m=None, cloth_m=None, picked=()):
     """「モザイクをかける予定」「かけない予定」の一覧。モザイクは書き出しと同じ分類で、かかる顔をすべて出す。
     途切れた断片は1件にまとめ（ids）、遠くの小さい顔には small を付ける（画面でたたんで見せる）。"""
     short = min(dw, dh_of(info, dw))
@@ -901,10 +901,18 @@ def review_lists(info, tracks, keep, dw, face_m=None):
     min_h = FACE_MIN_FRAC * short
     kept = [t for t in tracks if t["id"] in keep and t["med_h"] >= min_h]
 
+    def score(g, rep):
+        if picked and face_m and cloth_m:  # 選んだ人に顔＋服が似ている順（特徴が無い組は飛ばす）
+            sims = [_face_cos(face_m[t["id"]], face_m[r]) + cloth_sim(cloth_m[t["id"]], cloth_m[r])
+                    for t in g for r in picked
+                    if t["id"] in face_m and r in face_m and t["id"] in cloth_m and r in cloth_m]
+            return round(max(sims), 3) if sims else 0.0
+        return round(rep["med_h"] / short * sum(len(t["boxes"]) for t in g), 3)
+
     def item(g, small=False):
         rep = max(g, key=lambda t: t["med_h"])  # 切り抜きは大きく写った断片のもの
         return {"id": rep["id"], "ids": sorted(t["id"] for t in g), "sec": round(min(t["first_frame"] for t in g) / fps, 1),
-                "small": small, "score": round(rep["med_h"] / short * sum(len(t["boxes"]) for t in g), 3)}
+                "small": small, "score": score(g, rep)}
     groups = [(g, False) for g in join_fragments([t for t in cand if t["med_h"] >= min_h], face_m or {})]
     groups += [(g, True) for g in join_fragments([t for t in cand if t["med_h"] < min_h], face_m or {})]
     return {"blur": sorted((item(g, s) for g, s in groups), key=lambda i: i["sec"]),

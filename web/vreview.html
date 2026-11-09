@@ -109,8 +109,8 @@ const mins = s => Math.max(1, Math.round(s / 60));
 const style = () => document.querySelector('input[name=st]:checked').value;
 const wantHq = () => CHOICE ? document.querySelector('input[name=q]:checked').value === 'src' : HQ;
 const goLabel = () => wantHq() ? '元の画質で書き出す' : '1080p で書き出す';
-// 確認する顔の数: A=すべて B=目立つ順の上位 50% C=上位 10%。隠れた顔も書き出しではモザイクになる
-const RANK = { A: [1, 'いちばん正確'], B: [0.5, '上位 50%'], C: [0.1, '上位 10%'] };
+// 確認する顔の数: A=すべて B=選んだ人に似ている順の上位 50% C=上位 10%。隠れた顔も書き出しではモザイクになる
+const RANK = { A: [1, 'いちばん正確'], B: [0.5, '似ている順の上位 50%'], C: [0.1, '上位 10%'] };
 const rank = () => document.querySelector('input[name=rank]:checked').value;
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },

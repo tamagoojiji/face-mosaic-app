@@ -111,3 +111,28 @@ def test_score_of_joined_fragments_counts_all_frames():
     alone = v.review_lists(INFO, [frag(0, 0, 5)], set(), 720)["blur"]
     assert len(joined) == 1 and joined[0]["score"] > alone[0]["score"]
     assert joined[0]["score"] == round(60.0 / 720 * 10, 3)
+
+
+def test_score_ranks_faces_like_the_picked_person_higher():
+    ts = [frag(0, 0, 5), frag(1, 100, 5, x=300.0), frag(2, 200, 5, x=500.0)]
+    face_m = {0: np.array([1.0, 0.0]), 1: np.array([0.9, 0.43589]), 2: np.array([0.0, 1.0])}
+    cloth_m = {0: np.array([1.0, 0.0]), 1: np.array([0.8, 0.2]), 2: np.array([0.0, 1.0])}
+    lists = v.review_lists(INFO, ts, {0}, 720, face_m, cloth_m, [0])
+    sc = {i["id"]: i["score"] for i in lists["blur"]}
+    assert sc[1] > sc[2]
+
+
+def test_score_is_zero_without_features_when_picked():
+    ts = [frag(0, 0, 5), frag(1, 100, 5, x=300.0)]
+    face_m = {0: np.array([1.0, 0.0])}
+    cloth_m = {0: np.array([1.0, 0.0])}
+    lists = v.review_lists(INFO, ts, {0}, 720, face_m, cloth_m, [0])
+    assert [i["score"] for i in lists["blur"]] == [0.0]
+
+
+def test_score_without_picked_is_size_times_frames():
+    face_m = {0: np.array([1.0, 0.0]), 1: np.array([0.0, 1.0])}
+    cloth_m = {0: np.array([1.0, 0.0]), 1: np.array([0.0, 1.0])}
+    lists = v.review_lists(INFO, [track(0, 200, frames=10), track(1, 60, frames=3)], set(), 720, face_m, cloth_m, [])
+    sc = {i["id"]: i["score"] for i in lists["blur"]}
+    assert sc[0] == round(200 / 720 * 10, 3) and sc[0] > sc[1]
