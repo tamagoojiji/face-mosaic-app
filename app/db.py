@@ -126,6 +126,7 @@ ADD_COLUMNS = {
     "t_prepare_sec": "REAL",
     "t_track_sec": "REAL",
     "t_feature_sec": "REAL",
+    "t_body_sec": "REAL",          # 動画: 体の追跡にかかった秒
     "user_id": "INTEGER",
     "src_expires_at": "REAL",      # 完成後: 元動画・元画像・解析データを消す時刻（消したら NULL）
     "out_expires_at": "REAL",      # 完成後: 完成品を消す時刻

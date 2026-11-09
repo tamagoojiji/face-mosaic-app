@@ -26,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 from worker.engine import photo
+from worker.engine import body as vbody
 from worker.engine import video as vengine
 from worker.run import paths as vpaths
 
@@ -1082,6 +1083,12 @@ async def video_picks(request: Request, job_id: str):
         tracks, dw, dh, _seen = vengine.load_tracks(p["tracks"])
         face_m, cloth_m = vengine.load_feats(p["feats"]) if use_feats else ({}, {})
         keep, blur = vengine.decide(tracks, picks, face_m, cloth_m, min(dw, dh))
+        if os.path.exists(p["bodies"]):  # 体の追跡があれば、同じ体の断片もつなぐ（無ければ従来どおり）
+            bts, bw, bh, every = vbody.load_bodies(p["bodies"])
+            body_of = vbody.link_faces(tracks, dw, dh, bts, bw, bh, every)
+            keep0 = keep
+            keep, blur = vengine.decide(tracks, picks, face_m, cloth_m, min(dw, dh), body_of=body_of)
+            log.info("picks %s 体つなぎ %d 件", job_id, len(keep - keep0))
         keep, blur = vengine.keep_fragments(tracks, keep, blur, face_m, min(dw, dh))
         lists = vengine.review_lists(vengine.probe(p["v1080"]), tracks, keep, dw, face_m, cloth_m, picks)
         return keep, blur, lists

@@ -83,6 +83,9 @@ LINK_DIST = 2.0
 # LINK_FACE/LINK_CLOTH（0.30/0.55→0.40/0.60）と GLOB_SUM（1.15→1.30）: 多数タップ時の誤 keep を減らす。2 本タップでは差なし（2026-11-03 E2E）
 LINK_FACE = 0.40
 LINK_CLOTH = 0.60
+# 体が同じ断片は顔か服の似かたが弱めでもつなぐ（LINK_* は単独で超える必要がある）
+BODY_FACE = 0.25
+BODY_CLOTH = 0.45
 GLOB_FACE = 0.35
 GLOB_CLOTH = 0.60
 GLOB_SUM = 1.30
@@ -610,8 +613,11 @@ def _sim(a, b, face_m, cloth_m):
     return fs, cs
 
 
-def decide(tracks, picked, face_m, cloth_m, short):
-    """picked から似ている断片を広げて keep を決める。戻り値は (keep_ids, blur_ids)。（dancer_pick.py と同じ）"""
+def decide(tracks, picked, face_m, cloth_m, short, body_of=None):
+    """picked から似ている断片を広げて keep を決める。戻り値は (keep_ids, blur_ids)。（dancer_pick.py と同じ）
+
+    body_of（face_id → body_id・worker.engine.body.link_faces）があれば、最後に 1 回だけ、keep と同じ体に属する断片を
+    keep のどれかと顔か服が弱めに似ていれば足す（体経由で足した断片からは広げない）。"""
     by = {t["id"]: t for t in tracks}
     faces = [t for t in tracks if t["med_conf"] >= BLUR_MIN_CONF]
     min_h = KEEP_MIN_FRAC * short
@@ -657,6 +663,23 @@ def decide(tracks, picked, face_m, cloth_m, short):
             front = nxt
         return keep
 
+    def body_extend(base):
+        """base のどれかと同じ体に属する断片のうち、base の特徴あり断片のどれかと似ているもの（連鎖しない）。"""
+        bodies = {body_of[i] for i in base if body_of.get(i) is not None}
+        refs = [r for r in base if r in face_m or r in cloth_m]
+        add = set()
+        for t in faces:
+            f = t["id"]
+            if f in base or body_of.get(f) not in bodies or t["med_h"] < min_h \
+                    or (f not in face_m and f not in cloth_m):
+                continue  # 特徴の無い断片は体経由ではつながない
+            for r in refs:
+                fs, cs = _sim(f, r, face_m, cloth_m)
+                if fs >= BODY_FACE or cs >= BODY_CLOTH:
+                    add.add(f)
+                    break
+        return add
+
     picked = [p for p in picked if p in by]
     glob = set()
     for t in faces:
@@ -676,6 +699,8 @@ def decide(tracks, picked, face_m, cloth_m, short):
         if any(cloth_sim(cloth_m[i], cloth_m[r]) >= COSTUME_CLOTH for r in picked if r in cloth_m):
             costume.add(i)
     keep = spread(spread(picked) | glob) | costume
+    if body_of:
+        keep = keep | body_extend(keep)
     blur = {t["id"] for t in faces} - keep
     return keep, blur
 

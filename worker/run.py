@@ -16,7 +16,7 @@ import traceback
 
 from app import config, db
 from app.services import discord, monitor, notify, quota, review
-from worker.engine import nsfw, video
+from worker.engine import body, nsfw, video
 
 log = logging.getLogger("worker")
 
@@ -29,6 +29,7 @@ def paths(job_id):
     d = job_dir(job_id)
     return {"dir": d, "src": os.path.join(d, "src.mp4"), "v1080": os.path.join(d, "work_1080.mp4"),
             "tracks": os.path.join(d, "tracks.json"), "feats": os.path.join(d, "features.npz"),
+            "bodies": os.path.join(d, "bodies.json"),
             "shots": os.path.join(d, "shots"), "shots_json": os.path.join(d, "shots.json"),
             "thumbs": os.path.join(d, "thumbs"), "out": os.path.join(d, "out.mp4")}
 
@@ -67,7 +68,7 @@ def fail_prepare(job_id, msg, exc):
     """解析の失敗。続きに使えるものは無いので、元動画と途中のファイルは消す（フォルダと行は期限まで残す）。"""
     log.error("job %s 解析に失敗: %s\n%s", job_id, exc, traceback.format_exc())
     p = paths(job_id)
-    for k in ("src", "v1080", "feats", "tracks"):
+    for k in ("src", "v1080", "feats", "bodies", "tracks"):
         _rm(p[k])
     _rm(p["v1080"] + ".part.mp4")
     db.update_job(job_id, status="failed", error=msg, src_path=None, out_path=None,
@@ -100,7 +101,8 @@ def fail_export(job_id, exc):
 def do_prepare(j):
     jid, p = j["id"], paths(j["id"])
     db.update_job(jid, status="preparing", error=None, fast_mode=1, prep_started_at=time.time(), engine_ver=video.ENGINE_VER,
-                  t_prepare_sec=None, t_track_sec=None, t_feature_sec=None, features_state=None)
+                  t_prepare_sec=None, t_track_sec=None, t_feature_sec=None, t_body_sec=None,
+                  features_state=None)
     t0 = time.time()
     info0, vf0, hdr = video.prepare(p["src"], p["dir"])
     db.update_job(jid, fps=info0["fps"], hdr=1 if hdr.get("mode") == "hlg" else 0,
@@ -145,8 +147,21 @@ def do_prepare(j):
                       f"{discord.explain(e)}")
         return
     t4 = time.time()
-    db.update_job(jid, t_feature_sec=round(t4 - t3, 1), features_state="ready")
+    db.update_job(jid, t_feature_sec=round(t4 - t3, 1))
     log.info("features %s 特徴 %.1fs", jid, t4 - t3)
+    # 体の追跡（顔の断片をつなぐ補助）。失敗しても体なしで判定できるので、知らせるだけで続ける
+    if os.environ.get("BODY_TRACK", "1") == "1":
+        try:
+            bts = body.track_bodies(p["v1080"], info, vf, p["bodies"])
+            t5 = time.time()
+            db.update_job(jid, t_body_sec=round(t5 - t4, 1))
+            log.info("bodies %s 体トラック %d 体の追跡 %.1fs", jid, len(bts), t5 - t4)
+        except Exception as e:
+            log.error("job %s 体の追跡に失敗: %s\n%s", jid, e, traceback.format_exc())
+            _rm(p["bodies"])
+            discord.alert(f"処理失敗 ジョブ={jid} 工程=体の追跡（体なしで続行）利用者=#{j.get('user_id')}\n"
+                          f"{discord.explain(e)}")
+    db.update_job(jid, features_state="ready")
 
 
 def do_export(j):
@@ -169,9 +184,10 @@ def do_export(j):
                   out_width=o["out_width"], out_height=o["out_height"], out_fps=round(o["fps"], 3),
                   src_expires_at=j["src_expires_at"] or now + quota.source_hours() * 3600,
                   out_expires_at=now + quota.output_days() * 86400)
-    # 完成後に要らないもの: 特徴。選び直し（確認画面から書き出し直す）のために 1080p 版・追跡結果・切り抜きは残す。
+    # 完成後に要らないもの: 特徴と体の追跡結果。選び直し（確認画面から書き出し直す）のために 1080p 版・追跡結果・切り抜きは残す。
     # 元動画は 1080p で書き出したときは消す。高画質で書き出したときは選び直しを高画質でできるよう期限（24時間）まで残す
     _rm(p["feats"])
+    _rm(p["bodies"])
     if not hq:
         _rm(p["src"])
         db.update_job(jid, src_path=None)

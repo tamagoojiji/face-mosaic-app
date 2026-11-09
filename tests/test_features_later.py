@@ -47,6 +47,7 @@ def _fake_prepare(monkeypatch, calls, feat_exc=None):
     monkeypatch.setattr(v, "pick_shots", rec("pick_shots", []))
     monkeypatch.setattr(v, "build_shots", rec("build_shots", []))
     monkeypatch.setattr(v, "make_thumbs", rec("make_thumbs", 0))
+    monkeypatch.setattr(run.body, "track_bodies", rec("track_bodies", []))
     monkeypatch.setattr(run.notify, "push", lambda kind, j, **kw: calls.append(f"push:{kind}"))
     monkeypatch.setattr(run.discord, "alert", lambda msg: calls.append("alert:" + msg.split()[2]))
     orig = run.db.update_job
